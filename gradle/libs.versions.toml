@@ -1,0 +1,29 @@
+[versions]
+kotlin = "1.9.25"
+spring-boot = "3.4.3"
+spring-dependency-management = "1.1.7"
+gralvm-native = "0.10.3"
+integtest = "9.6.3"
+# dependency
+spring-cloud = "2024.0.0"
+spring-modulith = "1.3.3"
+jjwt = "0.12.6"
+mapstruct = "1.5.2.Final"
+
+
+[libraries]
+kotlin-junit = { group = "org.jetbrains.kotlin", name = "kotlin-test-junit5", version.ref = "kotlin" }
+kotlin-reflect = { group = "org.jetbrains.kotlin", name = "kotlin-reflect"}
+jjwt-api = { group = "io.jsonwebtoken", name = "jjwt-api", version.ref = "jjwt" }
+jjwt-impl = { group = "io.jsonwebtoken", name = "jjwt-impl", version.ref = "jjwt" }
+jjwt-jackson = { group = "io.jsonwebtoken", name = "jjwt-jackson", version.ref = "jjwt" }
+mapstruct = { group = "org.mapstruct", name = "mapstruct", version.ref = "mapstruct" }
+mapstruct-processor = { group = "org.mapstruct", name = "mapstruct", version.ref = "mapstruct" }
+
+[plugins]
+kotlin-jvm = { id = "org.jetbrains.kotlin.jvm", version.ref = "kotlin" }
+kotlin-spring = { id = "org.jetbrains.kotlin.plugin.spring", version.ref = "kotlin" } #plugin-spring = { id = "plugin.spring", version.ref = "kotlin" }
+spring-boot = { id = "org.springframework.boot", version.ref = "spring-boot" }
+spring-dependency-management = { id = "io.spring.dependency-management", version.ref = "spring-dependency-management" }
+graalvm-native = { id = "org.graalvm.buildtools.native", version.ref = "gralvm-native" }
+integtest = { id = "nebula.integtest", version.ref = "integtest" }
