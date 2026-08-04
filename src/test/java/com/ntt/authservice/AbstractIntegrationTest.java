@@ -1,41 +1,41 @@
 package com.ntt.authservice;
 
-import com.fasterxml.jackson.core.JsonProcessingException;
-import com.fasterxml.jackson.databind.DeserializationFeature;
-import com.fasterxml.jackson.databind.ObjectMapper;
-import com.fasterxml.jackson.databind.SerializationFeature;
-import org.junit.jupiter.api.TestFactory;
 import org.junit.jupiter.api.TestInstance;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
-import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
+import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.http.MediaType;
 import org.springframework.test.annotation.DirtiesContext;
+import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.MvcResult;
 import org.springframework.test.web.servlet.ResultActions;
 import org.springframework.test.web.servlet.ResultMatcher;
 import org.springframework.test.web.servlet.request.MockMvcRequestBuilders;
+import tools.jackson.databind.json.JsonMapper;
+
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 /**
+ * Base class for integration tests.
  *
- * @author : nguyentthai96 - nguyentthai96@gmail.com
- * @version : 
- * @since :  17/04/2025, Thursday
- * @reference :  https://github.com/mertbahardogan/software-testing/blob/main/src/test/java/com/software/testing/integration/base/AbstractIntegrationTest.java
- **/
-@TestInstance(Lifecycle.PER_CLASS)
+ * @author nguyentthai96
+ * @since 17/04/2025
+ */
+@TestInstance(TestInstance.Lifecycle.PER_CLASS)
 @AutoConfigureMockMvc
 @EnableConfigurationProperties
+@ActiveProfiles("test")
 @DirtiesContext(classMode = DirtiesContext.ClassMode.AFTER_EACH_TEST_METHOD)
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
-public abstract class AbstractIntegrationTest extends TestFactory {
+public abstract class AbstractIntegrationTest {
 
     @Autowired
     protected MockMvc mockMvc;
-    protected final ObjectMapper mapper = new ObjectMapper().findAndRegisterModules().configure(
-                    SerializationFeature.WRITE_DATES_AS_TIMESTAMPS, false)
-            .configure(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES, false);
+
+    // Jackson 3.x uses immutable JsonMapper built via builder
+    protected final JsonMapper jsonMapper = JsonMapper.builder().build();
 
     protected <T> T performPostRequest(String path, Object object, Class<T> responseType, ResultMatcher expectedStatus)
             throws Exception {
@@ -58,10 +58,10 @@ public abstract class AbstractIntegrationTest extends TestFactory {
     private ResultActions getResultActions(String path, Object object) throws Exception {
         return mockMvc.perform(MockMvcRequestBuilders.post(path)
                 .contentType(MediaType.APPLICATION_JSON)
-                .content(mapper.writeValueAsString(object)));
+                .content(jsonMapper.writeValueAsString(object)));
     }
 
-    private <T> T convertStringToClass(String jsonString, Class<T> responseType) throws JsonProcessingException {
-        return mapper.readValue(jsonString, responseType);
+    private <T> T convertStringToClass(String jsonString, Class<T> responseType) throws Exception {
+        return jsonMapper.readValue(jsonString, responseType);
     }
 }

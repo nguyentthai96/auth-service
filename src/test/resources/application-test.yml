@@ -1,0 +1,56 @@
+# Test profile configuration — uses H2 in-memory database
+spring:
+  datasource:
+    url: jdbc:h2:mem:auth_test_db;DB_CLOSE_DELAY=-1;DB_CLOSE_ON_EXIT=FALSE;MODE=PostgreSQL
+    username: sa
+    password:
+    driver-class-name: org.h2.Driver
+
+  jpa:
+    hibernate:
+      ddl-auto: create-drop
+    show-sql: false
+    properties:
+      hibernate:
+        dialect: org.hibernate.dialect.H2Dialect
+        format_sql: false
+    open-in-view: false
+
+  flyway:
+    enabled: false  # Disable Flyway in tests — Hibernate auto-generates schema
+
+  jackson:
+    default-property-inclusion: non_null
+
+  threads:
+    virtual:
+      enabled: true
+
+server:
+  port: 0  # Random port for tests
+
+# Base-Core Configuration
+base-core:
+  snowflake:
+    node-id: 1
+    epoch: 1704067200000
+
+# JWT Configuration — deterministic key for tests
+app:
+  security:
+    enabled: true
+    jwt:
+      secret-key: "test-secret-key-must-be-at-least-32-bytes-long-for-hmac-sha256"
+      access-token-expiration-ms: 1800000
+      refresh-token-expiration-ms: 604800000
+      issuer: "auth-service-test"
+    password:
+      bcrypt-strength: 4  # Lower strength for faster tests
+      max-failed-attempts: 3
+      lock-duration-minutes: 15
+
+logging:
+  level:
+    com.ntt.authservice: WARN
+    org.springframework.security: WARN
+    org.hibernate.SQL: WARN

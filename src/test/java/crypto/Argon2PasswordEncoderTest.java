@@ -18,7 +18,7 @@ public class Argon2PasswordEncoderTest {
     void password_should_be_equals_after_encoding() {
         String password = "password";
         String encodedPassword = argon2PasswordEncoder.encode(password);
-        Assertions.assertTrue(PasswordHash.matches(password, encodedPassword));
+        Assertions.assertTrue(argon2PasswordEncoder.matches(password, encodedPassword));
     }
 
     @Test
@@ -26,7 +26,7 @@ public class Argon2PasswordEncoderTest {
         String password = "Test123";
         String encodedPassword = argon2PasswordEncoder.encode(password);
 
-        Assertions.assertFalse(PasswordHash.matches("Test456", encodedPassword));
+        Assertions.assertFalse(argon2PasswordEncoder.matches("Test456", encodedPassword));
     }
 
 }

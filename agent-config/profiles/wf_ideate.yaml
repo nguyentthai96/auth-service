@@ -1,0 +1,65 @@
+# Pipeline: /wf_ideate — Ideation & Research
+# Budget: Conservative (mostly web search, minimal LLM)
+
+pipeline:
+  name: wf_ideate
+  description: "Research & Ideation pipeline"
+  total_budget_tokens: 80000
+
+tasks:
+  parse-idea:
+    description: "Parse and understand raw idea input"
+    max_tokens: 5000
+    model_tier: low
+    priority: speed
+
+  web-search-competitors:
+    description: "Search for commercial competitors"
+    max_tokens: 10000
+    model_tier: mid
+    priority: balanced
+    notes: "Web search is tool-based, LLM only for synthesis"
+
+  github-scan-top10:
+    description: "Find top 10 GitHub repos by stars"
+    max_tokens: 10000
+    model_tier: mid
+    priority: balanced
+
+  github-deep-analysis-top3:
+    description: "Deep analyze top 3 best matching repos"
+    max_tokens: 20000
+    model_tier: high
+    priority: quality
+    notes: "Requires reading READMEs and analyzing architecture"
+
+  market-analysis:
+    description: "Synthesize market insights from research"
+    max_tokens: 15000
+    model_tier: mid
+    priority: balanced
+
+  feature-mapping:
+    description: "Create prioritized feature inventory"
+    max_tokens: 10000
+    model_tier: mid
+    priority: balanced
+
+  generate-output-docs:
+    description: "Generate initial-idea.md, competitor_analysis.md, prompt.md"
+    max_tokens: 10000
+    model_tier: low
+    priority: speed
+    notes: "Template-based, mostly formatting"
+
+model_routing:
+  high:
+    primary: "opus"
+    fallback: "sonnet"
+  mid:
+    primary: "sonnet"
+    fallback: "gpt-4o-mini"
+  low:
+    primary: "local-qwen"
+    fallback: "local-deepseek"
+    fallback_cloud: "sonnet"

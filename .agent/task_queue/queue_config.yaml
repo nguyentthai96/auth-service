@@ -1,0 +1,32 @@
+# Task Queue Configuration
+
+max_concurrent: 1
+max_retries: 2
+idle_action: "self_improvement"
+auto_resume: true
+
+priority_order:
+  - "resume"
+  - "patch"
+  - "feature_add"
+  - "e2e"
+  - "improvement"
+
+timeout_hours: 12
+
+phase_timeouts_minutes:
+  research: 30
+  brd: 60
+  tech_design: 45
+  ui_design: 45
+  openspec: 30
+  code_gen: 90
+  testing: 45
+  deployment: 30
+
+watchdog:
+  health_check_interval: 300  # seconds (5 min)
+  stall_detection:
+    no_output_threshold: 600  # seconds (10 min)
+    no_file_change_threshold: 900  # seconds (15 min)
+  on_stall: "force_gate_evaluation"

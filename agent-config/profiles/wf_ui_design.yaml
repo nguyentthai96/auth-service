@@ -1,0 +1,92 @@
+# Pipeline: /wf_ui_design — UI/UX Design
+# Budget: Medium (mostly mid-tier writing + image generation)
+
+pipeline:
+  name: wf_ui_design
+  description: "UI/UX Design Generation + AI Mockups + Design Review"
+  total_budget_tokens: 180000
+
+tasks:
+  context-loading:
+    description: "Read tech docs + BRD workflows"
+    max_tokens: 5000
+    model_tier: low
+    priority: speed
+
+  generate-quality-bar:
+    description: "Production UI quality standards"
+    max_tokens: 8000
+    model_tier: low
+    priority: speed
+    notes: "Mostly standards — template-based"
+
+  generate-foundation:
+    description: "Design direction, principles, info architecture"
+    max_tokens: 15000
+    model_tier: mid
+    priority: quality
+
+  generate-framework-selection:
+    description: "UI framework rationale"
+    max_tokens: 10000
+    model_tier: mid
+    priority: balanced
+
+  generate-design-system:
+    description: "Typography, spacing, grid, breakpoints"
+    max_tokens: 12000
+    model_tier: mid
+    priority: balanced
+
+  generate-design-tokens:
+    description: "Color palette (light+dark), shadows, animations"
+    max_tokens: 15000
+    model_tier: mid
+    priority: quality
+    notes: "Needs good color theory for palette generation"
+
+  generate-components:
+    description: "Component catalog with variants/states"
+    max_tokens: 20000
+    model_tier: mid
+    priority: balanced
+
+  generate-layouts:
+    description: "Shell, sidebar, navigation, page templates"
+    max_tokens: 15000
+    model_tier: mid
+    priority: balanced
+
+  mockup-prompts:
+    description: "Generate detailed prompts from ASCII wireframes"
+    max_tokens: 20000
+    model_tier: mid
+    priority: quality
+    notes: "Creative task — prompt quality affects mockup quality"
+
+  # Note: generate_image tool has its own cost, not tracked in tokens
+  # But prompt generation IS tracked
+
+  design-review:
+    description: "5-agent design review"
+    max_tokens: 30000
+    model_tier: high
+    priority: quality
+
+  revision:
+    description: "Fix design review issues"
+    max_tokens: 10000
+    model_tier: mid
+    priority: balanced
+
+model_routing:
+  high:
+    primary: "opus"
+    fallback: "sonnet"
+  mid:
+    primary: "sonnet"
+    fallback: "gpt-4o-mini"
+  low:
+    primary: "local-qwen"
+    fallback: "local-deepseek"
+    fallback_cloud: "sonnet"
