@@ -31,6 +31,34 @@ spring:
     virtual:
       enabled: true
 
+  # Redis for OTP and MFA state
+  data:
+    redis:
+      host: ${REDIS_HOST:localhost}
+      port: ${REDIS_PORT:6379}
+      password: ${REDIS_PASSWORD:}
+      timeout: 2000ms
+
+  # OAuth2 SSO Client Registrations
+  security:
+    oauth2:
+      client:
+        registration:
+          google:
+            client-id: ${GOOGLE_CLIENT_ID:}
+            client-secret: ${GOOGLE_CLIENT_SECRET:}
+            scope: openid,email,profile
+          microsoft:
+            client-id: ${MICROSOFT_CLIENT_ID:}
+            client-secret: ${MICROSOFT_CLIENT_SECRET:}
+            scope: openid,email,profile
+        provider:
+          microsoft:
+            authorization-uri: https://login.microsoftonline.com/common/oauth2/v2.0/authorize
+            token-uri: https://login.microsoftonline.com/common/oauth2/v2.0/token
+            user-info-uri: https://graph.microsoft.com/oidc/userinfo
+            jwk-set-uri: https://login.microsoftonline.com/common/discovery/v2.0/keys
+
 server:
   port: 8081
 
@@ -40,12 +68,16 @@ base-core:
     node-id: -1    # -1 = auto-detect from hostname
     epoch: 1704067200000  # 2024-01-01T00:00:00Z
 
-# JWT Configuration
+# Security Configuration
 app:
   security:
     enabled: true
     jwt:
-      secret-key: "your-256-bit-secret-key-change-in-production"
+      secret-key: ${JWT_SECRET_KEY:your-256-bit-secret-key-change-in-production}
+      algorithm: ${JWT_ALGORITHM:RS256}
+      private-key-path: ${JWT_PRIVATE_KEY_PATH:}
+      public-key-path: ${JWT_PUBLIC_KEY_PATH:}
+      key-id: ${JWT_KEY_ID:auth-service-key-1}
       access-token-expiration-ms: 1800000   # 30 minutes
       refresh-token-expiration-ms: 604800000 # 7 days
       issuer: "auth-service"
@@ -53,6 +85,22 @@ app:
       bcrypt-strength: 12
       max-failed-attempts: 3
       lock-duration-minutes: 15
+    mfa:
+      otp-ttl-seconds: 300         # 5 minutes
+      max-attempts: 3
+      totp-window: 1               # ±1 step drift tolerance
+      mfa-token-ttl-seconds: 300   # MFA challenge token TTL
+      trusted-device-ttl-days: 30
+    captcha:
+      provider: ${CAPTCHA_PROVIDER:noop}   # noop | turnstile | hcaptcha | recaptcha
+      secret-key: ${CAPTCHA_SECRET_KEY:}
+      site-key: ${CAPTCHA_SITE_KEY:}
+      verify-url: ${CAPTCHA_VERIFY_URL:}
+    sso:
+      enabled: ${SSO_ENABLED:false}
+      auto-provision-enabled: ${SSO_AUTO_PROVISION:false}
+      default-domain-code: ${SSO_DEFAULT_DOMAIN:default}
+      timeout-ms: 10000
 
 # Actuator
 management:

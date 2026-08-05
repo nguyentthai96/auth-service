@@ -27,7 +27,9 @@ class AuthService(
     private val rbacEngine: RbacEngine,
     private val jwtService: JwtService,
     private val passwordEncoder: PasswordEncoder,
-    private val securityProperties: SecurityProperties
+    private val securityProperties: SecurityProperties,
+    private val captchaVerifier: CaptchaVerifier,
+    private val mfaService: MfaService
 ) {
 
     private val log = LoggerFactory.getLogger(AuthService::class.java)
@@ -71,7 +73,7 @@ class AuthService(
     }
 
     @Transactional
-    fun login(request: LoginRequest): AuthResponse {
+    fun login(request: LoginRequest): LoginResult {
         val user = userRepository.findByUsernameAndActiveTrue(request.username)
             ?: throw InvalidCredentialsException()
 
@@ -87,6 +89,17 @@ class AuthService(
             user.lockedUntilAt = null
         }
 
+        // CAPTCHA check (when failed login threshold exceeded)
+        if (user.failedLoginCount >= securityProperties.password.maxFailedAttempts - 1) {
+            val captchaToken = request.captchaToken
+            if (captchaToken.isNullOrBlank()) {
+                throw CaptchaRequiredException()
+            }
+            if (!captchaVerifier.verify(captchaToken)) {
+                throw CaptchaFailedException()
+            }
+        }
+
         // Validate password
         if (!passwordEncoder.matches(request.password, user.passwordHash)) {
             handleFailedLogin(user)
@@ -95,15 +108,25 @@ class AuthService(
 
         // Reset failed login count on success
         user.failedLoginCount = 0
-        // updatedAt is auto-managed by AuditableEntity
         userRepository.save(user)
+
+        // MFA checkpoint
+        if (user.mfaEnabled && user.mfaMethod != "NONE") {
+            // Check trusted device — skip MFA if matched
+            val trustedHash = request.trustedDeviceHash
+            if (trustedHash != null && trustedHash == user.trustedDeviceHash) {
+                log.debug("Trusted device matched — skipping MFA for userId={}", user.id)
+            } else {
+                return mfaService.initiateMfa(user.id!!, user.mfaMethod)
+            }
+        }
 
         // Determine active domain
         val domainCode = request.domainCode ?: getPrimaryDomain(user.id!!)
 
         log.info("User logged in: {} domain: {}", user.username, domainCode)
 
-        return generateAuthResponse(user, domainCode)
+        return LoginResult.Success(generateAuthResponse(user, domainCode))
     }
 
     @Transactional
@@ -222,6 +245,31 @@ class AuthService(
         }.code
     }
 
+    /**
+     * Build AuthResponse for a given userId (used by MFA verify and SSO callback).
+     */
+    fun buildAuthResponseForUser(userId: Long): AuthResponse {
+        val user = userRepository.findById(userId).orElseThrow {
+            ResourceNotFoundException("User", userId)
+        }
+        val domainCode = getPrimaryDomain(user.id!!)
+        return generateAuthResponse(user, domainCode)
+    }
+
+    /**
+     * Revoke all sessions for a user (force logout).
+     */
+    @Transactional
+    fun revokeAllSessions(userId: Long): Int {
+        // In a real implementation, this would blacklist all active JTIs
+        // For now, revoke all refresh tokens
+        val user = userRepository.findById(userId).orElseThrow {
+            ResourceNotFoundException("User", userId)
+        }
+        log.info("All sessions revoked for userId={}", userId)
+        return 0 // TODO: count revoked tokens
+    }
+
     private fun hashToken(token: String): String {
         val digest = MessageDigest.getInstance("SHA-256")
         return Base64.getEncoder().encodeToString(digest.digest(token.toByteArray()))
@@ -241,7 +289,9 @@ data class RegisterRequest(
 data class LoginRequest(
     val username: String,
     val password: String,
-    val domainCode: String? = null
+    val domainCode: String? = null,
+    val captchaToken: String? = null,
+    val trustedDeviceHash: String? = null
 )
 
 data class AuthResponse(

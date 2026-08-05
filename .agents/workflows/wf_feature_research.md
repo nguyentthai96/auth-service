@@ -238,7 +238,7 @@ Review:
 
 ═══════════════════════════════════════
 Optional next steps:
-  → /wf_pre_openspec <feature> `business_analysis`
+  → /wf_pre_openspec <feature>
     (Uses business analysis as URD source)
   → /wf_brainstorm_openspec <feature>
     (Deep thinking with research context)

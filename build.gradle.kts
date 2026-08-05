@@ -27,6 +27,12 @@ dependencies {
     implementation(libs.jjwt.api)
     implementation(libs.jjwt.impl)
     implementation(libs.jjwt.jackson)
+    // - AUTH CORE FEATURES (MFA, SSO, RS256, Password Policy)
+    implementation("org.springframework.boot:spring-boot-starter-data-redis")
+    implementation("org.springframework.boot:spring-boot-starter-oauth2-client")
+    implementation("org.springframework.boot:spring-boot-starter-oauth2-resource-server")
+    implementation("dev.samstevens.totp:totp:1.7.1")
+    implementation("org.passay:passay:1.6.4")
 //  - DEVELOPMENT
     developmentOnly("org.springframework.boot:spring-boot-devtools")
     developmentOnly("org.springframework.boot:spring-boot-docker-compose")

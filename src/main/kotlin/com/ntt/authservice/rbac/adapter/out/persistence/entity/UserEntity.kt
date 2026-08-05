@@ -38,6 +38,22 @@ class UserEntity : SnowflakePersistentAuditableEntity() {
     @Column(name = "locked_until_at")
     var lockedUntilAt: java.time.Instant? = null
 
+    // MFA fields (V2 migration)
+    @Column(name = "mfa_enabled", nullable = false)
+    var mfaEnabled: Boolean = false
+
+    @Column(name = "mfa_method", length = 20)
+    var mfaMethod: String = "NONE"
+
+    @Column(name = "totp_secret_encrypted", length = 500)
+    var totpSecretEncrypted: String? = null
+
+    @Column(name = "trusted_device_hash", length = 255)
+    var trustedDeviceHash: String? = null
+
+    @Column(name = "password_changed_at")
+    var passwordChangedAt: java.time.Instant? = null
+
     @Version
     var version: Int = 0
 }

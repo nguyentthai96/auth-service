@@ -43,6 +43,15 @@ class GlobalExceptionHandler {
         return problem
     }
 
+    @ExceptionHandler(AccountLockedException::class)
+    fun handleAccountLocked(ex: AccountLockedException): ProblemDetail {
+        val problem = ProblemDetail.forStatusAndDetail(HttpStatus.FORBIDDEN, ex.message ?: "Account locked")
+        problem.title = "ACCOUNT_LOCKED"
+        problem.setProperty("errorCode", ex.errorCode)
+        problem.setProperty("lockedUntilAt", ex.lockedUntilAt.toString())
+        return problem
+    }
+
     @ExceptionHandler(MethodArgumentNotValidException::class)
     fun handleMethodArgumentNotValid(ex: MethodArgumentNotValidException): ProblemDetail {
         val problem = ProblemDetail.forStatusAndDetail(

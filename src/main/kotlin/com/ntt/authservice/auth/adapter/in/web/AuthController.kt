@@ -12,7 +12,8 @@ import org.springframework.web.bind.annotation.*
 @RestController
 @RequestMapping("/api/auth")
 class AuthController(
-    private val authService: AuthService
+    private val authService: AuthService,
+    private val passwordPolicyService: PasswordPolicyService
 ) {
 
     @PostMapping("/register")
@@ -31,15 +32,45 @@ class AuthController(
     }
 
     @PostMapping("/login")
-    fun login(@Valid @RequestBody request: LoginRequestDto): ResponseEntity<AuthResponse> {
+    fun login(@Valid @RequestBody request: LoginRequestDto): ResponseEntity<Any> {
         val result = authService.login(
             LoginRequest(
                 username = request.username,
                 password = request.password,
-                domainCode = request.domainCode
+                domainCode = request.domainCode,
+                captchaToken = request.captchaToken,
+                trustedDeviceHash = request.trustedDeviceHash
             )
         )
-        return ResponseEntity.ok(result)
+        return when (result) {
+            is LoginResult.Success -> ResponseEntity.ok(result.response)
+            is LoginResult.MfaRequired -> ResponseEntity.ok(
+                mapOf(
+                    "mfaRequired" to true,
+                    "mfaToken" to result.mfaToken,
+                    "method" to result.method,
+                    "expiresIn" to result.expiresIn
+                )
+            )
+        }
+    }
+
+    @PostMapping("/change-password")
+    fun changePassword(
+        @Valid @RequestBody request: ChangePasswordRequestDto,
+        @RequestHeader("Authorization") authHeader: String
+    ): ResponseEntity<Map<String, String>> {
+        val userId = getCurrentUserId()
+        // TODO: resolve domainId from user's active domain
+        passwordPolicyService.changePassword(userId, request.oldPassword, request.newPassword, 0L)
+        return ResponseEntity.ok(mapOf("message" to "Password changed successfully"))
+    }
+
+    @PostMapping("/forgot-password")
+    fun forgotPassword(@Valid @RequestBody request: ForgotPasswordRequestDto): ResponseEntity<Map<String, String>> {
+        // Always return 200 to prevent email enumeration
+        // TODO: trigger password reset email
+        return ResponseEntity.ok(mapOf("message" to "If the email exists, a reset link has been sent"))
     }
 
     @PostMapping("/refresh")
@@ -53,11 +84,15 @@ class AuthController(
         @RequestBody request: SwitchDomainRequestDto,
         @RequestHeader("Authorization") authHeader: String
     ): ResponseEntity<AuthResponse> {
-        val userId = (org.springframework.security.core.context.SecurityContextHolder
-            .getContext().authentication?.principal as? String)?.toLong()
-            ?: throw com.ntt.authservice.shared.exception.InvalidCredentialsException()
+        val userId = getCurrentUserId()
         val result = authService.switchDomain(userId, request.domainCode)
         return ResponseEntity.ok(result)
+    }
+
+    private fun getCurrentUserId(): Long {
+        return (org.springframework.security.core.context.SecurityContextHolder
+            .getContext().authentication?.principal as? String)?.toLong()
+            ?: throw com.ntt.authservice.shared.exception.InvalidCredentialsException()
     }
 }
 
@@ -91,7 +126,24 @@ data class LoginRequestDto(
     @field:NotBlank(message = "Password is required")
     val password: String,
 
-    val domainCode: String? = null
+    val domainCode: String? = null,
+    val captchaToken: String? = null,
+    val trustedDeviceHash: String? = null
+)
+
+data class ChangePasswordRequestDto(
+    @field:NotBlank(message = "Old password is required")
+    val oldPassword: String,
+
+    @field:NotBlank(message = "New password is required")
+    @field:Size(min = 8, message = "New password must be at least 8 characters")
+    val newPassword: String
+)
+
+data class ForgotPasswordRequestDto(
+    @field:NotBlank(message = "Email is required")
+    @field:Email(message = "Email must be valid")
+    val email: String
 )
 
 data class RefreshTokenRequestDto(

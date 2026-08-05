@@ -76,3 +76,24 @@ interface RefreshTokenRepository : JpaRepository<RefreshTokenEntity, Long> {
 interface TokenBlacklistRepository : JpaRepository<TokenBlacklistEntity, Long> {
     fun existsByTokenJti(tokenJti: String): Boolean
 }
+
+// Auth Core Features repositories (V2)
+
+@Repository
+interface UserIdentityRepository : JpaRepository<UserIdentityEntity, Long> {
+    fun findByProviderAndProviderSub(provider: String, providerSub: String): UserIdentityEntity?
+    fun findAllByUserIdAndActiveTrue(userId: Long): List<UserIdentityEntity>
+    fun findByUserIdAndProviderAndActiveTrue(userId: Long, provider: String): UserIdentityEntity?
+    fun countByUserIdAndActiveTrue(userId: Long): Long
+}
+
+@Repository
+interface PasswordPolicyRepository : JpaRepository<PasswordPolicyEntity, Long> {
+    fun findByDomainId(domainId: Long): PasswordPolicyEntity?
+}
+
+@Repository
+interface PasswordHistoryRepository : JpaRepository<PasswordHistoryEntity, Long> {
+    fun findByUserIdOrderByCreatedAtDesc(userId: Long): List<PasswordHistoryEntity>
+    fun deleteByUserIdAndIdNotIn(userId: Long, keepIds: List<Long>)
+}

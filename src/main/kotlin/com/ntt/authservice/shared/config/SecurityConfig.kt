@@ -30,8 +30,15 @@ class SecurityConfig(
                 auth
                     // Public endpoints
                     .requestMatchers("/api/auth/login", "/api/auth/register", "/api/auth/refresh").permitAll()
+                    // Auth Core Features — public endpoints
+                    .requestMatchers("/api/auth/mfa/verify", "/api/auth/mfa/resend").permitAll()
+                    .requestMatchers("/api/auth/sso/callback", "/api/auth/sso/providers").permitAll()
+                    .requestMatchers("/api/auth/forgot-password").permitAll()
+                    .requestMatchers("/.well-known/jwks.json").permitAll()
                     .requestMatchers("/actuator/**").permitAll()
                     .requestMatchers(HttpMethod.OPTIONS, "/**").permitAll()
+                    // Admin-only endpoints
+                    .requestMatchers("/api/auth/sessions/*/revoke-all").hasRole("ADMIN")
                     // All other endpoints require authentication
                     .anyRequest().authenticated()
             }
