@@ -14,6 +14,10 @@ dependencies {
     implementation("com.ntt:base-web-starter")
     implementation("com.ntt:base-data-starter")
     implementation("com.ntt:common-log")
+//  - CQRS / Event Sourcing (Phase 2)
+    implementation(project(":eventsourcing-utils"))
+//  - CACHE (Phase 4 — Caffeine L1)
+    implementation("com.github.ben-manes.caffeine:caffeine")
 //  - MAIN
     implementation("org.springframework.boot:spring-boot-starter-data-jdbc")
     implementation("org.springframework.boot:spring-boot-starter-data-jpa")
@@ -42,6 +46,8 @@ dependencies {
     testImplementation("org.springframework.boot:spring-boot-starter-webmvc-test")
     testImplementation("org.springframework.security:spring-security-test")
     testImplementation("com.ntt:base-testing-starter")
+    testImplementation(libs.archunit.junit5)
+    testImplementation("org.mockito.kotlin:mockito-kotlin:5.4.0")
     // BouncyCastle — required by Spring Security's Argon2PasswordEncoder
     testImplementation("org.bouncycastle:bcprov-jdk18on:1.80")
     // H2 — in-memory database for unit/integration tests without external PostgreSQL

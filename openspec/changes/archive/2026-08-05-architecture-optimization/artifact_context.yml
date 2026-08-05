@@ -1,0 +1,25 @@
+primary: architecture-optimization
+environment: java/kotlin
+rules:
+  - base-core-plugin-architecture
+  - security-first
+  - clean-architecture
+skills:
+  - wf_openspec
+  - spring-boot
+artifacts:
+  - id: impact_analysis
+    type: markdown
+    status: done
+  - id: proposal
+    type: markdown
+    status: done
+  - id: srs
+    type: markdown
+    status: done
+  - id: design
+    type: markdown
+    status: done
+  - id: tasks
+    type: markdown
+    status: done

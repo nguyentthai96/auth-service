@@ -26,7 +26,7 @@ class PolicyEvaluator(
 ) {
 
     private val log = LoggerFactory.getLogger(PolicyEvaluator::class.java)
-    private val executor = Executors.newCachedThreadPool()
+    private val executor = Executors.newVirtualThreadPerTaskExecutor()
 
     companion object {
         const val EVALUATION_TIMEOUT_MS = 500L

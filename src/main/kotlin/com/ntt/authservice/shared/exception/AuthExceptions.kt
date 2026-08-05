@@ -1,22 +1,24 @@
 package com.ntt.authservice.shared.exception
 
+import com.ntt.basecore.exception.BusinessException
 import org.springframework.http.HttpStatus
 
 /**
  * Base exception for all auth service errors.
- * Maps to RFC 7807 ProblemDetail via GlobalExceptionHandler.
+ * Bridge pattern: extends BusinessException (base-core) while preserving
+ * ProblemDetail response and per-exception HTTP status.
  */
 open class AuthException(
-    val errorCode: String,
-    override val message: String,
-    val httpStatus: HttpStatus = HttpStatus.BAD_REQUEST
-) : RuntimeException(message)
+    val authError: AuthErrorCode,
+    override val message: String = authError.toErrorCodeBase().getDesc() ?: "",
+    val httpStatus: HttpStatus = authError.httpStatus
+) : BusinessException(authError.toErrorCodeBase())
 
 class ResourceNotFoundException(
     resource: String,
     identifier: Any
 ) : AuthException(
-    errorCode = "${resource.uppercase()}_NOT_FOUND",
+    authError = AuthErrorCode.RESOURCE_NOT_FOUND,
     message = "$resource not found with identifier: $identifier",
     httpStatus = HttpStatus.NOT_FOUND
 )
@@ -26,7 +28,7 @@ class DuplicateResourceException(
     field: String,
     value: Any
 ) : AuthException(
-    errorCode = "${resource.uppercase()}_DUPLICATE",
+    authError = AuthErrorCode.DUPLICATE_RESOURCE,
     message = "$resource with $field '$value' already exists",
     httpStatus = HttpStatus.CONFLICT
 )
@@ -34,7 +36,7 @@ class DuplicateResourceException(
 class PermissionDeniedException(
     message: String = "You do not have permission to perform this action"
 ) : AuthException(
-    errorCode = "PERMISSION_DENIED",
+    authError = AuthErrorCode.PERMISSION_DENIED,
     message = message,
     httpStatus = HttpStatus.FORBIDDEN
 )
@@ -42,7 +44,7 @@ class PermissionDeniedException(
 class WriteNotAllowedException(
     resource: String
 ) : AuthException(
-    errorCode = "WRITE_NOT_ALLOWED",
+    authError = AuthErrorCode.WRITE_NOT_ALLOWED,
     message = "Read-only access — write operations on '$resource' are not permitted",
     httpStatus = HttpStatus.FORBIDDEN
 )
@@ -51,19 +53,19 @@ class AccountLockedException(
     val lockedUntilAt: java.time.Instant,
     val reason: String = "Too many failed login attempts"
 ) : AuthException(
-    errorCode = "ACCOUNT_LOCKED",
-    message = "Account is locked until ${lockedUntilAt}. Reason: $reason",
+    authError = AuthErrorCode.ACCOUNT_LOCKED,
+    message = "Account is locked until $lockedUntilAt. Reason: $reason",
     httpStatus = HttpStatus.FORBIDDEN
 )
 
 class InvalidCredentialsException : AuthException(
-    errorCode = "INVALID_CREDENTIALS",
+    authError = AuthErrorCode.INVALID_CREDENTIALS,
     message = "Invalid username or password",
     httpStatus = HttpStatus.UNAUTHORIZED
 )
 
 class TokenExpiredException : AuthException(
-    errorCode = "TOKEN_EXPIRED",
+    authError = AuthErrorCode.TOKEN_EXPIRED,
     message = "JWT token has expired",
     httpStatus = HttpStatus.UNAUTHORIZED
 )
@@ -71,7 +73,7 @@ class TokenExpiredException : AuthException(
 class PolicyEvaluationException(
     message: String = "Policy evaluation failed or timed out"
 ) : AuthException(
-    errorCode = "POLICY_EVALUATION_FAILED",
+    authError = AuthErrorCode.POLICY_EVALUATION_FAILED,
     message = message,
     httpStatus = HttpStatus.FORBIDDEN
 )

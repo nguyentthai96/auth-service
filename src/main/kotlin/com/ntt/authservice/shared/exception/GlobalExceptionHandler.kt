@@ -1,92 +1,50 @@
 package com.ntt.authservice.shared.exception
 
+import com.ntt.basecore.domain.web.BaseControllerAdvice
+import com.ntt.basecore.domain.web.payload.ApiResponse
 import org.springframework.http.HttpStatus
 import org.springframework.http.ProblemDetail
-import org.springframework.web.bind.MethodArgumentNotValidException
+import org.springframework.http.ResponseEntity
+import org.springframework.validation.beanvalidation.LocalValidatorFactoryBean
 import org.springframework.web.bind.annotation.ExceptionHandler
 import org.springframework.web.bind.annotation.RestControllerAdvice
 import java.net.URI
 
 /**
- * Global exception handler returning RFC 7807 ProblemDetail.
+ * Auth-service controller advice — extends BaseControllerAdvice (base-core)
+ * and adds AuthException handling with RFC 7807 ProblemDetail + proper HTTP status.
+ *
+ * Bridge pattern: AuthException → BusinessException (base-core) for cross-service consistency,
+ * but auth-specific errors get ProblemDetail with AuthErrorCode and correct HTTP status
+ * instead of base-core's default 422 UNPROCESSABLE_ENTITY.
+ *
+ * Priority: Spring resolves handlers from most specific to least specific:
+ * 1. AuthException → handleAuthException() (this class — returns ProblemDetail with correct status)
+ * 2. BusinessException → handleBusinessException() (BaseControllerAdvice — returns ApiResponse with 422)
+ * 3. Throwable → handleException() (BaseControllerAdvice — fallback)
  */
 @RestControllerAdvice
-class GlobalExceptionHandler {
+class AuthControllerAdvice(
+    validator: LocalValidatorFactoryBean
+) : BaseControllerAdvice(validator) {
 
+    /**
+     * Handle AuthException hierarchy with RFC 7807 ProblemDetail.
+     * Overrides base-core's BusinessException handler for auth-specific exceptions
+     * to return the correct HTTP status per exception type instead of 422.
+     */
     @ExceptionHandler(AuthException::class)
-    fun handleAuthException(ex: AuthException): ProblemDetail {
+    fun handleAuthException(ex: AuthException): ResponseEntity<ProblemDetail> {
         val problem = ProblemDetail.forStatusAndDetail(ex.httpStatus, ex.message)
-        problem.title = ex.errorCode
-        problem.type = URI.create("https://auth-service/errors/${ex.errorCode.lowercase()}")
-        problem.setProperty("errorCode", ex.errorCode)
-        return problem
-    }
+        problem.title = ex.authError.getErrorCode()
+        problem.type = URI.create("https://auth-service/errors/${ex.authError.name.lowercase()}")
+        problem.setProperty("errorCode", ex.authError.getErrorCode())
 
-    @ExceptionHandler(ResourceNotFoundException::class)
-    fun handleResourceNotFound(ex: ResourceNotFoundException): ProblemDetail {
-        val problem = ProblemDetail.forStatusAndDetail(HttpStatus.NOT_FOUND, ex.message ?: "Resource not found")
-        problem.title = "RESOURCE_NOT_FOUND"
-        return problem
-    }
+        // Extra properties for specific exception types
+        if (ex is AccountLockedException) {
+            problem.setProperty("lockedUntilAt", ex.lockedUntilAt.toString())
+        }
 
-    @ExceptionHandler(DuplicateResourceException::class)
-    fun handleDuplicateResource(ex: DuplicateResourceException): ProblemDetail {
-        val problem = ProblemDetail.forStatusAndDetail(HttpStatus.CONFLICT, ex.message ?: "Duplicate resource")
-        problem.title = "DUPLICATE_RESOURCE"
-        return problem
-    }
-
-    @ExceptionHandler(PolicyEvaluationException::class)
-    fun handlePolicyEvaluation(ex: PolicyEvaluationException): ProblemDetail {
-        val problem = ProblemDetail.forStatusAndDetail(HttpStatus.FORBIDDEN, ex.message ?: "Policy evaluation failed")
-        problem.title = "POLICY_EVALUATION_ERROR"
-        return problem
-    }
-
-    @ExceptionHandler(AccountLockedException::class)
-    fun handleAccountLocked(ex: AccountLockedException): ProblemDetail {
-        val problem = ProblemDetail.forStatusAndDetail(HttpStatus.FORBIDDEN, ex.message ?: "Account locked")
-        problem.title = "ACCOUNT_LOCKED"
-        problem.setProperty("errorCode", ex.errorCode)
-        problem.setProperty("lockedUntilAt", ex.lockedUntilAt.toString())
-        return problem
-    }
-
-    @ExceptionHandler(MethodArgumentNotValidException::class)
-    fun handleMethodArgumentNotValid(ex: MethodArgumentNotValidException): ProblemDetail {
-        val problem = ProblemDetail.forStatusAndDetail(
-            HttpStatus.BAD_REQUEST,
-            "Validation failed"
-        )
-        problem.title = "VALIDATION_ERROR"
-        problem.setProperty("violations", ex.bindingResult.fieldErrors.map {
-            mapOf("field" to it.field, "message" to (it.defaultMessage ?: "Invalid value"))
-        })
-        return problem
-    }
-
-    @ExceptionHandler(jakarta.validation.ConstraintViolationException::class)
-    fun handleValidation(ex: jakarta.validation.ConstraintViolationException): ProblemDetail {
-        val problem = ProblemDetail.forStatusAndDetail(
-            HttpStatus.BAD_REQUEST,
-            "Validation failed"
-        )
-        problem.title = "VALIDATION_ERROR"
-        problem.setProperty("violations", ex.constraintViolations.map {
-            mapOf("field" to it.propertyPath.toString(), "message" to it.message)
-        })
-        return problem
-    }
-
-    @ExceptionHandler(Exception::class)
-    fun handleGeneral(ex: Exception): ProblemDetail {
-        val problem = ProblemDetail.forStatusAndDetail(
-            HttpStatus.INTERNAL_SERVER_ERROR,
-            "An unexpected error occurred"
-        )
-        problem.title = "INTERNAL_ERROR"
-        // Never leak stack traces to API consumers
-        return problem
+        return ResponseEntity.status(ex.httpStatus).body(problem)
     }
 }
-

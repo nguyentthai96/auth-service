@@ -4,7 +4,7 @@ import org.springframework.http.HttpStatus
 
 /**
  * Auth Core Features exceptions — MFA, SSO, CAPTCHA, Password Policy.
- * All extend AuthException for unified RFC 7807 handling.
+ * All extend AuthException (→ BusinessException) for unified handling.
  */
 
 // --- MFA Exceptions ---
@@ -12,7 +12,7 @@ import org.springframework.http.HttpStatus
 class MfaCodeInvalidException(
     message: String = "Invalid MFA verification code"
 ) : AuthException(
-    errorCode = "MFA_CODE_INVALID",
+    authError = AuthErrorCode.MFA_CODE_INVALID,
     message = message,
     httpStatus = HttpStatus.UNAUTHORIZED
 )
@@ -20,7 +20,7 @@ class MfaCodeInvalidException(
 class MfaTokenExpiredException(
     message: String = "MFA session token has expired"
 ) : AuthException(
-    errorCode = "MFA_TOKEN_EXPIRED",
+    authError = AuthErrorCode.MFA_TOKEN_EXPIRED,
     message = message,
     httpStatus = HttpStatus.UNAUTHORIZED
 )
@@ -28,7 +28,7 @@ class MfaTokenExpiredException(
 class MfaMaxAttemptsException(
     message: String = "Maximum MFA verification attempts exceeded"
 ) : AuthException(
-    errorCode = "MFA_MAX_ATTEMPTS",
+    authError = AuthErrorCode.MFA_MAX_ATTEMPTS,
     message = message,
     httpStatus = HttpStatus.FORBIDDEN
 )
@@ -36,7 +36,7 @@ class MfaMaxAttemptsException(
 class TotpNotSetupException(
     message: String = "TOTP authenticator is not configured for this account"
 ) : AuthException(
-    errorCode = "TOTP_NOT_SETUP",
+    authError = AuthErrorCode.MFA_CODE_INVALID,
     message = message,
     httpStatus = HttpStatus.BAD_REQUEST
 )
@@ -46,17 +46,17 @@ class TotpNotSetupException(
 class CaptchaRequiredException(
     message: String = "CAPTCHA verification required due to multiple failed login attempts"
 ) : AuthException(
-    errorCode = "CAPTCHA_REQUIRED",
+    authError = AuthErrorCode.CAPTCHA_REQUIRED,
     message = message,
-    httpStatus = HttpStatus.FORBIDDEN
+    httpStatus = HttpStatus.PRECONDITION_REQUIRED
 )
 
 class CaptchaFailedException(
     message: String = "CAPTCHA verification failed"
 ) : AuthException(
-    errorCode = "CAPTCHA_FAILED",
+    authError = AuthErrorCode.CAPTCHA_FAILED,
     message = message,
-    httpStatus = HttpStatus.FORBIDDEN
+    httpStatus = HttpStatus.BAD_REQUEST
 )
 
 // --- SSO Exceptions ---
@@ -64,7 +64,7 @@ class CaptchaFailedException(
 class SsoTokenInvalidException(
     message: String = "SSO token exchange failed — invalid or expired authorization code"
 ) : AuthException(
-    errorCode = "SSO_TOKEN_INVALID",
+    authError = AuthErrorCode.SSO_TOKEN_INVALID,
     message = message,
     httpStatus = HttpStatus.UNAUTHORIZED
 )
@@ -72,7 +72,7 @@ class SsoTokenInvalidException(
 class SsoUserNotProvisionedException(
     message: String = "SSO user not provisioned — auto-provisioning is disabled for this domain"
 ) : AuthException(
-    errorCode = "SSO_USER_NOT_PROVISIONED",
+    authError = AuthErrorCode.SSO_USER_NOT_PROVISIONED,
     message = message,
     httpStatus = HttpStatus.FORBIDDEN
 )
@@ -80,7 +80,7 @@ class SsoUserNotProvisionedException(
 class SsoIdentityConflictException(
     message: String = "SSO identity is already linked to another user account"
 ) : AuthException(
-    errorCode = "SSO_IDENTITY_CONFLICT",
+    authError = AuthErrorCode.SSO_IDENTITY_CONFLICT,
     message = message,
     httpStatus = HttpStatus.CONFLICT
 )
@@ -88,7 +88,7 @@ class SsoIdentityConflictException(
 class CannotUnlinkLastIdentityException(
     message: String = "Cannot unlink the last SSO identity — set a password first"
 ) : AuthException(
-    errorCode = "CANNOT_UNLINK_LAST_IDENTITY",
+    authError = AuthErrorCode.SSO_TOKEN_INVALID,
     message = message,
     httpStatus = HttpStatus.BAD_REQUEST
 )
@@ -96,7 +96,7 @@ class CannotUnlinkLastIdentityException(
 class SsoProviderTimeoutException(
     message: String = "SSO identity provider did not respond within timeout"
 ) : AuthException(
-    errorCode = "SSO_PROVIDER_TIMEOUT",
+    authError = AuthErrorCode.SSO_TOKEN_INVALID,
     message = message,
     httpStatus = HttpStatus.GATEWAY_TIMEOUT
 )
@@ -106,7 +106,7 @@ class SsoProviderTimeoutException(
 class PasswordRecentlyUsedException(
     message: String = "This password has been used recently — choose a different password"
 ) : AuthException(
-    errorCode = "PASSWORD_RECENTLY_USED",
+    authError = AuthErrorCode.PASSWORD_POLICY_VIOLATION,
     message = message,
     httpStatus = HttpStatus.BAD_REQUEST
 )
@@ -114,7 +114,7 @@ class PasswordRecentlyUsedException(
 class PasswordExpiredException(
     message: String = "Your password has expired — please change it"
 ) : AuthException(
-    errorCode = "PASSWORD_EXPIRED",
+    authError = AuthErrorCode.PASSWORD_EXPIRED,
     message = message,
     httpStatus = HttpStatus.FORBIDDEN
 )
@@ -122,7 +122,7 @@ class PasswordExpiredException(
 class PasswordPolicyViolationException(
     message: String = "Password does not meet complexity requirements"
 ) : AuthException(
-    errorCode = "PASSWORD_POLICY_VIOLATION",
+    authError = AuthErrorCode.PASSWORD_POLICY_VIOLATION,
     message = message,
     httpStatus = HttpStatus.BAD_REQUEST
 )

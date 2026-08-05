@@ -101,6 +101,16 @@ app:
       auto-provision-enabled: ${SSO_AUTO_PROVISION:false}
       default-domain-code: ${SSO_DEFAULT_DOMAIN:default}
       timeout-ms: 10000
+    # CQRS Feature Flag — when enabled, handlers replace AuthService/RbacEngine
+    cqrs:
+      enabled: ${CQRS_ENABLED:true}
+    # Cache Configuration (Phase 4)
+    cache:
+      permission:
+        l1-ttl-seconds: 30       # Caffeine local cache
+        l1-max-size: 10000
+        l2-ttl-seconds: 1800     # Redis distributed cache (30 min)
+        l2-key-prefix: "auth:perm:"
 
 # Actuator
 management:

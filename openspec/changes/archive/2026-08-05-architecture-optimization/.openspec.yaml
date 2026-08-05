@@ -1,0 +1,37 @@
+name: architecture-optimization
+type: EXTEND
+flow: Command
+status: complete
+created: 2026-08-05
+artifacts:
+  - id: impact_analysis
+    type: markdown
+    status: done
+    dependencies: []
+  - id: proposal
+    type: markdown
+    status: done
+    dependencies: []
+  - id: srs
+    type: markdown
+    status: done
+    dependencies: [proposal]
+  - id: design
+    type: markdown
+    status: done
+    dependencies: [srs]
+  - id: tasks
+    type: markdown
+    status: done
+    dependencies: [design, srs, impact_analysis]
+applyRequires:
+  - tasks
+context:
+  dynamic: 5
+  static: 0
+  rules: 5
+  skills: 2
+frs:
+  total: 25
+  urd: 20
+  enriched: 5
