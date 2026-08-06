@@ -1,15 +1,16 @@
 package com.ntt.authservice.auth.application
 
 import com.ntt.authservice.auth.adapter.`in`.web.dto.AuthResponse
+import com.ntt.authservice.auth.adapter.out.sso.OAuth2TokenExchanger
 import com.ntt.authservice.rbac.adapter.out.persistence.entity.UserEntity
 import com.ntt.authservice.rbac.adapter.out.persistence.entity.UserIdentityEntity
 import com.ntt.authservice.rbac.adapter.out.persistence.repository.*
+import com.ntt.authservice.shared.audit.AuditAction
+import com.ntt.authservice.shared.audit.AuditLogService
 import com.ntt.authservice.shared.config.SecurityProperties
 import com.ntt.authservice.shared.exception.*
 import org.slf4j.LoggerFactory
-import org.springframework.kafka.core.KafkaTemplate
 import org.springframework.stereotype.Service
-import org.springframework.web.client.RestTemplate
 import java.time.Instant
 
 /**
@@ -17,16 +18,16 @@ import java.time.Instant
  */
 @Service
 class SsoAdapter(
-    private val kafkaTemplate: KafkaTemplate<String, String>,
     private val userRepository: UserRepository,
     private val userIdentityRepository: UserIdentityRepository,
     private val domainRepository: DomainRepository,
     private val jwtService: JwtService,
-    private val securityProperties: SecurityProperties
+    private val securityProperties: SecurityProperties,
+    private val oauth2TokenExchanger: OAuth2TokenExchanger,
+    private val auditLogService: AuditLogService
 ) {
 
     private val log = LoggerFactory.getLogger(SsoAdapter::class.java)
-    private val restTemplate = RestTemplate()
 
     companion object {
         private const val SSO_ONLY_MARKER = "!SSO_ONLY!"
@@ -49,6 +50,7 @@ class SsoAdapter(
 
         if (existingIdentity != null) {
             log.info("SSO login: existing identity found for provider={}, sub={}", provider, idpUser.sub)
+            auditLogService.logEvent(existingIdentity.userId, AuditAction.SSO_LOGIN, "User", existingIdentity.userId.toString(), "provider=$provider, existingIdentity=true")
             return authResponseBuilder(existingIdentity.userId)
         }
 
@@ -59,11 +61,12 @@ class SsoAdapter(
 
         val user = provisionSsoUser(idpUser, provider)
         log.info("SSO JIT provisioned: userId={}, provider={}", user.id, provider)
+        auditLogService.logEvent(user.id, AuditAction.SSO_LOGIN, "User", user.id.toString(), "provider=$provider, jitProvisioned=true")
 
-        // Emit Kafka event
-        kafkaTemplate.send("iam.user.sso_provisioned", user.id.toString(), provider)
+        // TODO: Emit event via EventPublisher when Kafka is configured
+        // kafkaTemplate.send("iam.user.sso_provisioned", user.id.toString(), provider)
 
-        return authResponseBuilder(user.id)
+        return authResponseBuilder(user.id!!)
     }
 
     /**
@@ -102,6 +105,7 @@ class SsoAdapter(
         }
 
         log.info("SSO identity linked: userId={}, provider={}", userId, provider)
+        auditLogService.logEvent(userId, AuditAction.SSO_LINK, "User", userId.toString(), "provider=$provider")
         return userIdentityRepository.save(identity)
     }
 
@@ -124,6 +128,7 @@ class SsoAdapter(
         identity.active = false
         userIdentityRepository.save(identity)
         log.info("SSO identity unlinked: userId={}, provider={}", userId, provider)
+        auditLogService.logEvent(userId, AuditAction.SSO_UNLINK, "User", userId.toString(), "provider=$provider")
     }
 
     private fun provisionSsoUser(idpUser: IdpUserInfo, provider: String): UserEntity {
@@ -131,15 +136,16 @@ class SsoAdapter(
 
         val user = UserEntity().apply {
             this.username = idpUser.email ?: "${provider}_${idpUser.sub}"
-            this.email = idpUser.email ?: ""
+            this.email = idpUser.email ?: "${provider}_${idpUser.sub}@sso.local"
             this.passwordHash = SSO_ONLY_MARKER
-            this.active = true
+            this.fullName = idpUser.name ?: idpUser.email ?: "${provider} User"
+            this.status = "ACTIVE"
         }
         val savedUser = userRepository.save(user)
 
         // Create identity link
         val identity = UserIdentityEntity().apply {
-            this.userId = savedUser.id
+            this.userId = savedUser.id!!
             this.provider = provider
             this.providerSub = idpUser.sub
             this.providerEmail = idpUser.email
@@ -156,24 +162,16 @@ class SsoAdapter(
      * TODO: Implement per-provider token exchange (Google, Microsoft, Keycloak)
      */
     private fun exchangeCodeForUser(code: String, provider: String, redirectUri: String): IdpUserInfo {
-        // TODO: Call provider-specific token endpoint, parse id_token
-        // This is a placeholder that should be replaced with actual OAuth2 token exchange
-        try {
-            log.info("Exchanging code with provider={}, redirectUri={}", provider, redirectUri)
-            // Real implementation would:
-            // 1. POST to provider's /token endpoint with code + client_secret
-            // 2. Parse id_token JWT
-            // 3. Extract sub, email, name from claims
-            throw UnsupportedOperationException("OAuth2 token exchange not yet implemented for provider: $provider")
-        } catch (e: Exception) {
-            when (e) {
-                is UnsupportedOperationException -> throw e
-                else -> {
-                    log.error("SSO token exchange failed for provider={}: {}", provider, e.message)
-                    throw SsoTokenInvalidException()
-                }
-            }
+        // Resolve client credentials from environment variables
+        val clientId = System.getenv("${provider.uppercase()}_CLIENT_ID") ?: ""
+        val clientSecret = System.getenv("${provider.uppercase()}_CLIENT_SECRET") ?: ""
+
+        if (clientId.isBlank() || clientSecret.isBlank()) {
+            throw SsoTokenInvalidException("OAuth2 client credentials not configured for provider: $provider")
         }
+
+        val result = oauth2TokenExchanger.exchange(provider, code, redirectUri, clientId, clientSecret)
+        return IdpUserInfo(sub = result.sub, email = result.email, name = result.name)
     }
 
     data class IdpUserInfo(val sub: String, val email: String?, val name: String?)

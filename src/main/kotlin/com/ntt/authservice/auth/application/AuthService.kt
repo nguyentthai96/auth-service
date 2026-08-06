@@ -1,5 +1,6 @@
 package com.ntt.authservice.auth.application
 
+import com.ntt.authservice.auth.adapter.`in`.web.dto.AuthResponse
 import com.ntt.authservice.rbac.adapter.out.persistence.entity.RefreshTokenEntity
 import com.ntt.authservice.rbac.adapter.out.persistence.entity.UserEntity
 import com.ntt.authservice.rbac.adapter.out.persistence.repository.*
@@ -29,7 +30,8 @@ class AuthService(
     private val passwordEncoder: PasswordEncoder,
     private val securityProperties: SecurityProperties,
     private val captchaVerifier: CaptchaVerifier,
-    private val mfaService: MfaService
+    private val mfaService: MfaService,
+    private val passwordPolicyService: PasswordPolicyService
 ) {
 
     private val log = LoggerFactory.getLogger(AuthService::class.java)
@@ -109,6 +111,15 @@ class AuthService(
         // Reset failed login count on success
         user.failedLoginCount = 0
         userRepository.save(user)
+
+        // Password expiry check — force change before issuing tokens
+        val userDomains = userDomainRepository.findAllByUserIdAndActiveTrue(user.id!!)
+        val primaryDomainMembership = userDomains.firstOrNull { it.isPrimary } ?: userDomains.firstOrNull()
+        if (primaryDomainMembership != null) {
+            if (passwordPolicyService.isPasswordExpired(user.id!!, primaryDomainMembership.domainId)) {
+                throw PasswordExpiredException()
+            }
+        }
 
         // MFA checkpoint
         if (user.mfaEnabled && user.mfaMethod != "NONE") {
@@ -294,14 +305,3 @@ data class LoginRequest(
     val trustedDeviceHash: String? = null
 )
 
-data class AuthResponse(
-    val accessToken: String,
-    val refreshToken: String,
-    val tokenType: String = "Bearer",
-    val expiresIn: Long,
-    val userId: Long,
-    val username: String,
-    val activeDomain: String,
-    val roles: List<String>,
-    val permissions: List<String>
-)

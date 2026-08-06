@@ -1,4 +1,4 @@
-package com.ntt.authservice.rbac.domain.service
+package com.ntt.authservice.rbac.application.query
 
 import com.ntt.authservice.rbac.adapter.out.persistence.repository.GroupRoleRepository
 import com.ntt.authservice.rbac.adapter.out.persistence.repository.RolePermissionRepository

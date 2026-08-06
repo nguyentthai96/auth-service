@@ -1,6 +1,7 @@
 package com.ntt.authservice.auth.application.command
 
 import com.ntt.authservice.auth.application.LoginResult
+import com.ntt.authservice.auth.application.PasswordPolicyService
 import com.ntt.authservice.auth.application.port.out.*
 import com.ntt.authservice.auth.domain.model.AuthToken
 import com.ntt.authservice.auth.domain.model.User
@@ -37,7 +38,8 @@ class LoginHandlerTest {
     @Mock private lateinit var permissionCache: PermissionCache
     @Mock private lateinit var securityProperties: SecurityProperties
     @Mock private lateinit var tokenGenerator: TokenGenerator
-    @Mock private lateinit var passwordConfig: SecurityProperties.PasswordConfig
+    @Mock private lateinit var passwordConfig: SecurityProperties.PasswordProperties
+    @Mock private lateinit var passwordPolicyService: PasswordPolicyService
     
     private lateinit var handler: LoginHandler
 
@@ -71,7 +73,8 @@ class LoginHandlerTest {
             captchaGateway = captchaGateway,
             permissionCache = permissionCache,
             securityProperties = securityProperties,
-            tokenGenerator = tokenGenerator
+            tokenGenerator = tokenGenerator,
+            passwordPolicyService = passwordPolicyService
         )
     }
 
@@ -82,7 +85,6 @@ class LoginHandlerTest {
         whenever(userPort.findByUsernameAndActive("testuser")).thenReturn(testUser)
         whenever(securityProperties.password).thenReturn(passwordConfig)
         whenever(passwordConfig.maxFailedAttempts).thenReturn(5)
-        whenever(passwordConfig.lockDurationMinutes).thenReturn(15)
         whenever(tokenGenerator.matchesPassword(any(), any())).thenReturn(true)
         whenever(tokenGenerator.getPrimaryDomain(any())).thenReturn("default")
         whenever(tokenGenerator.generateAuthResponse(any(), any())).thenReturn(testAuthToken)

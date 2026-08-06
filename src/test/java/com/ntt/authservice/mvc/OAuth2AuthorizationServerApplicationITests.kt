@@ -56,7 +56,7 @@ class AuthServiceIntegrationTests {
                 .content(requestJson)
         )
             .andExpect(status().isUnauthorized)
-            .andExpect(jsonPath("$.title").value("INVALID_CREDENTIALS"))
+            .andExpect(jsonPath("$.title").value("AUTH_001"))
     }
 
     /**

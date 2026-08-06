@@ -26,6 +26,21 @@ spring:
     virtual:
       enabled: true
 
+  security:
+    oauth2:
+      client:
+        registration:
+          google:
+            client-id: dummy-client-id
+            client-secret: dummy-client-secret
+            authorization-grant-type: authorization_code
+            redirect-uri: "{baseUrl}/login/oauth2/code/{registrationId}"
+          microsoft:
+            client-id: dummy-client-id
+            client-secret: dummy-client-secret
+            authorization-grant-type: authorization_code
+            redirect-uri: "{baseUrl}/login/oauth2/code/{registrationId}"
+
 server:
   port: 0  # Random port for tests
 
@@ -51,6 +66,6 @@ app:
 
 logging:
   level:
-    com.ntt.authservice: WARN
+    com.ntt.authservice: DEBUG
     org.springframework.security: WARN
     org.hibernate.SQL: WARN

@@ -15,7 +15,7 @@ dependencies {
     implementation("com.ntt:base-data-starter")
     implementation("com.ntt:common-log")
 //  - CQRS / Event Sourcing (Phase 2)
-    implementation(project(":eventsourcing-utils"))
+    implementation("com.ntt:eventsourcing-utils:0.0.1-SNAPSHOT")
 //  - CACHE (Phase 4 — Caffeine L1)
     implementation("com.github.ben-manes.caffeine:caffeine")
 //  - MAIN
@@ -33,6 +33,7 @@ dependencies {
     implementation(libs.jjwt.jackson)
     // - AUTH CORE FEATURES (MFA, SSO, RS256, Password Policy)
     implementation("org.springframework.boot:spring-boot-starter-data-redis")
+    compileOnly("org.springframework.kafka:spring-kafka")
     implementation("org.springframework.boot:spring-boot-starter-oauth2-client")
     implementation("org.springframework.boot:spring-boot-starter-oauth2-resource-server")
     implementation("dev.samstevens.totp:totp:1.7.1")

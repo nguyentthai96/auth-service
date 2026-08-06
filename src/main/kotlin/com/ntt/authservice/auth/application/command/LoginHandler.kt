@@ -24,7 +24,8 @@ class LoginHandler(
     private val captchaGateway: CaptchaGateway,
     private val permissionCache: PermissionCache,
     private val securityProperties: SecurityProperties,
-    private val tokenGenerator: TokenGenerator
+    private val tokenGenerator: TokenGenerator,
+    private val passwordPolicyService: com.ntt.authservice.auth.application.PasswordPolicyService
 ) : CommandHandler<LoginCommand, LoginResult> {
 
     private val log = LoggerFactory.getLogger(LoginHandler::class.java)
@@ -69,6 +70,13 @@ class LoginHandler(
         user.resetFailedLogins()
         userPort.save(user)
 
+        // Password expiry check
+        val activeDomainCode = command.domainCode ?: tokenGenerator.getPrimaryDomain(user.id.value)
+        val domainId = domainPort.findByCodeAndActive(activeDomainCode)?.id
+        if (domainId != null && passwordPolicyService.isPasswordExpired(user.id.value, domainId)) {
+            throw PasswordExpiredException()
+        }
+
         // MFA checkpoint
         if (user.requiresMfa(command.trustedDeviceHash)) {
             return tokenGenerator.generateMfaResult(user.id.value, user.mfaMethod)
@@ -79,7 +87,7 @@ class LoginHandler(
 
         log.info("User logged in: {} domain: {}", user.username, domainCode)
 
-        return LoginResult.Success(tokenGenerator.generateAuthResponse(user, domainCode))
+        return LoginResult.Success(com.ntt.authservice.auth.adapter.`in`.web.dto.AuthResponse.from(tokenGenerator.generateAuthResponse(user, domainCode)))
     }
 
     override fun commandType(): Class<LoginCommand> = LoginCommand::class.java

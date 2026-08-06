@@ -5,11 +5,14 @@ import org.slf4j.LoggerFactory
 import org.springframework.beans.factory.annotation.Value
 import org.springframework.stereotype.Component
 
+import org.springframework.context.annotation.Primary
+
 /**
  * CaptchaGateway implementation using @HttpExchange CaptchaClient.
  * Replaces CaptchaVerifier's manual RestTemplate calls.
  */
 @Component("httpCaptchaGateway")
+@Primary
 class HttpCaptchaGateway(
     private val captchaClient: CaptchaClient,
     @Value("\${app.security.captcha.secret-key:}") private val secretKey: String,

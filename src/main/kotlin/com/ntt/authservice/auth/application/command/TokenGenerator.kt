@@ -4,7 +4,7 @@ import com.ntt.authservice.auth.application.LoginResult
 import com.ntt.authservice.auth.application.port.out.*
 import com.ntt.authservice.auth.domain.model.AuthToken
 import com.ntt.authservice.auth.domain.model.User
-import com.ntt.authservice.auth.domain.service.DomainLookupService
+import com.ntt.authservice.auth.application.DomainLookupService
 import com.ntt.authservice.auth.domain.service.TokenHasher
 import com.ntt.authservice.auth.application.JwtService
 import com.ntt.authservice.auth.application.MfaService
@@ -88,6 +88,6 @@ class TokenGenerator(
     }
 
     fun encodePassword(rawPassword: String): String {
-        return passwordEncoder.encode(rawPassword)
+        return passwordEncoder.encode(rawPassword)!!
     }
 }

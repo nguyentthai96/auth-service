@@ -2,6 +2,8 @@ package com.ntt.authservice.auth.application
 
 import com.ntt.authservice.auth.adapter.`in`.web.dto.AuthResponse
 import com.ntt.authservice.rbac.adapter.out.persistence.repository.UserRepository
+import com.ntt.authservice.shared.audit.AuditAction
+import com.ntt.authservice.shared.audit.AuditLogService
 import com.ntt.authservice.shared.config.SecurityProperties
 import com.ntt.authservice.shared.exception.*
 import org.slf4j.LoggerFactory
@@ -19,7 +21,9 @@ class MfaService(
     private val jwtService: JwtService,
     private val userRepository: UserRepository,
     private val securityProperties: SecurityProperties,
-    private val redisTemplate: StringRedisTemplate
+    private val redisTemplate: StringRedisTemplate,
+    private val auditLogService: AuditLogService,
+    private val rateLimitService: MfaRateLimitService
 ) {
 
     private val log = LoggerFactory.getLogger(MfaService::class.java)
@@ -67,8 +71,13 @@ class MfaService(
         val userId = claims.subject.toLong()
         val method = claims["method"] as? String ?: throw MfaCodeInvalidException("Missing method in MFA token")
 
+        // MFA login rate limit check (FR-003) — applies to all MFA methods
+        rateLimitService.checkAndIncrement(userId, RateLimitType.MFA_LOGIN)
+
         when (method) {
             "SMS", "EMAIL" -> {
+                // OTP-specific rate limit check (FR-001)
+                rateLimitService.checkAndIncrement(userId, RateLimitType.OTP_VERIFY)
                 otpService.verifyOtp(userId, method.lowercase(), code)
             }
             "TOTP" -> {
@@ -85,7 +94,11 @@ class MfaService(
             else -> throw MfaCodeInvalidException("Unsupported MFA method: $method")
         }
 
+        // Reset rate limit counters on successful verification (FR-011)
+        rateLimitService.resetCounters(userId)
+
         log.info("MFA verified for userId={}, method={}", userId, method)
+        auditLogService.logEvent(userId, AuditAction.MFA_VERIFY_SUCCESS, "User", userId.toString(), "method=$method")
         return authResponseBuilder(userId)
     }
 
@@ -111,7 +124,9 @@ class MfaService(
             Duration.ofMinutes(10)
         )
 
-        return TotpSetupResult(secret = secret, qrCodeUri = qrUri, issuer = securityProperties.jwt.issuer)
+        return TotpSetupResult(secret = secret, qrCodeUri = qrUri, issuer = securityProperties.jwt.issuer).also {
+            auditLogService.logEvent(userId, AuditAction.MFA_SETUP, "User", userId.toString(), "type=TOTP")
+        }
     }
 
     /**
@@ -136,6 +151,7 @@ class MfaService(
         redisTemplate.delete(TOTP_SETUP_PREFIX + userId)
 
         log.info("TOTP confirmed for userId={}", userId)
+        auditLogService.logEvent(userId, AuditAction.MFA_SETUP, "User", userId.toString(), "type=TOTP, status=confirmed")
         return true
     }
 
@@ -154,6 +170,16 @@ class MfaService(
 
         if (method != "SMS" && method != "EMAIL") {
             throw MfaCodeInvalidException("Resend only available for SMS/EMAIL")
+        }
+
+        // Resend count limit: max 3 per MFA session
+        val resendKey = "mfa:resend:$userId"
+        val resendCount = redisTemplate.opsForValue().increment(resendKey) ?: 1
+        if (resendCount == 1L) {
+            redisTemplate.expire(resendKey, Duration.ofSeconds(securityProperties.mfa.mfaTokenTtlSeconds))
+        }
+        if (resendCount > 3) {
+            throw MfaMaxAttemptsException("Maximum resend attempts exceeded")
         }
 
         otpService.generateOtp(userId, method.lowercase())
@@ -188,6 +214,7 @@ class MfaService(
         userRepository.save(user)
 
         log.info("MFA settings updated for userId={}: enabled={}, method={}", userId, enabled, user.mfaMethod)
+        auditLogService.logEvent(userId, AuditAction.MFA_SETUP, "User", userId.toString(), "enabled=$enabled, method=${user.mfaMethod}")
         return MfaSettingsResult(mfaEnabled = user.mfaEnabled, mfaMethod = user.mfaMethod)
     }
 

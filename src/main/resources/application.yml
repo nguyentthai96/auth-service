@@ -91,6 +91,17 @@ app:
       totp-window: 1               # ±1 step drift tolerance
       mfa-token-ttl-seconds: 300   # MFA challenge token TTL
       trusted-device-ttl-days: 30
+      # MFA Rate Limiting
+      rate-limit:
+        otp:
+          max-attempts: 5          # Max OTP verify failures in window
+          window-seconds: 900      # 15 minutes
+          lock-seconds: 1800       # 30 minutes lock
+        login:
+          max-attempts: 10         # Max MFA login failures in window
+          window-seconds: 3600     # 1 hour
+          lock-seconds: 3600       # 1 hour lock
+        redis-timeout-ms: 500      # Timeout for rate limit Redis calls
     captcha:
       provider: ${CAPTCHA_PROVIDER:noop}   # noop | turnstile | hcaptcha | recaptcha
       secret-key: ${CAPTCHA_SECRET_KEY:}

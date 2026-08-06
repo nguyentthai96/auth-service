@@ -1,4 +1,4 @@
-package com.ntt.authservice.auth.domain.service
+package com.ntt.authservice.auth.application
 
 import com.ntt.authservice.auth.application.port.out.DomainPort
 import com.ntt.authservice.rbac.adapter.out.persistence.repository.UserDomainRepository

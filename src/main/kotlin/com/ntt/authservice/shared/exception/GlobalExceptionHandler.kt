@@ -44,7 +44,16 @@ class AuthControllerAdvice(
         if (ex is AccountLockedException) {
             problem.setProperty("lockedUntilAt", ex.lockedUntilAt.toString())
         }
+        if (ex is MfaAccountLockedException) {
+            problem.setProperty("retryAfterSeconds", ex.retryAfterSeconds)
+            problem.setProperty("lockType", ex.lockType)
+        }
 
-        return ResponseEntity.status(ex.httpStatus).body(problem)
+        val builder = ResponseEntity.status(ex.httpStatus)
+        // Set Retry-After header for rate-limited responses (RFC 6585)
+        if (ex is MfaAccountLockedException) {
+            builder.header("Retry-After", ex.retryAfterSeconds.toString())
+        }
+        return builder.body(problem)
     }
 }

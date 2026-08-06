@@ -9,7 +9,7 @@ import com.ntt.authservice.shared.config.SecurityProperties
 import com.ntt.authservice.shared.exception.*
 import org.passay.*
 import org.slf4j.LoggerFactory
-import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder
+import org.springframework.security.crypto.password.PasswordEncoder
 import org.springframework.stereotype.Service
 import java.time.Instant
 import java.util.concurrent.ConcurrentHashMap
@@ -23,12 +23,13 @@ class PasswordPolicyService(
     private val passwordPolicyRepository: PasswordPolicyRepository,
     private val passwordHistoryRepository: PasswordHistoryRepository,
     private val userRepository: UserRepository,
-    private val securityProperties: SecurityProperties
+    private val securityProperties: SecurityProperties,
+    private val passwordEncoder: PasswordEncoder
 ) {
 
     private val log = LoggerFactory.getLogger(PasswordPolicyService::class.java)
     private val validatorCache = ConcurrentHashMap<Long, PasswordValidator>()
-    private val passwordEncoder = BCryptPasswordEncoder(securityProperties.password.bcryptStrength)
+
 
     /**
      * Validate password against domain policy.
@@ -79,7 +80,7 @@ class PasswordPolicyService(
         }
 
         // Persist new password
-        val newHash = passwordEncoder.encode(newPassword)
+        val newHash = passwordEncoder.encode(newPassword)!!
 
         // Save to history
         val historyEntry = PasswordHistoryEntity().apply {
@@ -154,7 +155,7 @@ class PasswordPolicyService(
     private fun pruneHistory(userId: Long, keepCount: Int) {
         val all = passwordHistoryRepository.findByUserIdOrderByCreatedAtDesc(userId)
         if (all.size > keepCount) {
-            val toKeep = all.take(keepCount).map { it.id }
+            val toKeep = all.take(keepCount).mapNotNull { it.id }
             passwordHistoryRepository.deleteByUserIdAndIdNotIn(userId, toKeep)
         }
     }

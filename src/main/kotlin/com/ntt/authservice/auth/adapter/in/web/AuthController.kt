@@ -1,16 +1,19 @@
 package com.ntt.authservice.auth.adapter.`in`.web
 
+import com.ntt.authservice.auth.adapter.`in`.web.dto.AuthResponse
 import com.ntt.authservice.auth.application.*
 import jakarta.validation.Valid
 import jakarta.validation.constraints.Email
 import jakarta.validation.constraints.NotBlank
 import jakarta.validation.constraints.Size
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty
 import org.springframework.http.HttpStatus
 import org.springframework.http.ResponseEntity
 import org.springframework.web.bind.annotation.*
 
 @RestController
 @RequestMapping("/api/auth")
+@ConditionalOnProperty(name = ["app.security.cqrs.enabled"], havingValue = "false")
 class AuthController(
     private val authService: AuthService,
     private val passwordPolicyService: PasswordPolicyService

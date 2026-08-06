@@ -30,7 +30,8 @@ enum class AuthErrorCode(
     SSO_USER_NOT_PROVISIONED("AUTH_015", "auth.sso_user_not_provisioned", "SSO user not provisioned", HttpStatus.FORBIDDEN),
     SSO_IDENTITY_CONFLICT("AUTH_016", "auth.sso_identity_conflict", "SSO identity already linked", HttpStatus.CONFLICT),
     PASSWORD_POLICY_VIOLATION("AUTH_017", "auth.password_policy_violation", "Password does not meet requirements", HttpStatus.BAD_REQUEST),
-    PASSWORD_EXPIRED("AUTH_018", "auth.password_expired", "Password has expired", HttpStatus.FORBIDDEN);
+    PASSWORD_EXPIRED("AUTH_018", "auth.password_expired", "Password has expired", HttpStatus.FORBIDDEN),
+    MFA_RATE_LIMITED("AUTH_019", "auth.mfa_rate_limited", "MFA rate limit exceeded — too many failed attempts", HttpStatus.TOO_MANY_REQUESTS);
 
     /**
      * Bridge to base-core ErrorCodeBase via delegation.

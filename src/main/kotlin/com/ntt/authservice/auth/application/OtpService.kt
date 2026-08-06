@@ -23,8 +23,10 @@ class OtpService(
 
     companion object {
         private const val OTP_KEY_PREFIX = "otp:"
+        private const val RATE_LIMIT_PREFIX = "otp:ratelimit:"
         private const val ATTEMPTS_SUFFIX = ":attempts"
         private const val OTP_LENGTH = 6
+        private const val RATE_LIMIT_SECONDS = 60L
     }
 
     /**
@@ -32,6 +34,12 @@ class OtpService(
      * @return the generated OTP code (caller sends via SMS/Email)
      */
     fun generateOtp(userId: Long, channel: String): String {
+        // Rate limit: max 1 OTP per 60 seconds per channel
+        val rateLimitKey = "$RATE_LIMIT_PREFIX$userId:$channel"
+        if (redisTemplate.hasKey(rateLimitKey) == true) {
+            throw MfaCodeInvalidException("Please wait before requesting a new code")
+        }
+
         val code = String.format("%06d", secureRandom.nextInt(1_000_000))
         val ttl = Duration.ofSeconds(securityProperties.mfa.otpTtlSeconds)
         val key = otpKey(userId, channel)
@@ -40,6 +48,9 @@ class OtpService(
         val ops = redisTemplate.opsForValue()
         ops.set(key, code, ttl)
         ops.set(attemptsKey, "0", ttl)
+
+        // Set rate limit key
+        ops.set(rateLimitKey, "1", Duration.ofSeconds(RATE_LIMIT_SECONDS))
 
         log.debug("OTP generated for userId={}, channel={}", userId, channel)
         return code

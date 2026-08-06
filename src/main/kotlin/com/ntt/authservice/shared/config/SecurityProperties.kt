@@ -37,8 +37,21 @@ data class SecurityProperties(
         val maxAttempts: Int = 3,
         val totpWindow: Int = 1,
         val mfaTokenTtlSeconds: Long = 300,
-        val trustedDeviceTtlDays: Long = 30
-    )
+        val trustedDeviceTtlDays: Long = 30,
+        val rateLimit: RateLimitProperties = RateLimitProperties()
+    ) {
+        data class RateLimitProperties(
+            val otp: LimitConfig = LimitConfig(maxAttempts = 5, windowSeconds = 900, lockSeconds = 1800),
+            val login: LimitConfig = LimitConfig(maxAttempts = 10, windowSeconds = 3600, lockSeconds = 3600),
+            val redisTimeoutMs: Long = 500
+        )
+
+        data class LimitConfig(
+            val maxAttempts: Int,
+            val windowSeconds: Long,
+            val lockSeconds: Long
+        )
+    }
 
     data class CaptchaProperties(
         val provider: String = "noop",

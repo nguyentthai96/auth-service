@@ -1,7 +1,7 @@
 package com.ntt.authservice.rbac.application.query
 
 import com.ntt.authservice.rbac.adapter.out.persistence.repository.*
-import com.ntt.authservice.rbac.domain.service.RbacResolver
+
 import com.ntt.eventsourcingutils.lib.cqrs.query.QueryHandler
 import org.springframework.stereotype.Component
 import org.springframework.transaction.annotation.Transactional

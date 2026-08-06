@@ -7,6 +7,7 @@ import dev.samstevens.totp.code.HashingAlgorithm
 import dev.samstevens.totp.qr.QrData
 import dev.samstevens.totp.secret.DefaultSecretGenerator
 import dev.samstevens.totp.time.SystemTimeProvider
+import jakarta.annotation.PostConstruct
 import org.slf4j.LoggerFactory
 import org.springframework.beans.factory.annotation.Value
 import org.springframework.stereotype.Service
@@ -36,6 +37,23 @@ class TotpService(
         private const val AES_ALGORITHM = "AES/GCM/NoPadding"
         private const val GCM_IV_LENGTH = 12
         private const val GCM_TAG_LENGTH = 128
+    }
+
+    @PostConstruct
+    fun validateEncryptionKey() {
+        if (encryptionKeyBase64.isBlank()) {
+            log.warn("TOTP_ENCRYPTION_KEY is not set — TOTP MFA will not work. Set this env var to enable TOTP.")
+            return
+        }
+        try {
+            val keyBytes = java.util.Base64.getDecoder().decode(encryptionKeyBase64)
+            require(keyBytes.size == 32) {
+                "TOTP_ENCRYPTION_KEY must be 256 bits (32 bytes) in Base64, got ${keyBytes.size} bytes"
+            }
+            log.info("TOTP encryption key validated successfully (256-bit AES)")
+        } catch (e: IllegalArgumentException) {
+            throw IllegalStateException("TOTP_ENCRYPTION_KEY is invalid: ${e.message}", e)
+        }
     }
 
     /**
@@ -96,13 +114,12 @@ class TotpService(
     }
 
     private fun getEncryptionKey(): SecretKeySpec {
-        require(encryptionKeyBase64.isNotBlank()) {
-            "TOTP_ENCRYPTION_KEY environment variable is not set"
+        if (encryptionKeyBase64.isBlank()) {
+            throw com.ntt.authservice.shared.exception.MfaCodeInvalidException(
+                "TOTP is not configured — contact your administrator"
+            )
         }
         val keyBytes = Base64.getDecoder().decode(encryptionKeyBase64)
-        require(keyBytes.size == 32) {
-            "TOTP_ENCRYPTION_KEY must be 256 bits (32 bytes) in Base64"
-        }
         return SecretKeySpec(keyBytes, "AES")
     }
 }

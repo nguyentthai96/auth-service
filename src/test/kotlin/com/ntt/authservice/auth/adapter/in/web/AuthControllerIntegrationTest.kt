@@ -3,7 +3,7 @@ package com.ntt.authservice.auth.adapter.`in`.web
 import org.junit.jupiter.api.DisplayName
 import org.junit.jupiter.api.Test
 import org.springframework.beans.factory.annotation.Autowired
-import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc
+import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc
 import org.springframework.boot.test.context.SpringBootTest
 import org.springframework.http.MediaType
 import org.springframework.test.context.ActiveProfiles
@@ -11,6 +11,9 @@ import org.springframework.test.web.servlet.MockMvc
 import org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post
 import org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath
 import org.springframework.test.web.servlet.result.MockMvcResultMatchers.status
+import org.junit.jupiter.api.BeforeEach
+import org.springframework.context.annotation.Import
+
 
 /**
  * Integration test for auth endpoints using H2 in-memory DB.
@@ -18,14 +21,26 @@ import org.springframework.test.web.servlet.result.MockMvcResultMatchers.status
  *
  * TODO: Migrate to Testcontainers with PostgreSQL for full parity.
  */
-@SpringBootTest
+@SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
 @AutoConfigureMockMvc
 @ActiveProfiles("test")
+@Import(TestIdGeneratorAspect::class)
 @DisplayName("Auth API Integration Tests")
 class AuthControllerIntegrationTest {
 
     @Autowired
     private lateinit var mockMvc: MockMvc
+
+    @Autowired
+    private lateinit var jdbcTemplate: org.springframework.jdbc.core.JdbcTemplate
+
+    @BeforeEach
+    fun setUp() {
+        val count = jdbcTemplate.queryForObject("SELECT COUNT(*) FROM domains WHERE code = 'SYSTEM'", Int::class.java)
+        if (count == 0) {
+            jdbcTemplate.execute("INSERT INTO domains (id, code, name, description, status, config, active, created_at, updated_at) VALUES (1, 'SYSTEM', 'System', 'System Domain', 'ACTIVE', '{}', true, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)")
+        }
+    }
 
     @Test
     @DisplayName("POST /api/auth/register should create user and return tokens")
@@ -39,7 +54,8 @@ class AuthControllerIntegrationTest {
                         "username": "newuser",
                         "email": "newuser@example.com",
                         "password": "SecurePass123!",
-                        "fullName": "New User"
+                        "fullName": "New User",
+                        "domainCode": "SYSTEM"
                     }
                     """.trimIndent()
                 )
@@ -82,7 +98,8 @@ class AuthControllerIntegrationTest {
                         "username": "duplicateuser",
                         "email": "dup1@example.com",
                         "password": "SecurePass123!",
-                        "fullName": "Dup User"
+                        "fullName": "Dup User",
+                        "domainCode": "SYSTEM"
                     }
                     """.trimIndent()
                 )
@@ -99,7 +116,8 @@ class AuthControllerIntegrationTest {
                         "username": "duplicateuser",
                         "email": "dup2@example.com",
                         "password": "SecurePass123!",
-                        "fullName": "Dup User 2"
+                        "fullName": "Dup User 2",
+                        "domainCode": "SYSTEM"
                     }
                     """.trimIndent()
                 )

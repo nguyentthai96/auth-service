@@ -33,6 +33,16 @@ class MfaMaxAttemptsException(
     httpStatus = HttpStatus.FORBIDDEN
 )
 
+class MfaAccountLockedException(
+    val retryAfterSeconds: Long,
+    val lockType: String,
+    message: String = "Account temporarily locked due to too many failed attempts"
+) : AuthException(
+    authError = AuthErrorCode.MFA_RATE_LIMITED,
+    message = message,
+    httpStatus = HttpStatus.TOO_MANY_REQUESTS
+)
+
 class TotpNotSetupException(
     message: String = "TOTP authenticator is not configured for this account"
 ) : AuthException(
