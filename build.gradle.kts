@@ -3,8 +3,7 @@ plugins {
     alias(libs.plugins.kotlin.jpa)
 }
 
-group = "com.ntt"
-version = "0.0.1-SNAPSHOT"
+// group and version are inherited from gradle.properties (Single Source of Truth)
 
 extra["springCloudVersion"] = libs.versions.spring.cloud.get()
 

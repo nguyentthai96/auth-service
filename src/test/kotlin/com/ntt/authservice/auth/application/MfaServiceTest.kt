@@ -35,6 +35,7 @@ class MfaServiceTest {
     @Mock private lateinit var securityProperties: SecurityProperties
     @Mock private lateinit var redisTemplate: StringRedisTemplate
     @Mock private lateinit var auditLogService: AuditLogService
+    @Mock private lateinit var rateLimitService: MfaRateLimitService
     @Mock private lateinit var mfaProperties: SecurityProperties.MfaProperties
     @Mock private lateinit var jwtProperties: SecurityProperties.JwtProperties
     @Mock private lateinit var valueOps: ValueOperations<String, String>
@@ -58,7 +59,7 @@ class MfaServiceTest {
     fun setUp() {
         mfaService = MfaService(
             otpService, totpService, jwtService, userRepository,
-            securityProperties, redisTemplate, auditLogService
+            securityProperties, redisTemplate, auditLogService, rateLimitService
         )
     }
 

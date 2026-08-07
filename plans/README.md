@@ -15,7 +15,7 @@ honor its STOP conditions, and update your row when done.
 | 005  | Fix PasswordPolicyService BCryptPasswordEncoder instantiation | P2 | S | MED | — | DONE |
 | 006  | Add audit logging to MfaService and SsoAdapter | P2 | M | LOW | — | DONE |
 | 007  | Implement password expiry check in login flow | P2 | S | MED | — | DONE |
-| 008  | Add MFA and SSO unit tests | P2 | L | LOW | 002 | TODO |
+| 008  | Add MFA and SSO unit tests | P2 | L | LOW | 002 | DONE |
 | 009  | Fix LoginHandlerTest — PasswordConfig mock type mismatch | P2 | S | LOW | — | DONE |
 | 010  | Harden TotpService — startup validation for TOTP_ENCRYPTION_KEY | P2 | S | MED | — | DONE |
 | 011  | Add rate limiting to MFA resend and OTP endpoints | P3 | M | LOW | — | DONE |
