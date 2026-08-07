@@ -52,9 +52,9 @@ private fun provisionSsoUser(idpUser: IdpUserInfo, provider: String): UserEntity
 
 ## Done criteria
 
-- [ ] `./gradlew compileKotlin` exits 0
-- [ ] `fullName` is always set when provisioning SSO users
-- [ ] `email` is never empty string
+- [x] `./gradlew compileKotlin` exits 0
+- [x] `fullName` is always set when provisioning SSO users
+- [x] `email` is never empty string
 
 ## STOP conditions
 

@@ -12,6 +12,7 @@ import com.ntt.authservice.auth.domain.model.vo.UserId
 import com.ntt.authservice.shared.config.SecurityProperties
 import com.ntt.authservice.shared.exception.AccountLockedException
 import com.ntt.authservice.shared.exception.InvalidCredentialsException
+import kotlinx.coroutines.runBlocking
 import org.junit.jupiter.api.Assertions.*
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.DisplayName
@@ -92,7 +93,7 @@ class LoginHandlerTest {
         val command = LoginCommand(username = "testuser", password = "password123")
 
         // When
-        val result = handler.handle(command)
+        val result = runBlocking { handler.handle(command) }
 
         // Then
         assertTrue(result is LoginResult.Success)
@@ -108,7 +109,7 @@ class LoginHandlerTest {
         val command = LoginCommand(username = "unknown", password = "password123")
 
         // When/Then
-        assertThrows<InvalidCredentialsException> { handler.handle(command) }
+        assertThrows<InvalidCredentialsException> { runBlocking { handler.handle(command) } }
     }
 
     @Test
@@ -128,7 +129,7 @@ class LoginHandlerTest {
         val command = LoginCommand(username = "lockeduser", password = "password123")
 
         // When/Then
-        assertThrows<AccountLockedException> { handler.handle(command) }
+        assertThrows<AccountLockedException> { runBlocking { handler.handle(command) } }
     }
 
     @Test
@@ -145,6 +146,6 @@ class LoginHandlerTest {
         val command = LoginCommand(username = "testuser", password = "wrongpassword")
 
         // When/Then
-        assertThrows<InvalidCredentialsException> { handler.handle(command) }
+        assertThrows<InvalidCredentialsException> { runBlocking { handler.handle(command) } }
     }
 }

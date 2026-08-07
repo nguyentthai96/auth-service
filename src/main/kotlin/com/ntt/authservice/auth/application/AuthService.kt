@@ -6,6 +6,8 @@ import com.ntt.authservice.rbac.adapter.out.persistence.entity.UserEntity
 import com.ntt.authservice.rbac.adapter.out.persistence.repository.*
 import com.ntt.authservice.rbac.application.RbacEngine
 import com.ntt.authservice.shared.config.SecurityProperties
+import com.ntt.authservice.shared.audit.AuditAction
+import com.ntt.authservice.shared.audit.AuditLogService
 import com.ntt.authservice.shared.exception.*
 import org.slf4j.LoggerFactory
 import org.springframework.security.crypto.password.PasswordEncoder
@@ -31,7 +33,8 @@ class AuthService(
     private val securityProperties: SecurityProperties,
     private val captchaVerifier: CaptchaVerifier,
     private val mfaService: MfaService,
-    private val passwordPolicyService: PasswordPolicyService
+    private val passwordPolicyService: PasswordPolicyService,
+    private val auditLogService: AuditLogService
 ) {
 
     private val log = LoggerFactory.getLogger(AuthService::class.java)
@@ -136,6 +139,7 @@ class AuthService(
         val domainCode = request.domainCode ?: getPrimaryDomain(user.id!!)
 
         log.info("User logged in: {} domain: {}", user.username, domainCode)
+        auditLogService.logEvent(user.id, AuditAction.LOGIN_SUCCESS, "User", user.id.toString(), "domain=$domainCode")
 
         return LoginResult.Success(generateAuthResponse(user, domainCode))
     }
@@ -240,6 +244,9 @@ class AuthService(
                 securityProperties.password.lockDurationMinutes * 60L
             )
             log.warn("User {} locked after {} failed attempts", user.username, user.failedLoginCount)
+            auditLogService.logEvent(user.id, AuditAction.ACCOUNT_LOCKED, "User", user.id.toString(), "failedAttempts=${user.failedLoginCount}")
+        } else {
+            auditLogService.logEvent(user.id, AuditAction.LOGIN_FAILED, "User", user.id.toString(), "failedAttempts=${user.failedLoginCount}")
         }
         // updatedAt is auto-managed by AuditableEntity
         userRepository.save(user)

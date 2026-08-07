@@ -6,6 +6,8 @@ import com.ntt.authservice.rbac.adapter.out.persistence.repository.PasswordHisto
 import com.ntt.authservice.rbac.adapter.out.persistence.repository.PasswordPolicyRepository
 import com.ntt.authservice.rbac.adapter.out.persistence.repository.UserRepository
 import com.ntt.authservice.shared.config.SecurityProperties
+import com.ntt.authservice.shared.audit.AuditAction
+import com.ntt.authservice.shared.audit.AuditLogService
 import com.ntt.authservice.shared.exception.*
 import org.passay.*
 import org.slf4j.LoggerFactory
@@ -24,7 +26,8 @@ class PasswordPolicyService(
     private val passwordHistoryRepository: PasswordHistoryRepository,
     private val userRepository: UserRepository,
     private val securityProperties: SecurityProperties,
-    private val passwordEncoder: PasswordEncoder
+    private val passwordEncoder: PasswordEncoder,
+    private val auditLogService: AuditLogService
 ) {
 
     private val log = LoggerFactory.getLogger(PasswordPolicyService::class.java)
@@ -99,6 +102,7 @@ class PasswordPolicyService(
         pruneHistory(userId, policy.historyCount)
 
         log.info("Password changed for userId={}", userId)
+        auditLogService.logEvent(userId, AuditAction.PASSWORD_CHANGED, "User", userId.toString(), "domainId=$domainId")
     }
 
     /**

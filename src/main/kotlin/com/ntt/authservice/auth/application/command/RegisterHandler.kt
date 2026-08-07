@@ -28,7 +28,7 @@ class RegisterHandler(
     private val log = LoggerFactory.getLogger(RegisterHandler::class.java)
 
     @Transactional
-    override fun handle(command: RegisterCommand): AuthToken {
+    override suspend fun handle(command: RegisterCommand): AuthToken {
         // Validate uniqueness
         if (userPort.existsByUsername(command.username)) {
             throw DuplicateResourceException("User", "username", command.username)
@@ -69,5 +69,5 @@ class RegisterHandler(
         return tokenGenerator.generateAuthResponse(savedUser, command.domainCode)
     }
 
-    override fun commandType(): Class<RegisterCommand> = RegisterCommand::class.java
+
 }

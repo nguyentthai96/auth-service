@@ -46,8 +46,8 @@ to:
 
 ## Done criteria
 
-- [ ] `./gradlew test --tests "*LoginHandlerTest*"` exits 0 with 4 tests passing
-- [ ] `grep -rn "PasswordConfig" src/test/` returns no matches
+- [x] `./gradlew test --tests "*LoginHandlerTest*"` exits 0 with 4 tests passing
+- [x] `grep -rn "PasswordConfig" src/test/` returns no matches
 
 ## STOP conditions
 

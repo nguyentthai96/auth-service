@@ -31,7 +31,7 @@ class LoginHandler(
     private val log = LoggerFactory.getLogger(LoginHandler::class.java)
 
     @Transactional
-    override fun handle(command: LoginCommand): LoginResult {
+    override suspend fun handle(command: LoginCommand): LoginResult {
         val user = userPort.findByUsernameAndActive(command.username)
             ?: throw InvalidCredentialsException()
 
@@ -90,5 +90,5 @@ class LoginHandler(
         return LoginResult.Success(com.ntt.authservice.auth.adapter.`in`.web.dto.AuthResponse.from(tokenGenerator.generateAuthResponse(user, domainCode)))
     }
 
-    override fun commandType(): Class<LoginCommand> = LoginCommand::class.java
+
 }

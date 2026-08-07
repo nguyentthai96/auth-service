@@ -195,4 +195,44 @@ class MfaServiceTest {
         verify(userRepository).save(user)
         verify(auditLogService).logEvent(any(), any(), any(), any(), any())
     }
+
+    @Test
+    @DisplayName("should resend OTP and return new MFA token")
+    fun shouldResendOtp() {
+        whenever(mockClaims.subject).thenReturn("1")
+        whenever(mockClaims.get("method")).thenReturn("SMS")
+        whenever(jwtService.parseMfaToken("mfa-token")).thenReturn(mockClaims)
+        whenever(redisTemplate.opsForValue()).thenReturn(valueOps)
+        whenever(valueOps.increment("mfa:resend:1")).thenReturn(1L)
+        whenever(securityProperties.mfa).thenReturn(mfaProperties)
+        whenever(mfaProperties.mfaTokenTtlSeconds).thenReturn(300L)
+        whenever(otpService.generateOtp(1L, "sms")).thenReturn("654321")
+        whenever(jwtService.generateMfaToken(1L, "SMS")).thenReturn("new-mfa-token")
+
+        val result = mfaService.resendOtp("mfa-token")
+
+        assertEquals("new-mfa-token", result.mfaToken)
+        assertEquals("SMS", result.method)
+        verify(otpService).generateOtp(1L, "sms")
+    }
+
+    @Test
+    @DisplayName("should verify TOTP MFA and return AuthResponse")
+    fun shouldVerifyTotpMfa() {
+        val user = com.ntt.authservice.rbac.adapter.out.persistence.entity.UserEntity().apply {
+            totpSecretEncrypted = "encrypted-secret"
+        }
+        whenever(mockClaims.subject).thenReturn("1")
+        whenever(mockClaims.get("method")).thenReturn("TOTP")
+        whenever(jwtService.parseMfaToken("mfa-token")).thenReturn(mockClaims)
+        whenever(userRepository.findById(1L)).thenReturn(java.util.Optional.of(user))
+        whenever(totpService.decryptSecret("encrypted-secret")).thenReturn("decoded-secret")
+        whenever(totpService.verifyCode("decoded-secret", "123456")).thenReturn(true)
+
+        val result = mfaService.verifyMfa("mfa-token", "123456") { mockAuthResponse }
+
+        assertEquals("access-token", result.accessToken)
+        verify(totpService).verifyCode("decoded-secret", "123456")
+        verify(auditLogService).logEvent(eq(1L), any(), any(), any(), any())
+    }
 }

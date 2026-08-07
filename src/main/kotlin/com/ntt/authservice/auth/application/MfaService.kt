@@ -88,6 +88,7 @@ class MfaService(
                     ?: throw TotpNotSetupException()
                 val secret = totpService.decryptSecret(encryptedSecret)
                 if (!totpService.verifyCode(secret, code)) {
+                    auditLogService.logEvent(userId, AuditAction.MFA_VERIFY_FAILED, "User", userId.toString(), "method=TOTP")
                     throw MfaCodeInvalidException("Invalid TOTP code")
                 }
             }

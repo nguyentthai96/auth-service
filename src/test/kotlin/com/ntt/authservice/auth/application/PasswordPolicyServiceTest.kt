@@ -7,6 +7,7 @@ import com.ntt.authservice.rbac.adapter.out.persistence.repository.PasswordHisto
 import com.ntt.authservice.rbac.adapter.out.persistence.repository.PasswordPolicyRepository
 import com.ntt.authservice.rbac.adapter.out.persistence.repository.UserRepository
 import com.ntt.authservice.shared.config.SecurityProperties
+import com.ntt.authservice.shared.audit.AuditLogService
 import com.ntt.authservice.shared.exception.InvalidCredentialsException
 import com.ntt.authservice.shared.exception.PasswordPolicyViolationException
 import org.junit.jupiter.api.Assertions.*
@@ -34,6 +35,7 @@ class PasswordPolicyServiceTest {
     @Mock private lateinit var userRepository: UserRepository
     @Mock private lateinit var securityProperties: SecurityProperties
     @Mock private lateinit var passwordEncoder: PasswordEncoder
+    @Mock private lateinit var auditLogService: AuditLogService
 
     private lateinit var service: PasswordPolicyService
 
@@ -53,7 +55,7 @@ class PasswordPolicyServiceTest {
     fun setUp() {
         service = PasswordPolicyService(
             passwordPolicyRepository, passwordHistoryRepository,
-            userRepository, securityProperties, passwordEncoder
+            userRepository, securityProperties, passwordEncoder, auditLogService
         )
     }
 

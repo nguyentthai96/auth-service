@@ -48,6 +48,7 @@ dependencies {
     testImplementation("com.ntt:base-testing-starter")
     testImplementation(libs.archunit.junit5)
     testImplementation("org.mockito.kotlin:mockito-kotlin:5.4.0")
+    testImplementation("org.jetbrains.kotlinx:kotlinx-coroutines-test")
     // BouncyCastle — required by Spring Security's Argon2PasswordEncoder
     testImplementation("org.bouncycastle:bcprov-jdk18on:1.80")
     // H2 — in-memory database for unit/integration tests without external PostgreSQL

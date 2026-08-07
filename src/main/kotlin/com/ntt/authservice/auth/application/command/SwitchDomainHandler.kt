@@ -20,7 +20,7 @@ class SwitchDomainHandler(
 ) : CommandHandler<SwitchDomainCommand, AuthToken> {
 
     @Transactional(readOnly = true)
-    override fun handle(command: SwitchDomainCommand): AuthToken {
+    override suspend fun handle(command: SwitchDomainCommand): AuthToken {
         val user = userPort.findById(command.userId)
             ?: throw ResourceNotFoundException("User", command.userId)
 
@@ -32,5 +32,5 @@ class SwitchDomainHandler(
         return tokenGenerator.generateAuthResponse(user, command.newDomainCode)
     }
 
-    override fun commandType(): Class<SwitchDomainCommand> = SwitchDomainCommand::class.java
+
 }

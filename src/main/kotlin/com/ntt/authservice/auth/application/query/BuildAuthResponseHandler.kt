@@ -19,7 +19,7 @@ class BuildAuthResponseHandler(
 ) : QueryHandler<BuildAuthResponseQuery, AuthToken> {
 
     @Transactional(readOnly = true)
-    override fun handle(query: BuildAuthResponseQuery): AuthToken {
+    override suspend fun handle(query: BuildAuthResponseQuery): AuthToken {
         val user = userPort.findById(query.userId)
             ?: throw ResourceNotFoundException("User", query.userId)
 
@@ -27,5 +27,5 @@ class BuildAuthResponseHandler(
         return tokenGenerator.generateAuthResponse(user, domainCode)
     }
 
-    override fun queryType(): Class<BuildAuthResponseQuery> = BuildAuthResponseQuery::class.java
+
 }

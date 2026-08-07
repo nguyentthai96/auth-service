@@ -68,9 +68,9 @@ fun forgotPassword(@Valid @RequestBody request: ForgotPasswordRequestDto): Respo
 
 ## Done criteria
 
-- [ ] `./gradlew compileKotlin` exits 0
-- [ ] CqrsAuthController has `/change-password` and `/forgot-password` endpoints
-- [ ] No files outside scope modified
+- [x] `./gradlew compileKotlin` exits 0
+- [x] CqrsAuthController has `/change-password` and `/forgot-password` endpoints
+- [x] No files outside scope modified
 
 ## STOP conditions
 

@@ -79,10 +79,10 @@ This maps to HTTP 401 via `AuthControllerAdvice` instead of 500.
 
 ## Done criteria
 
-- [ ] `./gradlew compileKotlin` exits 0
-- [ ] `./gradlew test` exits 0
-- [ ] `TotpService` has `@PostConstruct validateEncryptionKey()` method
-- [ ] `getEncryptionKey()` throws `MfaCodeInvalidException` (not `IllegalArgumentException`)
+- [x] `./gradlew compileKotlin` exits 0
+- [x] `./gradlew test` exits 0
+- [x] `TotpService` has `@PostConstruct validateEncryptionKey()` method
+- [x] `getEncryptionKey()` throws `MfaCodeInvalidException` (not `IllegalArgumentException`)
 
 ## STOP conditions
 

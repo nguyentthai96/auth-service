@@ -60,10 +60,10 @@ auditLogService.logEvent(userId, AuditAction.MFA_VERIFY_SUCCESS, "User", userId.
 
 ## Done criteria
 
-- [ ] `./gradlew compileKotlin` exits 0
-- [ ] `grep -rn "auditLogService" src/main/kotlin/com/ntt/authservice/auth/application/MfaService.kt` returns matches
-- [ ] `grep -rn "auditLogService" src/main/kotlin/com/ntt/authservice/auth/application/SsoAdapter.kt` returns matches
-- [ ] All `AuditAction` enum values used in at least one `logEvent()` call
+- [x] `./gradlew compileKotlin` exits 0
+- [x] `grep -rn "auditLogService" src/main/kotlin/com/ntt/authservice/auth/application/MfaService.kt` returns matches
+- [x] `grep -rn "auditLogService" src/main/kotlin/com/ntt/authservice/auth/application/SsoAdapter.kt` returns matches
+- [x] All `AuditAction` enum values used in at least one `logEvent()` call
 
 ## STOP conditions
 

@@ -87,9 +87,9 @@ Test cases:
 
 ## Done criteria
 
-- [ ] `./gradlew test` exits 0
-- [ ] At least 30 new test cases across 4 test files
-- [ ] No existing tests broken
+- [x] `./gradlew test` exits 0
+- [x] At least 30 new test cases across 4 test files
+- [x] No existing tests broken
 
 ## STOP conditions
 

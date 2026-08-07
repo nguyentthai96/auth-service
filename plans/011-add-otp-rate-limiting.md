@@ -68,9 +68,9 @@ if (resendCount > 3) {
 
 ## Done criteria
 
-- [ ] `./gradlew compileKotlin` exits 0
-- [ ] OTP generation rate-limited to 1 per 60 seconds per channel
-- [ ] MFA resend limited to 3 per session
+- [x] `./gradlew compileKotlin` exits 0
+- [x] OTP generation rate-limited to 1 per 60 seconds per channel
+- [x] MFA resend limited to 3 per session
 
 ## STOP conditions
 

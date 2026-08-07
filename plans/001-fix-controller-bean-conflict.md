@@ -103,11 +103,11 @@ This ensures AuthController is ONLY active when CQRS is explicitly disabled (`ap
 
 ## Done criteria
 
-- [ ] `./gradlew compileKotlin` exits 0
-- [ ] `./gradlew test --tests "*ArchitectureTest*"` exits 0
-- [ ] `AuthController.kt` has `@ConditionalOnProperty(name = ["app.security.cqrs.enabled"], havingValue = "false")`
-- [ ] `CqrsAuthController.kt` has `@ConditionalOnProperty(name = ["app.security.cqrs.enabled"], havingValue = "true", matchIfMissing = true)` (unchanged)
-- [ ] No files outside the in-scope list are modified
+- [x] `./gradlew compileKotlin` exits 0
+- [x] `./gradlew test --tests "*ArchitectureTest*"` exits 0
+- [x] `AuthController.kt` has `@ConditionalOnProperty(name = ["app.security.cqrs.enabled"], havingValue = "false")`
+- [x] `CqrsAuthController.kt` has `@ConditionalOnProperty(name = ["app.security.cqrs.enabled"], havingValue = "true", matchIfMissing = true)` (unchanged)
+- [x] No files outside the in-scope list are modified
 
 ## STOP conditions
 

@@ -137,10 +137,10 @@ Line 3: `import com.ntt.authservice.auth.adapter.in.web.dto.AuthResponse` — sa
 
 ## Done criteria
 
-- [ ] `./gradlew compileKotlin` exits 0
-- [ ] `./gradlew test` exits 0
-- [ ] `grep -rn "class AuthResponse" src/main/kotlin/` returns only one match in `dto/AuthResponse.kt`
-- [ ] No files outside the in-scope list are modified
+- [x] `./gradlew compileKotlin` exits 0
+- [x] `./gradlew test` exits 0
+- [x] `grep -rn "class AuthResponse" src/main/kotlin/` returns only one match in `dto/AuthResponse.kt`
+- [x] No files outside the in-scope list are modified
 
 ## STOP conditions
 

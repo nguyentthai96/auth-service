@@ -60,10 +60,10 @@ Add the same check using the domain port to resolve the user's primary domain.
 
 ## Done criteria
 
-- [ ] `./gradlew compileKotlin` exits 0
-- [ ] `./gradlew test` exits 0
-- [ ] `PasswordExpiredException` is thrown when password is expired
-- [ ] `grep -rn "isPasswordExpired" src/main/kotlin/` shows usage in login flow
+- [x] `./gradlew compileKotlin` exits 0
+- [x] `./gradlew test` exits 0
+- [x] `PasswordExpiredException` is thrown when password is expired
+- [x] `grep -rn "isPasswordExpired" src/main/kotlin/` shows usage in login flow
 
 ## STOP conditions
 

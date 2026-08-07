@@ -50,9 +50,9 @@ In `PasswordPolicyService.kt`:
 
 ## Done criteria
 
-- [ ] `./gradlew compileKotlin` exits 0
-- [ ] `PasswordPolicyService` uses injected `PasswordEncoder`, not its own instance
-- [ ] `BCryptPasswordEncoder` import removed from PasswordPolicyService.kt
+- [x] `./gradlew compileKotlin` exits 0
+- [x] `PasswordPolicyService` uses injected `PasswordEncoder`, not its own instance
+- [x] `BCryptPasswordEncoder` import removed from PasswordPolicyService.kt
 
 ## STOP conditions
 

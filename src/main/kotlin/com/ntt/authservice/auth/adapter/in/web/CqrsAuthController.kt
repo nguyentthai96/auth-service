@@ -36,7 +36,7 @@ class CqrsAuthController(
 ) {
 
     @PostMapping("/register")
-    fun register(@Valid @RequestBody request: RegisterRequestDto): ResponseEntity<AuthResponse> {
+    suspend fun register(@Valid @RequestBody request: RegisterRequestDto): ResponseEntity<AuthResponse> {
         val command = RegisterCommand(
             username = request.username,
             email = request.email,
@@ -50,7 +50,7 @@ class CqrsAuthController(
     }
 
     @PostMapping("/login")
-    fun login(@Valid @RequestBody request: LoginRequestDto): ResponseEntity<Any> {
+    suspend fun login(@Valid @RequestBody request: LoginRequestDto): ResponseEntity<Any> {
         val command = LoginCommand(
             username = request.username,
             password = request.password,
@@ -91,14 +91,14 @@ class CqrsAuthController(
     }
 
     @PostMapping("/refresh")
-    fun refresh(@RequestBody request: RefreshTokenRequestDto): ResponseEntity<AuthResponse> {
+    suspend fun refresh(@RequestBody request: RefreshTokenRequestDto): ResponseEntity<AuthResponse> {
         val command = RefreshTokenCommand(refreshToken = request.refreshToken)
         val authToken = refreshTokenHandler.handle(command)
         return ResponseEntity.ok(AuthResponse.from(authToken))
     }
 
     @PostMapping("/switch-domain")
-    fun switchDomain(
+    suspend fun switchDomain(
         @RequestBody request: SwitchDomainRequestDto,
         @RequestHeader("Authorization") authHeader: String
     ): ResponseEntity<AuthResponse> {

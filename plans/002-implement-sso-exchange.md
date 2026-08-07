@@ -215,11 +215,11 @@ private fun exchangeCodeForUser(code: String, provider: String, redirectUri: Str
 
 ## Done criteria
 
-- [ ] `./gradlew compileKotlin` exits 0
-- [ ] `./gradlew test` exits 0
-- [ ] `SsoAdapter.exchangeCodeForUser()` no longer throws `UnsupportedOperationException`
-- [ ] `OAuth2TokenExchanger` exists in `auth/adapter/out/sso/`
-- [ ] No files outside the in-scope list are modified
+- [x] `./gradlew compileKotlin` exits 0
+- [x] `./gradlew test` exits 0
+- [x] `SsoAdapter.exchangeCodeForUser()` no longer throws `UnsupportedOperationException`
+- [x] `OAuth2TokenExchanger` exists in `auth/adapter/out/sso/`
+- [x] No files outside the in-scope list are modified
 
 ## STOP conditions
 

@@ -19,7 +19,7 @@ class CheckPermissionHandler(
 ) : QueryHandler<CheckPermissionQuery, Boolean> {
 
     @Transactional(readOnly = true)
-    override fun handle(query: CheckPermissionQuery): Boolean {
+    override suspend fun handle(query: CheckPermissionQuery): Boolean {
         val resource = domainResourceRepository.findByDomainIdAndCodeAndActiveTrue(
             query.domainId, query.resourceCode
         ) ?: return false
@@ -34,5 +34,5 @@ class CheckPermissionHandler(
         return permission.id!! in userPermissionIds
     }
 
-    override fun queryType(): Class<CheckPermissionQuery> = CheckPermissionQuery::class.java
+
 }
