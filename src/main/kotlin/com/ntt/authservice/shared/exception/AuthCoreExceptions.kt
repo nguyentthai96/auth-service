@@ -136,3 +136,27 @@ class PasswordPolicyViolationException(
     message = message,
     httpStatus = HttpStatus.BAD_REQUEST
 )
+
+// --- Login Rate Limiting Exceptions ---
+
+class RateLimitExceededException(
+    val retryAfterSeconds: Long,
+    val dimension: String,
+    message: String = "Too many login attempts from $dimension — retry after $retryAfterSeconds seconds"
+) : AuthException(
+    authError = AuthErrorCode.RATE_LIMITED,
+    message = message,
+    httpStatus = HttpStatus.TOO_MANY_REQUESTS
+)
+
+// --- Session Management Exceptions ---
+
+class SessionLimitExceededException(
+    val maxSessions: Int,
+    val activeCount: Int,
+    message: String = "Maximum active sessions ($maxSessions) exceeded — currently $activeCount active"
+) : AuthException(
+    authError = AuthErrorCode.SESSION_LIMIT_EXCEEDED,
+    message = message,
+    httpStatus = HttpStatus.CONFLICT
+)

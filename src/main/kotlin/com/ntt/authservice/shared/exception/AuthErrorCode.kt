@@ -31,7 +31,9 @@ enum class AuthErrorCode(
     SSO_IDENTITY_CONFLICT("AUTH_016", "auth.sso_identity_conflict", "SSO identity already linked", HttpStatus.CONFLICT),
     PASSWORD_POLICY_VIOLATION("AUTH_017", "auth.password_policy_violation", "Password does not meet requirements", HttpStatus.BAD_REQUEST),
     PASSWORD_EXPIRED("AUTH_018", "auth.password_expired", "Password has expired", HttpStatus.FORBIDDEN),
-    MFA_RATE_LIMITED("AUTH_019", "auth.mfa_rate_limited", "MFA rate limit exceeded — too many failed attempts", HttpStatus.TOO_MANY_REQUESTS);
+    MFA_RATE_LIMITED("AUTH_019", "auth.mfa_rate_limited", "MFA rate limit exceeded — too many failed attempts", HttpStatus.TOO_MANY_REQUESTS),
+    RATE_LIMITED("AUTH_020", "auth.rate_limited", "Too many login attempts", HttpStatus.TOO_MANY_REQUESTS),
+    SESSION_LIMIT_EXCEEDED("AUTH_021", "auth.session_limit", "Maximum active sessions exceeded", HttpStatus.CONFLICT);
 
     /**
      * Bridge to base-core ErrorCodeBase via delegation.

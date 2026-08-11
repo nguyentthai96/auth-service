@@ -13,7 +13,9 @@ data class SecurityProperties(
     val password: PasswordProperties = PasswordProperties(),
     val mfa: MfaProperties = MfaProperties(),
     val captcha: CaptchaProperties = CaptchaProperties(),
-    val sso: SsoProperties = SsoProperties()
+    val sso: SsoProperties = SsoProperties(),
+    val loginRateLimit: LoginRateLimitProperties = LoginRateLimitProperties(),
+    val session: SessionProperties = SessionProperties()
 ) {
     data class JwtProperties(
         val secretKey: String = "",
@@ -21,8 +23,9 @@ data class SecurityProperties(
         val privateKeyPath: String = "",
         val publicKeyPath: String = "",
         val keyId: String = "auth-service-key-1",
-        val accessTokenExpirationMs: Long = 1_800_000,   // 30 min
-        val refreshTokenExpirationMs: Long = 604_800_000, // 7 days
+        val accessTokenExpirationMs: Long = 900_000,       // 15 min (sliding window)
+        val refreshTokenExpirationMs: Long = 604_800_000,   // 7 days
+        val absoluteCeilingMs: Long = 36_000_000,            // 10 hours
         val issuer: String = "auth-service"
     )
 
@@ -57,8 +60,15 @@ data class SecurityProperties(
         val provider: String = "noop",
         val secretKey: String = "",
         val siteKey: String = "",
-        val verifyUrl: String = ""
-    )
+        val verifyUrl: String = "",
+        val altcha: AltchaProperties = AltchaProperties()
+    ) {
+        data class AltchaProperties(
+            val hmacKey: String = "",
+            val difficulty: Int = 50_000,
+            val challengeTtlSeconds: Long = 300
+        )
+    }
 
     data class SsoProperties(
         val enabled: Boolean = false,
@@ -66,4 +76,42 @@ data class SecurityProperties(
         val defaultDomainCode: String = "default",
         val timeoutMs: Long = 10_000
     )
+
+    /**
+     * Multi-dimensional login rate limiting configuration.
+     * Applied via LoginRateLimitFilter before authentication handler.
+     */
+    data class LoginRateLimitProperties(
+        val ip: MfaProperties.LimitConfig = MfaProperties.LimitConfig(
+            maxAttempts = 5, windowSeconds = 60, lockSeconds = 300
+        ),
+        val username: MfaProperties.LimitConfig = MfaProperties.LimitConfig(
+            maxAttempts = 3, windowSeconds = 900, lockSeconds = 1800
+        ),
+        val device: MfaProperties.LimitConfig = MfaProperties.LimitConfig(
+            maxAttempts = 10, windowSeconds = 3600, lockSeconds = 3600
+        ),
+        val redisTimeoutMs: Long = 500
+    )
+
+    /**
+     * Configurable session policy — per-role overrides supported.
+     */
+    data class SessionProperties(
+        val maxSessions: Int = 3,
+        val maxDevices: Int = 3,
+        val onExceed: SessionExceedStrategy = SessionExceedStrategy.REVOKE_OLDEST,
+        val roleOverrides: Map<String, SessionOverride> = emptyMap()
+    ) {
+        enum class SessionExceedStrategy {
+            REVOKE_OLDEST, REJECT_NEW, REVOKE_ALL
+        }
+
+        data class SessionOverride(
+            val maxSessions: Int? = null,
+            val maxDevices: Int? = null,
+            val onExceed: SessionExceedStrategy? = null
+        )
+    }
 }
+

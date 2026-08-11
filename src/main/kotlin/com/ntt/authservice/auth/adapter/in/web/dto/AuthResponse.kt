@@ -6,7 +6,7 @@ package com.ntt.authservice.auth.adapter.`in`.web.dto
  */
 data class AuthResponse(
     val accessToken: String,
-    val refreshToken: String,
+    val refreshToken: String? = null,
     val tokenType: String = "Bearer",
     val expiresIn: Long,
     val userId: Long,

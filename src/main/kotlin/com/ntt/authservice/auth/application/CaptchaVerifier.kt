@@ -55,10 +55,12 @@ class CaptchaConfig {
     @Bean
     fun captchaVerifier(
         props: SecurityProperties,
-        restTemplate: RestTemplate
+        restTemplate: RestTemplate,
+        altchaCaptchaVerifier: AltchaCaptchaVerifier
     ): CaptchaVerifier {
         return when (props.captcha.provider) {
             "turnstile" -> TurnstileCaptchaVerifier(props.captcha, restTemplate)
+            "altcha" -> altchaCaptchaVerifier
             else -> NoopCaptchaVerifier()
         }
     }

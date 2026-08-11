@@ -21,7 +21,9 @@ data class LoginRequestDto(
     @field:NotBlank val password: String,
     val domainCode: String? = null,
     val captchaToken: String? = null,
-    val trustedDeviceHash: String? = null
+    val trustedDeviceHash: String? = null,
+    val deviceFingerprint: String? = null,
+    val captchaPayload: String? = null
 )
 
 data class RefreshTokenRequestDto(

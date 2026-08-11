@@ -68,8 +68,10 @@ base-core:
     node-id: -1    # -1 = auto-detect from hostname
     epoch: 1704067200000  # 2024-01-01T00:00:00Z
 
-# Security Configuration
+# CORS Configuration
 app:
+  cors:
+    allowed-origins: ${CORS_ALLOWED_ORIGINS:http://localhost:3000}
   security:
     enabled: true
     jwt:
@@ -78,8 +80,9 @@ app:
       private-key-path: ${JWT_PRIVATE_KEY_PATH:}
       public-key-path: ${JWT_PUBLIC_KEY_PATH:}
       key-id: ${JWT_KEY_ID:auth-service-key-1}
-      access-token-expiration-ms: 1800000   # 30 minutes
+      access-token-expiration-ms: 900000     # 15 minutes (sliding window)
       refresh-token-expiration-ms: 604800000 # 7 days
+      absolute-ceiling-ms: 36000000          # 10 hours absolute session limit
       issuer: "auth-service"
     password:
       bcrypt-strength: 12
@@ -103,15 +106,43 @@ app:
           lock-seconds: 3600       # 1 hour lock
         redis-timeout-ms: 500      # Timeout for rate limit Redis calls
     captcha:
-      provider: ${CAPTCHA_PROVIDER:noop}   # noop | turnstile | hcaptcha | recaptcha
+      provider: ${CAPTCHA_PROVIDER:noop}   # noop | turnstile | hcaptcha | recaptcha | altcha
       secret-key: ${CAPTCHA_SECRET_KEY:}
       site-key: ${CAPTCHA_SITE_KEY:}
       verify-url: ${CAPTCHA_VERIFY_URL:}
+      altcha:
+        hmac-key: ${ALTCHA_HMAC_KEY:change-this-in-production-min-32-chars}
+        difficulty: 50000               # SHA-256 iterations for PoW
+        challenge-ttl-seconds: 300      # Challenge expires after 5 minutes
     sso:
       enabled: ${SSO_ENABLED:false}
       auto-provision-enabled: ${SSO_AUTO_PROVISION:false}
       default-domain-code: ${SSO_DEFAULT_DOMAIN:default}
       timeout-ms: 10000
+    # Login Rate Limiting (multi-dimensional)
+    login-rate-limit:
+      ip:
+        max-attempts: 5            # Max login attempts per IP per window
+        window-seconds: 60         # 1 minute window
+        lock-seconds: 300          # 5 minutes lock
+      username:
+        max-attempts: 3            # Max login attempts per username per window
+        window-seconds: 900        # 15 minutes window
+        lock-seconds: 1800         # 30 minutes lock
+      device:
+        max-attempts: 10           # Max login attempts per device per window
+        window-seconds: 3600       # 1 hour window
+        lock-seconds: 3600         # 1 hour lock
+      redis-timeout-ms: 500
+    # Session Management
+    session:
+      max-sessions: 3              # Max active sessions per user
+      max-devices: 3               # Max devices per user
+      on-exceed: REVOKE_OLDEST     # REVOKE_OLDEST | REJECT_NEW | REVOKE_ALL
+      role-overrides:
+        SUPER_ADMIN:
+          max-sessions: 1
+          on-exceed: REVOKE_ALL
     # CQRS Feature Flag — when enabled, handlers replace AuthService/RbacEngine
     cqrs:
       enabled: ${CQRS_ENABLED:true}

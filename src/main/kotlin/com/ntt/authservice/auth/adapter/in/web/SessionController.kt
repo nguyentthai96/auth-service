@@ -1,0 +1,83 @@
+package com.ntt.authservice.auth.adapter.`in`.web
+
+import com.ntt.authservice.auth.adapter.out.persistence.entity.LoginSessionEntity
+import com.ntt.authservice.auth.application.LoginSessionService
+import com.ntt.authservice.shared.exception.InvalidCredentialsException
+import org.springframework.http.ResponseEntity
+import org.springframework.security.core.context.SecurityContextHolder
+import org.springframework.web.bind.annotation.*
+
+/**
+ * Session management API — list active sessions, revoke individual or all sessions.
+ * Requires authentication (JWT Bearer token).
+ */
+@RestController
+@RequestMapping("/api/auth/sessions")
+class SessionController(
+    private val loginSessionService: LoginSessionService
+) {
+
+    /**
+     * Get all active sessions for the current user.
+     */
+    @GetMapping
+    fun getActiveSessions(): ResponseEntity<List<SessionResponse>> {
+        val userId = getCurrentUserId()
+        val sessions = loginSessionService.getActiveSessions(userId)
+        return ResponseEntity.ok(sessions.map { it.toResponse() })
+    }
+
+    /**
+     * Revoke a specific session by ID.
+     */
+    @DeleteMapping("/{sessionId}")
+    fun revokeSession(@PathVariable sessionId: Long): ResponseEntity<Map<String, String>> {
+        val userId = getCurrentUserId()
+        val revoked = loginSessionService.revokeSession(sessionId, userId, "MANUAL")
+        return if (revoked) {
+            ResponseEntity.ok(mapOf("message" to "Session revoked"))
+        } else {
+            ResponseEntity.notFound().build()
+        }
+    }
+
+    /**
+     * Revoke all sessions for the current user (force re-login on all devices).
+     */
+    @DeleteMapping
+    fun revokeAllSessions(): ResponseEntity<Map<String, String>> {
+        val userId = getCurrentUserId()
+        loginSessionService.revokeAllSessions(userId, "MANUAL_ALL")
+        return ResponseEntity.ok(mapOf("message" to "All sessions revoked"))
+    }
+
+    private fun getCurrentUserId(): Long {
+        return (SecurityContextHolder.getContext().authentication?.principal as? String)?.toLong()
+            ?: throw InvalidCredentialsException()
+    }
+
+    private fun LoginSessionEntity.toResponse(): SessionResponse = SessionResponse(
+        id = this.id!!,
+        ipAddress = this.ipAddress,
+        deviceType = this.deviceType,
+        browserName = this.browserName,
+        osName = this.osName,
+        loginAt = this.loginAt.toString(),
+        lastActivityAt = this.lastActivityAt?.toString(),
+        isNewDevice = this.isNewDevice
+    )
+}
+
+/**
+ * Session response DTO.
+ */
+data class SessionResponse(
+    val id: Long,
+    val ipAddress: String,
+    val deviceType: String?,
+    val browserName: String?,
+    val osName: String?,
+    val loginAt: String,
+    val lastActivityAt: String?,
+    val isNewDevice: Boolean
+)

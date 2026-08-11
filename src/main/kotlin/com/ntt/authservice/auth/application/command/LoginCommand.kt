@@ -12,5 +12,9 @@ data class LoginCommand(
     val password: String,
     val domainCode: String? = null,
     val captchaToken: String? = null,
-    val trustedDeviceHash: String? = null
+    val trustedDeviceHash: String? = null,
+    val ipAddress: String? = null,
+    val userAgent: String? = null,
+    val deviceFingerprint: String? = null
 ) : Command<LoginResult>
+
