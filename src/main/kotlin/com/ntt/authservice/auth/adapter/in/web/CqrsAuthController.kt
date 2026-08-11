@@ -17,6 +17,8 @@ import jakarta.validation.constraints.Email
 import jakarta.validation.constraints.NotBlank
 import jakarta.validation.constraints.Size
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty
+import org.springframework.context.MessageSource
+import org.springframework.context.i18n.LocaleContextHolder
 import org.springframework.http.HttpStatus
 import org.springframework.http.ResponseEntity
 import org.springframework.web.bind.annotation.*
@@ -39,7 +41,8 @@ class CqrsAuthController(
     private val buildAuthResponseHandler: BuildAuthResponseHandler,
     private val passwordPolicyService: PasswordPolicyService,
     private val loginSessionService: LoginSessionService,
-    private val securityProperties: SecurityProperties
+    private val securityProperties: SecurityProperties,
+    private val messageSource: MessageSource
 ) {
 
     @PostMapping("/register")
@@ -106,7 +109,8 @@ class CqrsAuthController(
         // Clear refresh token cookie
         clearRefreshTokenCookie(httpResponse)
 
-        return ResponseEntity.ok(mapOf("message" to "Logged out successfully"))
+        val message = messageSource.getMessage("auth.logout_success", null, LocaleContextHolder.getLocale())
+        return ResponseEntity.ok(mapOf("message" to message))
     }
 
     @PostMapping("/change-password")
@@ -117,14 +121,16 @@ class CqrsAuthController(
         val userId = getCurrentUserId()
         // TODO: resolve domainId from user's active domain
         passwordPolicyService.changePassword(userId, request.oldPassword, request.newPassword, 0L)
-        return ResponseEntity.ok(mapOf("message" to "Password changed successfully"))
+        val message = messageSource.getMessage("auth.password_changed", null, LocaleContextHolder.getLocale())
+        return ResponseEntity.ok(mapOf("message" to message))
     }
 
     @PostMapping("/forgot-password")
     fun forgotPassword(@Valid @RequestBody request: ForgotPasswordRequestDto): ResponseEntity<Map<String, String>> {
         // Always return 200 to prevent email enumeration
         // TODO: trigger password reset email
-        return ResponseEntity.ok(mapOf("message" to "If the email exists, a reset link has been sent"))
+        val message = messageSource.getMessage("auth.password_reset_sent", null, "If the email exists, a reset link has been sent", LocaleContextHolder.getLocale())
+        return ResponseEntity.ok(mapOf("message" to message))
     }
 
     @PostMapping("/refresh")
