@@ -22,8 +22,10 @@ class RefreshTokenHandler(
     private val tokenGenerator: TokenGenerator
 ) : CommandHandler<RefreshTokenCommand, AuthToken> {
 
+    override fun commandType(): Class<RefreshTokenCommand> = RefreshTokenCommand::class.java
+
     @Transactional
-    override suspend fun handle(command: RefreshTokenCommand): AuthToken {
+    override fun handle(command: RefreshTokenCommand): AuthToken {
         val tokenHash = TokenHasher.hash(command.refreshToken)
         val storedToken = tokenStore.findValidRefreshToken(tokenHash)
             ?: throw TokenExpiredException()

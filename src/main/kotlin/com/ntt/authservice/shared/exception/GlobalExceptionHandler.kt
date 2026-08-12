@@ -31,7 +31,7 @@ import java.net.URI
 class AuthControllerAdvice(
     validator: LocalValidatorFactoryBean,
     private val messageSource: MessageSource
-) : BaseControllerAdvice(validator, messageSource) {
+) : BaseControllerAdvice(validator) {
 
     /**
      * Handle AuthException hierarchy with RFC 7807 ProblemDetail.
@@ -103,5 +103,22 @@ class AuthControllerAdvice(
             is MfaAccountLockedException -> arrayOf(ex.retryAfterSeconds)
             else -> null
         }
+    }
+
+    /**
+     * Resolve i18n message using MessageSource.
+     * Falls back to defaultMessage if no translation is found.
+     */
+    private fun resolveMessage(msgCode: String?, args: Array<Any>?, defaultMessage: String): String {
+        if (msgCode.isNullOrBlank()) return defaultMessage
+        return messageSource.getMessage(msgCode, args, defaultMessage, LocaleContextHolder.getLocale())
+            ?: defaultMessage
+    }
+
+    /**
+     * Set Content-Language header based on current locale.
+     */
+    private fun setContentLanguageHeader(response: HttpServletResponse) {
+        response.setHeader("Content-Language", LocaleContextHolder.getLocale().toLanguageTag())
     }
 }

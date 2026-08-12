@@ -42,7 +42,7 @@ class LoginSessionEntity : SnowflakePersistentAuditableEntity() {
     var geoCountry: String? = null
 
     @Column(name = "is_active", nullable = false)
-    var isActive: Boolean = true
+    var sessionActive: Boolean = true
 
     @Column(name = "is_new_device", nullable = false)
     var isNewDevice: Boolean = false

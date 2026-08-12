@@ -2,6 +2,10 @@ spring:
   application:
     name: auth-service
 
+  docker:
+    compose:
+      enabled: false
+
   datasource:
     url: jdbc:postgresql://localhost:5432/auth_db
     username: auth_user
@@ -10,7 +14,7 @@ spring:
 
   jpa:
     hibernate:
-      ddl-auto: validate
+      ddl-auto: update
     show-sql: false
     properties:
       hibernate:
@@ -45,13 +49,17 @@ spring:
       client:
         registration:
           google:
-            client-id: ${GOOGLE_CLIENT_ID:}
-            client-secret: ${GOOGLE_CLIENT_SECRET:}
+            client-id: ${GOOGLE_CLIENT_ID:placeholder-google-client-id}
+            client-secret: ${GOOGLE_CLIENT_SECRET:placeholder-google-secret}
             scope: openid,email,profile
+            redirect-uri: "{baseUrl}/login/oauth2/code/{registrationId}"
           microsoft:
-            client-id: ${MICROSOFT_CLIENT_ID:}
-            client-secret: ${MICROSOFT_CLIENT_SECRET:}
+            client-id: ${MICROSOFT_CLIENT_ID:placeholder-microsoft-client-id}
+            client-secret: ${MICROSOFT_CLIENT_SECRET:placeholder-microsoft-secret}
             scope: openid,email,profile
+            authorization-grant-type: authorization_code
+            redirect-uri: "{baseUrl}/login/oauth2/code/{registrationId}"
+            client-name: Microsoft
         provider:
           microsoft:
             authorization-uri: https://login.microsoftonline.com/common/oauth2/v2.0/authorize

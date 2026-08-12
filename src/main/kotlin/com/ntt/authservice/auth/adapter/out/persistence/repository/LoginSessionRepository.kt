@@ -7,11 +7,11 @@ import org.springframework.stereotype.Repository
 @Repository
 interface LoginSessionRepository : JpaRepository<LoginSessionEntity, Long> {
 
-    fun findByUserIdAndIsActiveTrue(userId: Long): List<LoginSessionEntity>
+    fun findByUserIdAndSessionActiveTrue(userId: Long): List<LoginSessionEntity>
 
-    fun countByUserIdAndIsActiveTrue(userId: Long): Long
+    fun countByUserIdAndSessionActiveTrue(userId: Long): Long
 
-    fun findFirstByUserIdAndIsActiveTrueOrderByLoginAtAsc(userId: Long): LoginSessionEntity?
+    fun findFirstByUserIdAndSessionActiveTrueOrderByLoginAtAsc(userId: Long): LoginSessionEntity?
 
     fun findByDeviceFingerprintAndUserId(deviceFingerprint: String, userId: Long): List<LoginSessionEntity>
 }

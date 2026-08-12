@@ -21,8 +21,10 @@ class GetUserRolesHandler(
 
     private val log = LoggerFactory.getLogger(GetUserRolesHandler::class.java)
 
+    override fun queryType(): Class<GetUserRolesQuery> = GetUserRolesQuery::class.java
+
     @Transactional(readOnly = true)
-    override suspend fun handle(query: GetUserRolesQuery): List<String> {
+    override fun handle(query: GetUserRolesQuery): List<String> {
         // Check cache first
         val cached = permissionCache.getRoles(query.userId, query.domainId)
         if (cached != null) {

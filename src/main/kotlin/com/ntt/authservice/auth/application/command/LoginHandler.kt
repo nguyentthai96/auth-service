@@ -41,8 +41,10 @@ class LoginHandler(
 
     private val log = LoggerFactory.getLogger(LoginHandler::class.java)
 
+    override fun commandType(): Class<LoginCommand> = LoginCommand::class.java
+
     @Transactional
-    override suspend fun handle(command: LoginCommand): LoginResult {
+    override fun handle(command: LoginCommand): LoginResult {
         val user = userPort.findByUsernameAndActive(command.username)
             ?: run {
                 // Record failed attempt for rate limiting (even for non-existent users)

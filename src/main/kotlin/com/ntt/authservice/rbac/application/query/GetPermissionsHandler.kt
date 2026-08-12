@@ -29,8 +29,10 @@ class GetPermissionsHandler(
 
     private val log = LoggerFactory.getLogger(GetPermissionsHandler::class.java)
 
+    override fun queryType(): Class<GetPermissionsQuery> = GetPermissionsQuery::class.java
+
     @Transactional(readOnly = true)
-    override suspend fun handle(query: GetPermissionsQuery): List<String> {
+    override fun handle(query: GetPermissionsQuery): List<String> {
         // Check cache first
         val cached = permissionCache.getPermissions(query.userId, query.domainId)
         if (cached != null) {

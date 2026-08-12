@@ -45,7 +45,7 @@ class LoginSessionService(
             this.deviceType = uaInfo.deviceType
             this.browserName = uaInfo.browserName
             this.osName = uaInfo.osName
-            this.isActive = true
+            this.sessionActive = true
             this.isNewDevice = isNewDevice
             this.loginAt = Instant.now()
             this.lastActivityAt = Instant.now()
@@ -85,7 +85,7 @@ class LoginSessionService(
      * Get all active sessions for a user.
      */
     fun getActiveSessions(userId: Long): List<LoginSessionEntity> {
-        return loginSessionRepository.findByUserIdAndIsActiveTrue(userId)
+        return loginSessionRepository.findByUserIdAndSessionActiveTrue(userId)
     }
 
     /**
@@ -98,7 +98,7 @@ class LoginSessionService(
         val session = loginSessionRepository.findById(sessionId).orElse(null) ?: return false
         if (session.userId != userId) return false
 
-        session.isActive = false
+        session.sessionActive = false
         session.revokedAt = Instant.now()
         session.revokeReason = reason
         loginSessionRepository.save(session)
@@ -112,9 +112,9 @@ class LoginSessionService(
      */
     @Transactional
     fun revokeOldestSession(userId: Long, reason: String = "POLICY_EXCEED") {
-        val oldest = loginSessionRepository.findFirstByUserIdAndIsActiveTrueOrderByLoginAtAsc(userId)
+        val oldest = loginSessionRepository.findFirstByUserIdAndSessionActiveTrueOrderByLoginAtAsc(userId)
         if (oldest != null) {
-            oldest.isActive = false
+            oldest.sessionActive = false
             oldest.revokedAt = Instant.now()
             oldest.revokeReason = reason
             loginSessionRepository.save(oldest)
@@ -127,10 +127,10 @@ class LoginSessionService(
      */
     @Transactional
     fun revokeAllSessions(userId: Long, reason: String = "POLICY_EXCEED") {
-        val sessions = loginSessionRepository.findByUserIdAndIsActiveTrue(userId)
+        val sessions = loginSessionRepository.findByUserIdAndSessionActiveTrue(userId)
         val now = Instant.now()
         sessions.forEach { session ->
-            session.isActive = false
+            session.sessionActive = false
             session.revokedAt = now
             session.revokeReason = reason
         }

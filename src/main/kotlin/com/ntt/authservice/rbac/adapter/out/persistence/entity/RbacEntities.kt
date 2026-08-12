@@ -19,8 +19,7 @@ class DomainEntity : SnowflakePersistentAuditableEntity() {
 
     var description: String? = null
 
-    @Column
-    @Lob
+    @Column(columnDefinition = "jsonb")
     var config: String = "{}"
 
     @Column(nullable = false, length = 20)

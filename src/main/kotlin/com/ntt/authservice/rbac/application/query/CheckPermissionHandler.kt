@@ -18,8 +18,10 @@ class CheckPermissionHandler(
     private val rbacResolver: RbacResolver
 ) : QueryHandler<CheckPermissionQuery, Boolean> {
 
+    override fun queryType(): Class<CheckPermissionQuery> = CheckPermissionQuery::class.java
+
     @Transactional(readOnly = true)
-    override suspend fun handle(query: CheckPermissionQuery): Boolean {
+    override fun handle(query: CheckPermissionQuery): Boolean {
         val resource = domainResourceRepository.findByDomainIdAndCodeAndActiveTrue(
             query.domainId, query.resourceCode
         ) ?: return false

@@ -22,8 +22,10 @@ class RevokeSessionsHandler(
 
     private val log = LoggerFactory.getLogger(RevokeSessionsHandler::class.java)
 
+    override fun commandType(): Class<RevokeSessionsCommand> = RevokeSessionsCommand::class.java
+
     @Transactional
-    override suspend fun handle(command: RevokeSessionsCommand): Int {
+    override fun handle(command: RevokeSessionsCommand): Int {
         // Verify user exists
         userPort.findById(command.userId)
             ?: throw ResourceNotFoundException("User", command.userId)

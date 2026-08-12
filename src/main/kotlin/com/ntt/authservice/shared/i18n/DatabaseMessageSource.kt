@@ -50,9 +50,6 @@ class DatabaseMessageSource(
         }
     }
 
-    private fun createMessageFormat(pattern: String, locale: Locale): MessageFormat {
-        return MessageFormat(pattern, locale)
-    }
 
     companion object {
         private val log = LoggerFactory.getLogger(DatabaseMessageSource::class.java)

@@ -46,7 +46,7 @@ class CqrsAuthController(
 ) {
 
     @PostMapping("/register")
-    suspend fun register(@Valid @RequestBody request: RegisterRequestDto): ResponseEntity<AuthResponse> {
+    fun register(@Valid @RequestBody request: RegisterRequestDto): ResponseEntity<AuthResponse> {
         val command = RegisterCommand(
             username = request.username,
             email = request.email,
@@ -60,7 +60,7 @@ class CqrsAuthController(
     }
 
     @PostMapping("/login")
-    suspend fun login(
+    fun login(
         @Valid @RequestBody request: LoginRequestDto,
         httpRequest: HttpServletRequest,
         httpResponse: HttpServletResponse
@@ -130,11 +130,12 @@ class CqrsAuthController(
         // Always return 200 to prevent email enumeration
         // TODO: trigger password reset email
         val message = messageSource.getMessage("auth.password_reset_sent", null, "If the email exists, a reset link has been sent", LocaleContextHolder.getLocale())
+            ?: "If the email exists, a reset link has been sent"
         return ResponseEntity.ok(mapOf("message" to message))
     }
 
     @PostMapping("/refresh")
-    suspend fun refresh(
+    fun refresh(
         httpRequest: HttpServletRequest,
         httpResponse: HttpServletResponse
     ): ResponseEntity<AuthResponse> {
@@ -154,7 +155,7 @@ class CqrsAuthController(
     }
 
     @PostMapping("/switch-domain")
-    suspend fun switchDomain(
+    fun switchDomain(
         @RequestBody request: SwitchDomainRequestDto,
         @RequestHeader("Authorization") authHeader: String
     ): ResponseEntity<AuthResponse> {
