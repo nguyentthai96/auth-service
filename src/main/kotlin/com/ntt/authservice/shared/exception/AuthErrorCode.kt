@@ -33,7 +33,19 @@ enum class AuthErrorCode(
     PASSWORD_EXPIRED("AUTH_018", "auth.password_expired", "Password has expired", HttpStatus.FORBIDDEN),
     MFA_RATE_LIMITED("AUTH_019", "auth.mfa_rate_limited", "MFA rate limit exceeded — too many failed attempts", HttpStatus.TOO_MANY_REQUESTS),
     RATE_LIMITED("AUTH_020", "auth.rate_limited", "Too many login attempts", HttpStatus.TOO_MANY_REQUESTS),
-    SESSION_LIMIT_EXCEEDED("AUTH_021", "auth.session_limit", "Maximum active sessions exceeded", HttpStatus.CONFLICT);
+    SESSION_LIMIT_EXCEEDED("AUTH_021", "auth.session_limit", "Maximum active sessions exceeded", HttpStatus.CONFLICT),
+
+    // --- E2EE (End-to-End Encryption) Error Codes — AUTH_030~039 ---
+    E2EE_TIME_SKEW("AUTH_030", "auth.e2ee_time_skew", "Request timestamp out of tolerance window", HttpStatus.BAD_REQUEST),
+    E2EE_VERSION_UNKNOWN("AUTH_031", "auth.e2ee_version_unknown", "Unknown cipher version", HttpStatus.BAD_REQUEST),
+    E2EE_CONTEXT_MISMATCH("AUTH_032", "auth.e2ee_context_mismatch", "AAD context mismatch — possible cut-and-paste attack", HttpStatus.FORBIDDEN),
+    E2EE_REPLAY_DETECTED("AUTH_033", "auth.e2ee_replay_detected", "Duplicate nonce — replay attack detected", HttpStatus.CONFLICT),
+    E2EE_VERSION_SUNSET("AUTH_034", "auth.e2ee_version_sunset", "Cipher version past sunset deadline", HttpStatus.UPGRADE_REQUIRED),
+    E2EE_DECRYPT_FAILED("AUTH_035", "auth.e2ee_decrypt_failed", "Decryption failed — corrupted or tampered payload", HttpStatus.INTERNAL_SERVER_ERROR),
+    E2EE_KMS_UNAVAILABLE("AUTH_036", "auth.e2ee_kms_unavailable", "KMS unavailable and no cached DEK", HttpStatus.SERVICE_UNAVAILABLE),
+    E2EE_KEY_EXPIRED("AUTH_037", "auth.e2ee_key_expired", "Key session expired — re-exchange required", HttpStatus.UNAUTHORIZED),
+    E2EE_DEVICE_UNREGISTERED("AUTH_038", "auth.e2ee_device_unregistered", "Device not registered for E2EE", HttpStatus.FORBIDDEN),
+    E2EE_MAX_DEVICES("AUTH_039", "auth.e2ee_max_devices", "Maximum devices per user exceeded", HttpStatus.TOO_MANY_REQUESTS);
 
     /**
      * Bridge to base-core ErrorCodeBase via delegation.

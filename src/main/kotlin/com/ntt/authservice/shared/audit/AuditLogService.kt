@@ -1,6 +1,8 @@
 package com.ntt.authservice.shared.audit
 
+import com.ntt.authservice.auth.application.cipher.EncryptedAuditService
 import org.slf4j.LoggerFactory
+import org.springframework.beans.factory.ObjectProvider
 import org.springframework.stereotype.Service
 import jakarta.servlet.http.HttpServletRequest
 import org.springframework.web.context.request.RequestContextHolder
@@ -11,7 +13,9 @@ import org.springframework.web.context.request.ServletRequestAttributes
  * Logs to structured logger (JSON) and optionally to audit_log table.
  */
 @Service
-class AuditLogService {
+class AuditLogService(
+    private val encryptedAuditService: ObjectProvider<EncryptedAuditService>
+) {
 
     private val log = LoggerFactory.getLogger("AUDIT")
 
@@ -41,6 +45,25 @@ class AuditLogService {
         )
 
         // TODO: persist to audit_log table for compliance requirements
+    }
+
+    /**
+     * Log an encrypted audit event — delegates to EncryptedAuditService.
+     * Backward compatible: if EncryptedAuditService not available, falls back to logEvent.
+     */
+    fun logEncryptedAction(
+        action: AuditAction,
+        userId: String?,
+        sensitivePayload: String? = null,
+        keyIdUsed: String? = null
+    ) {
+        val service = encryptedAuditService.ifAvailable
+        if (service != null) {
+            service.logOperation(userId, action.name, sensitivePayload, keyIdUsed)
+        } else {
+            // Fallback to standard logging (without sensitive payload)
+            log.info("AUDIT (unencrypted fallback) action={} userId={}", action.name, userId)
+        }
     }
 
     private fun getCurrentRequest(): HttpServletRequest? {
@@ -79,5 +102,13 @@ enum class AuditAction {
     ACCOUNT_LOCKED,
     MFA_OTP_LOCKED,
     MFA_LOGIN_LOCKED,
-    MFA_ADMIN_UNLOCKED
+    MFA_ADMIN_UNLOCKED,
+
+    // E2EE Audit Actions
+    E2EE_KEY_EXCHANGE,
+    E2EE_KEY_ROTATED,
+    E2EE_DECRYPT_REQUEST,
+    E2EE_VAULT_ACCESS_GRANTED,
+    E2EE_VAULT_ACCESS_DENIED,
+    E2EE_REPLAY_BLOCKED
 }

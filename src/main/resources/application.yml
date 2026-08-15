@@ -161,6 +161,41 @@ app:
         l1-max-size: 10000
         l2-ttl-seconds: 1800     # Redis distributed cache (30 min)
         l2-key-prefix: "auth:perm:"
+    # E2EE Configuration — maps to CipherProperties (base-security-starter)
+    cipher:
+      enabled: true
+      http:
+        enabled: true
+        order: 50
+        exclude-paths:
+          - /actuator/**
+          - /auth/key-exchange
+          - /health
+          - /v3/api-docs/**
+      anti-replay:
+        enabled: true
+        window-seconds: 300          # ±5 minutes tolerance
+        initial-window-seconds: 600  # ±10 minutes for first request
+        nonce-ttl-seconds: 600       # 10 minutes nonce dedup TTL
+        nonce-cache-prefix: "cipher:nonce:"
+      key-exchange:
+        enabled: true
+        session-ttl: 86400000        # 24 hours (ms)
+        max-devices-per-user: 5
+        rotation-grace-period: 7200000 # 2 hours
+      signing:
+        enabled: true
+      cache:
+        l1-max-size: 500
+        l1-expire-after-write: 5m
+        l2-ttl: 30m
+      timeout:
+        key-lookup-ms: 500
+        policy-lookup-ms: 200
+      retry:
+        key-session-store-max-attempts: 3
+      key:
+        app-key-id: ${CIPHER_APP_KEY_ID:auth-service-cipher-key}
 
 # Actuator
 management:
