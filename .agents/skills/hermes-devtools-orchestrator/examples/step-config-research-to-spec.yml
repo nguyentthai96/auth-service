@@ -1,0 +1,59 @@
+# Example: Step config for post-research workflow chain
+# When research is already complete (openspec/research/<feature>/ exists),
+# agent should skip wf_feature_research and start from brainstorm or pre_openspec.
+#
+# This example shows wf_brainstorm_openspec with research artifacts as input.
+#
+# Scenario:
+#   User says: "Tôi đã có research về hermes-task-dashboard,
+#               giờ muốn brainstorm và generate spec"
+#   Agent detects: openspec/research/hermes-task-dashboard/ exists
+#   Agent selects: wf_brainstorm_openspec → wf_openspec → wf_openspec_apply
+
+id: wf_brainstorm_openspec
+name: "Brainstorm from Research"
+description: "Brainstorm design approaches using existing research artifacts"
+required: true
+skip: false
+depends_on: []
+
+# Input populated from existing research output
+input:
+  # Mode 3: Post-research brainstorming
+  research_dir: "openspec/research/hermes-task-dashboard/"
+
+  # Feature name for output directory
+  change_name: "hermes-task-dashboard"
+
+  # Extracted from research summary (agent reads research_notes.md)
+  idea_description: |
+    Based on research findings, design a task queue monitoring dashboard
+    for Spring Boot microservices with the following tech stack:
+    - Backend: Spring Boot 3.x with Redis Streams
+    - Frontend: React 18 with real-time WebSocket updates
+    - Queue: Redis Streams (chosen over RabbitMQ for simplicity)
+    
+    Key design decisions to brainstorm:
+    1. Dashboard layout: single-page vs multi-tab
+    2. Real-time update strategy: WebSocket vs SSE
+    3. Authentication: integrate with existing OAuth2 or standalone
+    4. Data retention: how long to keep queue history
+
+  # Constraints from project context
+  constraints: |
+    - Must integrate with existing auth-service (OAuth2)
+    - Performance: 100 concurrent dashboard sessions
+    - Team: 3 devs, 4 sprints (8 weeks)
+    - Must be deployable as Docker container
+    - No additional infrastructure (use existing Redis)
+
+# Headless rules for brainstorm (auto-decide, no human interaction)
+headless_rules: |
+  ## HEADLESS MODE ADAPTATIONS — Brainstorm
+  - Read research artifacts from the specified research_dir.
+  - Auto-select the most balanced approach (cost/complexity/value).
+  - Generate comparison of ≥2 architectural approaches.
+  - Document trade-offs for each approach.
+  - Output brainstorm results to openspec/changes/<change_name>/.
+  - Create artifact_context.yml for downstream workflows.
+  - Do NOT wait for user input — make autonomous decisions.

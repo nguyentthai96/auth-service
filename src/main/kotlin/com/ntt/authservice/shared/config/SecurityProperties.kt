@@ -101,7 +101,9 @@ data class SecurityProperties(
         val maxSessions: Int = 3,
         val maxDevices: Int = 3,
         val onExceed: SessionExceedStrategy = SessionExceedStrategy.REVOKE_OLDEST,
-        val roleOverrides: Map<String, SessionOverride> = emptyMap()
+        val roleOverrides: Map<String, SessionOverride> = emptyMap(),
+        val inactivityTimeoutMinutes: Long = 30,
+        val cleanupCronExpression: String = "0 */5 * * * *"
     ) {
         enum class SessionExceedStrategy {
             REVOKE_OLDEST, REJECT_NEW, REVOKE_ALL

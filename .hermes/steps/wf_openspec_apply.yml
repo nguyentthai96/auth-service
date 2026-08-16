@@ -1,0 +1,19 @@
+# Step config for wf_openspec_apply
+id: wf_openspec_apply
+name: "OpenSpec Apply"
+description: "Implement from specification"
+required: true
+skip: false
+depends_on: []
+
+# Custom input passed to prompt Layer 4
+input: {}
+
+# Override headless rules (leave empty for default)
+headless_rules: ""
+
+# Override validation rules (leave empty for default)
+# validation:
+#   required_files: []
+#   content_checks: []
+#   min_size_bytes: 0

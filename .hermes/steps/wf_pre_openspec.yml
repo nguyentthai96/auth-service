@@ -1,0 +1,19 @@
+# Step config for wf_pre_openspec
+id: wf_pre_openspec
+name: "Pre-OpenSpec Analysis"
+description: "URD analysis and scope detection"
+required: true
+skip: false
+depends_on: []
+
+# Custom input passed to prompt Layer 4
+input: {}
+
+# Override headless rules (leave empty for default)
+headless_rules: ""
+
+# Override validation rules (leave empty for default)
+# validation:
+#   required_files: []
+#   content_checks: []
+#   min_size_bytes: 0

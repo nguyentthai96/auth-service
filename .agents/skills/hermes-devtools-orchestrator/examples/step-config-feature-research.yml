@@ -1,0 +1,73 @@
+# Example: Step config for wf_feature_research with populated input
+# This demonstrates how to pass a seed prompt/idea to the research workflow.
+#
+# The agent MUST populate `input:` before running the pipeline.
+# Without seed_prompt, research runs blind and produces generic output.
+#
+# Usage:
+#   1. Copy to .hermes/steps/wf_feature_research.yml
+#   2. Replace values with actual user context
+#   3. Run: ./hermes-pipeline start --config <config>
+
+id: wf_feature_research
+name: "Feature Research"
+description: "Deep research on technologies and approaches for a new feature"
+required: true
+skip: false
+depends_on: []
+
+# Custom input passed to prompt Layer 4 (FR-009)
+# This is the CRITICAL section — agent must populate from user context
+input:
+  # REQUIRED: The initial idea/prompt that seeds the research
+  seed_prompt: |
+    Research about implementing a task queue dashboard with real-time
+    monitoring for Spring Boot microservices. The dashboard should:
+    - Show queue depth, processing rate, and error rate
+    - Support retry of failed tasks
+    - Integrate with existing Redis-based task queue
+    - Provide WebSocket-based real-time updates
+
+  # REQUIRED: Feature identifier used for output directory naming
+  feature_name: "hermes-task-dashboard"
+
+  # OPTIONAL: Narrow the research scope to specific technologies
+  technology_scope: "Spring Boot 3.x, React 18, Redis Streams, WebSocket"
+
+  # OPTIONAL: Specific research questions to answer
+  research_goals: |
+    - Compare ≥3 queue visualization approaches with pros/cons
+    - Evaluate React Admin vs Grafana for dashboard UI
+    - Research WebSocket vs SSE for real-time data streaming
+    - Find production-ready examples of task queue monitoring
+    - Identify security considerations for admin dashboards
+
+  # OPTIONAL: Keywords to guide web search
+  search_keywords:
+    - "task queue dashboard spring boot 2025"
+    - "redis streams monitoring dashboard"
+    - "real-time queue metrics websocket react"
+    - "spring boot admin dashboard best practices"
+
+  # OPTIONAL: Prior context to build upon
+  prior_research_dir: ""  # e.g., "openspec/research/redis-streams/"
+
+# Override headless rules for research workflow
+headless_rules: |
+  ## HEADLESS MODE ADAPTATIONS — Feature Research
+  - Auto-select the most comprehensive research approach.
+  - Use web search tools to gather real data — do NOT fabricate sources.
+  - Write all research output to openspec/research/<feature_name>/.
+  - Generate minimum 5 unique sources per research topic.
+  - If search returns 0 results, broaden the query and retry.
+  - Document all sources with URLs for traceability.
+  - Produce comparison matrix for any technology evaluation.
+
+# Validation: verify research output quality
+validation:
+  required_files:
+    - "openspec/research/hermes-task-dashboard/research_notes.md"
+  content_checks:
+    - pattern: "## Sources"
+      min_occurrences: 1
+  min_size_bytes: 2000

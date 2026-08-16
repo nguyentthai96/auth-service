@@ -147,6 +147,8 @@ app:
       max-sessions: 3              # Max active sessions per user
       max-devices: 3               # Max devices per user
       on-exceed: REVOKE_OLDEST     # REVOKE_OLDEST | REJECT_NEW | REVOKE_ALL
+      inactivity-timeout-minutes: 30   # Auto-expire after 30 min inactive
+      cleanup-cron-expression: "0 */5 * * * *"  # Run cleanup every 5 min
       role-overrides:
         SUPER_ADMIN:
           max-sessions: 1

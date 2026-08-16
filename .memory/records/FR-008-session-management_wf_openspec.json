@@ -1,0 +1,17 @@
+{
+  "feature": "FR-008-session-management",
+  "workflow": "wf_openspec",
+  "outcome": "success",
+  "timestamp": "2026-08-16T17:03:37.043830+00:00",
+  "duration_seconds": 10,
+  "tokens_used": 0,
+  "prompt_layer_tokens": {},
+  "output_artifacts": [
+    "/Users/nguyenthanhthai/Desktop/workspace_research/boilerplate/services/auth-service/openspec/changes/FR-008-session-management/proposal.md",
+    "/Users/nguyenthanhthai/Desktop/workspace_research/boilerplate/services/auth-service/openspec/changes/FR-008-session-management/design.md",
+    "/Users/nguyenthanhthai/Desktop/workspace_research/boilerplate/services/auth-service/openspec/changes/FR-008-session-management/tasks.md"
+  ],
+  "errors": [],
+  "lesson_extracted": null,
+  "recovery_pattern": null
+}

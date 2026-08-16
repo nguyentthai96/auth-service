@@ -1,0 +1,15 @@
+{
+  "feature": "FR-009-account-lifecycle",
+  "workflow": "wf_pre_openspec",
+  "outcome": "success",
+  "timestamp": "2026-08-16T17:13:18.924391+00:00",
+  "duration_seconds": 5,
+  "tokens_used": 0,
+  "prompt_layer_tokens": {},
+  "output_artifacts": [
+    "/Users/nguyenthanhthai/Desktop/workspace_research/boilerplate/services/auth-service/openspec/changes/FR-009-account-lifecycle/pre_openspec.md"
+  ],
+  "errors": [],
+  "lesson_extracted": null,
+  "recovery_pattern": null
+}

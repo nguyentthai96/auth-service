@@ -1,0 +1,17 @@
+{
+  "feature": "FR-016-domain-config",
+  "workflow": "wf_feature_research",
+  "outcome": "success",
+  "timestamp": "2026-08-16T17:26:36.278806+00:00",
+  "duration_seconds": 36,
+  "tokens_used": 0,
+  "prompt_layer_tokens": {},
+  "output_artifacts": [
+    "/Users/nguyenthanhthai/Desktop/workspace_research/boilerplate/services/auth-service/openspec/research/FR-016-domain-config/research_brief.md",
+    "/Users/nguyenthanhthai/Desktop/workspace_research/boilerplate/services/auth-service/openspec/research/FR-016-domain-config/business_analysis.md",
+    "/Users/nguyenthanhthai/Desktop/workspace_research/boilerplate/services/auth-service/openspec/research/FR-016-domain-config/technical_spec.md"
+  ],
+  "errors": [],
+  "lesson_extracted": null,
+  "recovery_pattern": null
+}

@@ -1,0 +1,26 @@
+# Step config for wf_feature_research
+id: wf_feature_research
+name: "Feature Research"
+description: "Research and analysis phase for ERP IAM features"
+required: true
+skip: false
+depends_on: []
+
+# Custom input passed to prompt Layer 4
+input:
+  seed_prompt: >
+    Research session management patterns for enterprise IAM systems.
+    Focus on: active session tracking, max concurrent sessions enforcement,
+    auto-expiration of inactive sessions, session revocation, and admin
+    monitoring dashboards. Include Spring Boot + Redis implementation patterns.
+  feature_name: "FR-008-session-management"
+  technology_scope: "Spring Boot, Kotlin, Redis, PostgreSQL, JWT"
+  research_goals: >
+    1. How do enterprise IAM systems track and limit concurrent sessions?
+    2. What are best practices for session auto-expiration (idle timeout)?
+    3. How to implement admin session monitoring and bulk revocation?
+    4. Redis-based session store patterns with Spring Security.
+    5. Session clustering and replication strategies.
+
+# Override headless rules (leave empty for default)
+headless_rules: ""

@@ -1,0 +1,21 @@
+# Hermes Pipeline Config (externalized)
+# This file supplements the main pipeline_config.yml.
+
+workflow_dependencies:
+  wf_feature_research: []
+  wf_pre_openspec:
+    - wf_feature_research
+  wf_brainstorm_openspec:
+    - wf_pre_openspec
+  wf_openspec:
+    - wf_pre_openspec
+    - wf_brainstorm_openspec
+  wf_openspec_apply:
+    - wf_openspec
+
+workflows:
+  - wf_feature_research
+  - wf_pre_openspec
+  - wf_brainstorm_openspec
+  - wf_openspec
+  - wf_openspec_apply

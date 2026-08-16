@@ -1,0 +1,88 @@
+# Pipeline Configuration Template
+# Copy this file to your target project as pipeline_config.yml
+# and customize for your project's needs.
+#
+# Usage:
+#   cp pipeline-config-template.yml /path/to/project/pipeline_config.yml
+
+# ─── SDK Configuration ──────────────────────────────────────
+# Choose one: "google" (Gemini API) or "claude" (Anthropic via proxy)
+sdk_mode: "google"
+model: "gemini-2.5-pro"
+
+# API key environment variable name
+api_key_env: "GOOGLE_API_KEY"
+
+# ─── Features to Process ────────────────────────────────────
+# List the features/modules you want the pipeline to develop.
+# Each feature goes through all selected workflows sequentially.
+features:
+  - feature-one          # TODO: Replace with your feature names
+  # - feature-two
+  # - feature-three
+
+# ─── Workflow Chain ──────────────────────────────────────────
+# Available workflows (in recommended order):
+#   wf_feature_research    — Deep research on technologies
+#   wf_pre_openspec        — Analyze requirements, scan codebase
+#   wf_brainstorm_openspec — Brainstorm solutions (optional, +3-6 min/feature)
+#   wf_openspec            — Generate design specifications
+#   wf_openspec_apply      — Implement code from specs
+workflows:
+  - wf_pre_openspec
+  - wf_openspec
+  - wf_openspec_apply
+
+# ─── Workspace ───────────────────────────────────────────────
+# Path to the project workspace. "." means current directory.
+workspace: "."
+
+# ─── Pipeline Settings ──────────────────────────────────────
+settings:
+  max_retries: 3               # Max retries per workflow step
+  retry_backoff_base: 30       # Base backoff in seconds
+  retry_jitter: true           # Add random jitter to backoff
+  context_max_tokens: 8000     # Max tokens for context window
+  memory_max_items: 20         # Max items in agent memory
+  output_dir: "openspec"       # Output directory for artifacts
+  memory_dir: ".memory"        # Memory storage directory
+  progress_file: "openspec/pipeline_progress.yml"
+
+# ─── Proxy Configuration (only for claude sdk_mode) ─────────
+proxy:
+  enabled: false
+  base_url: "http://127.0.0.1:8045"
+  # api_key: ""                # Or set PROXY_API_KEY env var
+  fallback_to_direct: true
+  timeout_seconds: 120
+
+# ─── Tools Configuration ────────────────────────────────────
+tools:
+  enabled: true
+  include_write: true          # Allow file write operations
+  include_exec: true           # Allow command execution
+  allowed_commands:            # Additional allowed commands
+    # - "docker"
+    # - "kubectl"
+  command_timeout: 60          # Command execution timeout
+  max_turns: 50                # Max agentic loop turns per step
+  max_output_tokens: 16384     # Max output tokens per generation
+
+# ─── Hooks (optional) ───────────────────────────────────────
+hooks:
+  enabled: false
+  hooks_dir: "src/hooks"
+  timeout_seconds: 10
+  fail_on_error: false
+
+# ─── Sub-Agents (optional, multi-agent) ─────────────────────
+sub_agents:
+  enabled: false
+  max_parallel: 3
+
+# ─── Reflection (optional, self-improvement) ────────────────
+reflection:
+  enabled: false
+  timeout_seconds: 60
+  max_lessons: 50
+  staleness_days: 30
