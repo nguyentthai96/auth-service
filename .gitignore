@@ -38,3 +38,10 @@ out/
 
 ### Kotlin ###
 .kotlin
+
+### Hermes Pipeline ###
+hermes-pipeline
+logs/
+.logs/
+openspec/changes/*/pipeline.log
+openspec/changes/*/pipeline_progress.yml
