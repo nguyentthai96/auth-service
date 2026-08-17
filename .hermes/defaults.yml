@@ -11,8 +11,8 @@ sdk_mode: claude
 # Default model for all workflows
 model: "claude-opus-4-6-thinking"
 
-# Max tokens per request
-max_tokens: 16384
+# Max tokens per request (research output is large, needs more than default 16384)
+max_tokens: 32768
 
 # System prompt path
 system_prompt: "prompts/system_identity.md"

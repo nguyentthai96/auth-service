@@ -1,7 +1,7 @@
 # Step config for wf_feature_research
 id: wf_feature_research
 name: "Feature Research"
-description: "Research and analysis phase for ERP IAM features"
+description: "Research and analysis phase for anonymous/guest authentication optimization"
 required: true
 skip: false
 depends_on: []
@@ -9,18 +9,32 @@ depends_on: []
 # Custom input passed to prompt Layer 4
 input:
   seed_prompt: >
-    Research session management patterns for enterprise IAM systems.
-    Focus on: active session tracking, max concurrent sessions enforcement,
-    auto-expiration of inactive sessions, session revocation, and admin
-    monitoring dashboards. Include Spring Boot + Redis implementation patterns.
-  feature_name: "FR-008-session-management"
+    Research anonymous/guest authentication patterns for enterprise IAM systems.
+    Focus on: temporary anonymous sessions, session promotion (merging anonymous
+    session data into authenticated user after login), guest cart management,
+    seamless authentication upgrade flow, and anonymous-to-authenticated data
+    transfer. Include Spring Boot + Redis + JWT implementation patterns.
+  feature_name: "anonymous-login-optimization"
   technology_scope: "Spring Boot, Kotlin, Redis, PostgreSQL, JWT"
   research_goals: >
-    1. How do enterprise IAM systems track and limit concurrent sessions?
-    2. What are best practices for session auto-expiration (idle timeout)?
-    3. How to implement admin session monitoring and bulk revocation?
-    4. Redis-based session store patterns with Spring Security.
-    5. Session clustering and replication strategies.
+    1. How do enterprise IAM systems handle anonymous/guest users with temporary sessions?
+    2. What are best practices for session promotion (anonymous → authenticated)?
+    3. How to seamlessly transfer temporary data (cart, preferences) after login?
+    4. Anonymous token generation and lifecycle management patterns.
+    5. Security considerations for anonymous sessions (rate limiting, abuse prevention).
 
 # Override headless rules (leave empty for default)
 headless_rules: ""
+
+# Output validation rules
+validation:
+  required_files:
+    - "openspec/research/{feature}/research_brief.md"
+    - "openspec/research/{feature}/opensource_findings.md"
+    - "openspec/research/{feature}/web_research.md"
+    - "openspec/research/{feature}/comparison_analysis.md"
+    - "openspec/research/{feature}/business_analysis.md"
+    - "openspec/research/{feature}/technical_spec.md"
+    - "openspec/research/{feature}/validation_report.md"
+    - "openspec/research/{feature}/handoff_summary.md"
+  min_size_bytes: 2000

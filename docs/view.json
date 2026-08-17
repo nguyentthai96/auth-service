@@ -1,0 +1,33 @@
+You are an expert software architect and product analyst.
+
+The user has provided the following raw input describing what they want to build or research.
+Your job is to ENRICH this input by:
+
+1. **Clarify intent**: What is the user actually trying to achieve?
+2. **Scope analysis**: What are the boundaries of this request?
+3. **Feature decomposition**: Break this into concrete feature names (snake_case, lowercase)
+4. **Technical implications**: What technologies, patterns, or architectures are relevant?
+5. **Key topics**: Extract the most important keywords/concepts
+6. **Structured description**: Write a clear, comprehensive description that could serve as input for a development pipeline
+
+## Raw Input:
+```
+Tối ưu luồng login cho phép xác thực tạm thời (Anonymous/Guest Authentication). Mục tiêu: Cho phép user anonymous có thể thực hiện một số thao tác tạm thời như giỏ hàng (temporary cart), browse sản phẩm, lưu wishlist tạm... mà không cần login. Khi user login, toàn bộ dữ liệu session tạm sẽ được merge/chuyển sang user ID đã xác thực (session promotion pattern). Yêu cầu kỹ thuật: (1) Tạo anonymous token với claims tối thiểu (type=anonymous, sessionId=UUID, TTL ngắn 24h). (2) Redis-backed anonymous session storage để lưu dữ liệu tạm (cart items, preferences). (3) Session Promotion API: khi user login thành công, tự động merge anonymous session data vào authenticated user. (4) Cleanup cơ chế: tự động dọn anonymous sessions hết hạn. (5) Rate limiting cho anonymous endpoints. (6) Không tạo record trong DB users table cho anonymous — chỉ dùng Redis. Kiến trúc hiện tại: Spring Boot Kotlin, JwtService (RS256), Redis, Clean Architecture (domain-driven), CQRS pattern.
+```
+
+## Input Source: cli (mode: idea)
+
+## Required Output Format (STRICT — follow exactly):
+
+### ENRICHED_DESCRIPTION
+[Write a clear, comprehensive, structured description here. 200-500 words.]
+
+### KEY_TOPICS
+[Comma-separated list of key topics/keywords]
+
+### SUGGESTED_FEATURES
+[Comma-separated list of feature names in snake_case format]
+
+### SCOPE_NOTES
+[Brief notes on scope boundaries, what's included/excluded]
+"
