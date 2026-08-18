@@ -12,6 +12,7 @@ features:
 
 workflows:
   - wf_feature_research
+  - wf_pre_openspec
   - wf_brainstorm_openspec
   - wf_openspec
   - wf_openspec_apply
@@ -22,6 +23,7 @@ settings:
 proxy:
   model_routing:
     wf_feature_research: "claude"
+    wf_pre_openspec: "claude"
     wf_brainstorm_openspec: "claude"
     wf_openspec: "claude"
     wf_openspec_apply: "claude"
@@ -29,5 +31,5 @@ proxy:
 # Disable agentic tools — proxy (antigravity-ultra) does not support
 # multi-turn tool_result messages in streaming mode.
 tools:
-  enabled: false
-  max_output_tokens: 65536
+  enabled: true
+  max_output_tokens: 32768
