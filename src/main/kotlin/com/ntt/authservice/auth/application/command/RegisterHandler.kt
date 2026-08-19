@@ -1,9 +1,9 @@
 package com.ntt.authservice.auth.application.command
 
 import com.ntt.authservice.auth.application.PromotionResult
+import com.ntt.authservice.auth.application.RegisterResult
 import com.ntt.authservice.auth.application.SessionPromotionService
 import com.ntt.authservice.auth.application.port.out.*
-import com.ntt.authservice.auth.domain.model.AuthToken
 import com.ntt.authservice.auth.domain.model.User
 import com.ntt.authservice.auth.domain.model.UserStatus
 import com.ntt.authservice.auth.domain.model.vo.Email
@@ -19,6 +19,9 @@ import org.springframework.transaction.annotation.Transactional
 /**
  * Register handler — extracted from AuthService.register().
  * Supports anonymous session promotion on registration (DD-006).
+ *
+ * Returns RegisterResult sealed class (DD-013) — replaces ThreadLocal-based
+ * promotion result passing for thread-safety and explicit data flow.
  */
 @Component
 class RegisterHandler(
@@ -27,24 +30,14 @@ class RegisterHandler(
     private val eventPublisher: EventPublisher,
     private val tokenGenerator: TokenGenerator,
     private val sessionPromotionService: SessionPromotionService
-) : CommandHandler<RegisterCommand, AuthToken> {
+) : CommandHandler<RegisterCommand, RegisterResult> {
 
     private val log = LoggerFactory.getLogger(RegisterHandler::class.java)
-
-    /** Promotion result from the last handle() call — per-thread via ThreadLocal. */
-    private val promotionResultHolder = ThreadLocal<PromotionResult?>()
-
-    var lastPromotionResult: PromotionResult?
-        get() = promotionResultHolder.get()
-        private set(value) { promotionResultHolder.set(value) }
 
     override fun commandType(): Class<RegisterCommand> = RegisterCommand::class.java
 
     @Transactional
-    override fun handle(command: RegisterCommand): AuthToken {
-        // Reset promotion result
-        lastPromotionResult = null
-
+    override fun handle(command: RegisterCommand): RegisterResult {
         // Validate uniqueness
         if (userPort.existsByUsername(command.username)) {
             throw DuplicateResourceException("User", "username", command.username)
@@ -86,20 +79,20 @@ class RegisterHandler(
         val authToken = tokenGenerator.generateAuthResponse(savedUser, command.domainCode)
 
         // Anonymous session promotion (best-effort — DD-006, DD-007)
-        if (!command.anonymousSessionId.isNullOrBlank()) {
-            lastPromotionResult = try {
+        val promotionResult = if (!command.anonymousSessionId.isNullOrBlank()) {
+            try {
                 sessionPromotionService.promoteSession(
                     sessionId = command.anonymousSessionId,
                     userId = savedUser.id.value,
-                    anonymousJti = "" // JTI extracted at controller level when available
+                    anonymousJti = command.anonymousTokenJti ?: ""
                 )
             } catch (e: Exception) {
                 log.warn("Anonymous session promotion failed during register for session {}: {}",
                     command.anonymousSessionId, e.message)
                 PromotionResult(PromotionResult.Status.FAILED)
             }
-        }
+        } else null
 
-        return authToken
+        return RegisterResult.Success(authToken, promotionResult)
     }
 }

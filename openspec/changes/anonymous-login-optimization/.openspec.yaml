@@ -1,5 +1,5 @@
 name: anonymous-login-optimization
-type: EXTEND
+type: MAINTENANCE
 flow: Non-Financial
 status: complete
 created: 2025-01-20
@@ -27,7 +27,7 @@ artifacts:
 applyRequires:
   - tasks
 context:
-  dynamic: 4
+  dynamic: 5
   static: 0
   rules: 0
   skills: 0

@@ -2,62 +2,94 @@
 
 _Generated: 2025-01-20_
 
-## Summary
+> **Type**: MAINTENANCE — Post-Implementation Hardening
+> **Scope**: Bug fixes (FIX-001, FIX-002), Observability (FIX-003), Tests (TEST-001, TEST-002)
 
-This EXTEND feature adds anonymous/guest session support to the auth-service. All changes are backward compatible — existing APIs continue to work identically without `anonymousSessionId`.
+---
 
 ## Behavioral Changes
 
-### Login Flow (POST /api/auth/login)
+### FIX-001: JTI Blacklisting (🔴 Critical Security Fix)
+
 | Aspect | Before | After |
 |--------|--------|-------|
-| Request body | No `anonymousSessionId` field | Optional `anonymousSessionId: String?` field accepted |
-| Response body | `{ accessToken, tokenType, expiresIn, userId, ... }` | Same + optional `promotedFromAnonymous: Boolean`, `dataTransferred: { itemCount, namespaces, status }` |
-| Session promotion | N/A | If `anonymousSessionId` provided, best-effort data transfer from Redis anonymous session to user namespace |
-| Login failure | No change | No change — promotion only runs on successful login |
+| `LoginRequestDto` | No `anonymousToken` field | `val anonymousToken: String? = null` |
+| `RegisterRequestDto` | No `anonymousToken` field | `val anonymousToken: String? = null` |
+| `LoginCommand` | No `anonymousTokenJti` field | `val anonymousTokenJti: String? = null` |
+| `RegisterCommand` | No `anonymousTokenJti` field | `val anonymousTokenJti: String? = null` |
+| JTI passed to promotion | `anonymousJti = ""` (empty string) | `anonymousJti = command.anonymousTokenJti ?: ""` (real JTI) |
+| `token_blacklist` entry | `tokenJti = ""` (useless) | `tokenJti = "<real-uuid>"` (correct) |
+| Anonymous token after promotion | **Still valid** (NOT blacklisted) ❌ | **Blacklisted** (correctly rejected) ✅ |
+| CqrsAuthController | No JTI extraction | `extractAnonymousTokenJti()` parses token, extracts JTI safely |
 
-### Register Flow (POST /api/auth/register)
+**Backward compatibility**: If client does not send `anonymousToken` → JTI defaults to `null` → falls back to `""` → same behavior as before (no regression).
+
+### FIX-002: ThreadLocal Removal (🟡 Architecture Clean)
+
 | Aspect | Before | After |
 |--------|--------|-------|
-| Request body | No `anonymousSessionId` field | Optional `anonymousSessionId: String?` field accepted |
-| Response body | `{ accessToken, tokenType, ... }` | Same + optional promotion metadata |
+| `RegisterHandler` return type | `CommandHandler<RegisterCommand, AuthToken>` | `CommandHandler<RegisterCommand, RegisterResult>` |
+| Promotion result passing | `ThreadLocal<PromotionResult?>` + `lastPromotionResult` property | `RegisterResult.Success(authToken, promotionResult)` |
+| Thread safety | ❌ Fragile with virtual threads / thread pools | ✅ Fully thread-safe |
+| `CqrsAuthController.register()` | Read `registerHandler.lastPromotionResult` after `handle()` | Unwrap `RegisterResult.Success` directly |
 
-### JwtAuthFilter
-| Aspect | Before | After |
-|--------|--------|-------|
-| Token type handling | Only authenticated tokens (roles/permissions) | Anonymous tokens (`type=anonymous`) → `ROLE_ANONYMOUS` authority |
-| SecurityContext details | `activeDomain`, `domains`, `username` | Same for auth tokens + `type`, `sessionId` for anonymous tokens |
+### FIX-003: Observability Metrics (🟡 Operational Gap)
 
-### SecurityConfig
-| Aspect | Before | After |
-|--------|--------|-------|
-| Public paths | `/api/auth/login`, `/api/auth/register`, etc. | Same + `/api/v1/auth/anonymous` (create session) |
-| Anonymous-auth paths | N/A | `/api/v1/auth/anonymous/**` requires `ROLE_ANONYMOUS` |
+| Metric | Previously | Now |
+|--------|-----------|-----|
+| Session creation count | Not tracked | `auth.anonymous.sessions.created` (Counter) |
+| Token renewal count | Not tracked | `auth.anonymous.sessions.renewed` (Counter) |
+| Promotion outcomes | Not tracked | `auth.anonymous.sessions.promoted` (Counter, tagged by status) |
+| Rate limit rejections | Not tracked | `auth.anonymous.rate_limited` (Counter) |
+| Data store operations | Not tracked | `auth.anonymous.data.stored` (Counter) |
+| Data size exceeded | Not tracked | `auth.anonymous.data.size_exceeded` (Counter) |
+| Promotion duration | Not tracked | `auth.anonymous.promotion.duration` (Timer) |
+| Token generation duration | Not tracked | `auth.anonymous.token.generation.duration` (Timer) |
 
-### JwtService
-| Aspect | Before | After |
-|--------|--------|-------|
-| Token types | access, refresh, mfa | Same + anonymous (type=anonymous, sub=sessionId) |
-| Methods | `generateAccessToken()`, `generateRefreshToken()`, `generateMfaToken()`, `parseMfaToken()` | Same + `generateAnonymousToken()`, `parseAnonymousToken()` |
+---
 
-## Redis Key Additions
+## API Impact
 
-| Namespace | Pattern | TTL | Purpose |
-|-----------|---------|-----|---------|
-| `anon:session:` | `anon:session:{sessionId}` | 24h (configurable) | Session metadata (Hash) |
-| `anon:data:` | `anon:data:{sessionId}:{namespace}:{key}` | Matches session TTL | Session data (String) |
-| `anon:lock:` | `anon:lock:{sessionId}` | 30s | Promotion distributed lock |
-| `anon:rate:` | `anon:rate:{ipAddress}` | 1h (configurable) | IP rate limit counter |
-| `user:session_data:` | `user:session_data:{userId}:{namespace}:{key}` | 7d (configurable) | Promoted data destination |
+### Request Body Changes
 
-## Database Impact
+**POST /api/auth/login** — new optional field:
+```json
+{
+  "username": "...",
+  "password": "...",
+  "anonymousSessionId": "...",
+  "anonymousToken": "eyJ..."  // ← NEW (optional)
+}
+```
 
-No new tables or migrations. Reuses existing `token_blacklist` table with new `reason` values: `PROMOTION`, `RENEWAL`.
+**POST /api/auth/register** — new optional field:
+```json
+{
+  "username": "...",
+  "email": "...",
+  "password": "...",
+  "fullName": "...",
+  "anonymousSessionId": "...",
+  "anonymousToken": "eyJ..."  // ← NEW (optional)
+}
+```
 
-## Backward Compatibility
+**Response format**: No changes. `promotedFromAnonymous` and `dataTransferred` fields already exist.
 
-✅ All changes are **fully backward compatible**:
-- New fields in DTOs have default values (`null`, `false`)
-- Login/register work identically without `anonymousSessionId`
-- Existing JWT tokens parse unchanged (no `type` claim → authenticated flow)
-- No database migrations required
+### Breaking Changes
+
+**None.** All new fields are optional with `null` defaults. Existing clients work without modification.
+
+---
+
+## Test Coverage Added
+
+| Test File | Type | Test Count | Coverage |
+|-----------|------|-----------|----------|
+| `JwtServiceAnonymousTest.kt` | Unit | 6 | FR-001, FR-008 |
+| `AnonymousSessionDataServiceTest.kt` | Unit | 7 | FR-004, FR-006, FR-007 |
+| `SessionPromotionServiceTest.kt` | Unit | 7 | FR-003, FR-004, FR-005, FR-010 |
+| `AnonymousRateLimitServiceTest.kt` | Unit | 5 | FR-009 |
+| `AnonymousSessionIntegrationTest.kt` | Integration | 5 | FR-001, FR-002, FR-008, FR-009 |
+| `SessionPromotionIntegrationTest.kt` | Integration | 7 | FR-003, FR-004, FR-005, FR-010, FR-013 |
+| **Total** | | **37** | **13/13 FRs** |

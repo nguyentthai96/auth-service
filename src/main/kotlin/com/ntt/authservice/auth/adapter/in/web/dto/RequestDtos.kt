@@ -14,7 +14,8 @@ data class RegisterRequestDto(
     @field:NotBlank val fullName: String,
     val phone: String? = null,
     val domainCode: String = "default",
-    val anonymousSessionId: String? = null
+    val anonymousSessionId: String? = null,
+    val anonymousToken: String? = null
 )
 
 data class LoginRequestDto(
@@ -25,7 +26,8 @@ data class LoginRequestDto(
     val trustedDeviceHash: String? = null,
     val deviceFingerprint: String? = null,
     val captchaPayload: String? = null,
-    val anonymousSessionId: String? = null
+    val anonymousSessionId: String? = null,
+    val anonymousToken: String? = null
 )
 
 data class RefreshTokenRequestDto(

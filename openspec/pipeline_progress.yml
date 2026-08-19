@@ -1,5 +1,5 @@
-current_feature: anonymous-login-optimization
-current_workflow: wf_openspec
+current_feature: auth-core-features
+current_workflow: wf_openspec_apply
 features:
   anonymous-login-optimization:
     workflows:
@@ -14,9 +14,13 @@ features:
         strike_count: 0
         tokens: 0
       wf_openspec:
-        duration: 0
-        started_at: '2026-08-19T07:10:41.692860+00:00'
-        status: in_progress
+        duration: 517
+        status: success
+        strike_count: 0
+        tokens: 0
+      wf_openspec_apply:
+        duration: 884
+        status: success
         strike_count: 0
         tokens: 0
       wf_pre_openspec:
@@ -24,15 +28,70 @@ features:
         status: success
         strike_count: 0
         tokens: 0
+  api-response-i18n-standard:
+    workflows:
+      wf_brainstorm_openspec:
+        duration: 225
+        status: success
+        strike_count: 0
+        tokens: 0
+      wf_feature_research:
+        duration: 743
+        status: success
+        strike_count: 0
+        tokens: 0
+      wf_openspec:
+        duration: 620
+        status: success
+        strike_count: 0
+        tokens: 0
+      wf_openspec_apply:
+        duration: 735
+        status: success
+        strike_count: 0
+        tokens: 0
+      wf_pre_openspec:
+        duration: 275
+        status: success
+        strike_count: 0
+        tokens: 0
+  auth-core-features:
+    workflows:
+      wf_brainstorm_openspec:
+        duration: 307
+        status: success
+        strike_count: 0
+        tokens: 0
+      wf_feature_research:
+        duration: 862
+        status: success
+        strike_count: 0
+        tokens: 0
+      wf_openspec:
+        duration: 763
+        status: success
+        strike_count: 0
+        tokens: 0
+      wf_openspec_apply:
+        duration: 0
+        started_at: '2026-08-19T08:55:35.764966+00:00'
+        status: in_progress
+        strike_count: 0
+        tokens: 0
+      wf_pre_openspec:
+        duration: 357
+        status: success
+        strike_count: 0
+        tokens: 0
 started_at: '2026-08-19T06:58:47.592311+00:00'
 stats:
-  completed_features: 1
+  completed_features: 3
   failed_features: 0
   partial_features: 0
   remaining_features: 0
   skipped_features: 0
-  total_duration: 617
-  total_features: 1
+  total_duration: 6905
+  total_features: 3
   total_tokens: 0
 status: running
-updated_at: '2026-08-19T07:10:41.692842+00:00'
+updated_at: '2026-08-19T08:55:35.764948+00:00'

@@ -1,214 +1,201 @@
-# Impact Analysis: auth-core-features
+# Impact Analysis: auth-core-features — Completion & Hardening
 
-> Generated: 2026-08-05 | Classification: EXTEND | Flow: Non-Financial
-
----
-
-## 1. Core Files (affected by this change)
-
-### 1.1 MODIFY (existing files)
-
-| # | File | Path | Action | FR |
-|---|------|------|--------|-----|
-| M1 | `AuthService.kt` | [AuthService.kt](file:///home/nguyentthai96/Desktop/bigbang/boilerplate/services/auth-service/src/main/kotlin/com/ntt/authservice/auth/application/AuthService.kt) | Add MFA checkpoint in login(), CAPTCHA check, sealed LoginResult return | FR-001,FR-004 |
-| M2 | `JwtService.kt` | [JwtService.kt](file:///home/nguyentthai96/Desktop/bigbang/boilerplate/services/auth-service/src/main/kotlin/com/ntt/authservice/auth/application/JwtService.kt) | Migrate HMAC→RS256, add KeyPair loading, JWKS exposure, dual-algorithm support | FR-009,FR-010 |
-| M3 | `AuthController.kt` | [AuthController.kt](file:///home/nguyentthai96/Desktop/bigbang/boilerplate/services/auth-service/src/main/kotlin/com/ntt/authservice/auth/adapter/in/web/AuthController.kt) | Handle sealed LoginResult, add change-password/forgot-password endpoints | FR-001,FR-013 |
-| M4 | `SecurityConfig.kt` | [SecurityConfig.kt](file:///home/nguyentthai96/Desktop/bigbang/boilerplate/services/auth-service/src/main/kotlin/com/ntt/authservice/shared/config/SecurityConfig.kt) | Add public endpoints for MFA/SSO/JWKS, OAuth2 resource server config | FR-006,FR-010 |
-| M5 | `SecurityProperties.kt` | [SecurityProperties.kt](file:///home/nguyentthai96/Desktop/bigbang/boilerplate/services/auth-service/src/main/kotlin/com/ntt/authservice/shared/config/SecurityProperties.kt) | Add MfaProperties, CaptchaProperties, SsoProperties nested classes | FR-001,FR-004,FR-006 |
-| M6 | `UserEntity.kt` | [UserEntity.kt](file:///home/nguyentthai96/Desktop/bigbang/boilerplate/services/auth-service/src/main/kotlin/com/ntt/authservice/rbac/adapter/out/persistence/entity/UserEntity.kt) | Add mfaEnabled, mfaMethod, totpSecretEncrypted, trustedDeviceHash, passwordChangedAt | FR-001,FR-002,FR-005,FR-013 |
-| M7 | `JwtAuthFilter.kt` | [JwtAuthFilter.kt](file:///home/nguyentthai96/Desktop/bigbang/boilerplate/services/auth-service/src/main/kotlin/com/ntt/authservice/shared/security/JwtAuthFilter.kt) | Support RS256 verification (key type change in JwtService) | FR-009 |
-| M8 | `SsoAdapter.kt` | [SsoAdapter.kt](file:///home/nguyentthai96/Desktop/bigbang/boilerplate/services/auth-service/src/main/kotlin/com/ntt/authservice/auth/application/SsoAdapter.kt) | Full OAuth2 implementation (code exchange, JIT provisioning, identity linking) | FR-006,FR-007,FR-008 |
-| M9 | `PasswordPolicyService.kt` | [PasswordPolicyService.kt](file:///home/nguyentthai96/Desktop/bigbang/boilerplate/services/auth-service/src/main/kotlin/com/ntt/authservice/auth/application/PasswordPolicyService.kt) | Full Passay implementation, domain-scoped policy, password history | FR-013,FR-014 |
-| M10 | `AuthExceptions.kt` | [AuthExceptions.kt](file:///home/nguyentthai96/Desktop/bigbang/boilerplate/services/auth-service/src/main/kotlin/com/ntt/authservice/shared/exception/AuthExceptions.kt) | Add 12 new exception classes for MFA/SSO/Password | FR-001..FR-014 |
-| M11 | `GlobalExceptionHandler.kt` | [GlobalExceptionHandler.kt](file:///home/nguyentthai96/Desktop/bigbang/boilerplate/services/auth-service/src/main/kotlin/com/ntt/authservice/shared/exception/GlobalExceptionHandler.kt) | Add handlers for new exceptions | FR-001..FR-014 |
-| M12 | `build.gradle.kts` | [build.gradle.kts](file:///home/nguyentthai96/Desktop/bigbang/boilerplate/services/auth-service/build.gradle.kts) | Add Redis, OAuth2, TOTP, Passay dependencies | ALL |
-| M13 | `application.yml` | [application.yml](file:///home/nguyentthai96/Desktop/bigbang/boilerplate/services/auth-service/src/main/resources/application.yml) | Add MFA, CAPTCHA, SSO, RS256 config sections | ALL |
-
-### 1.2 NEW (new files to create)
-
-| # | File | Path | Action | FR |
-|---|------|------|--------|-----|
-| N1 | `MfaService.kt` | `auth/application/MfaService.kt` | MFA orchestrator (initiate, verify, settings) | FR-001,FR-002,FR-003 |
-| N2 | `OtpService.kt` | `auth/application/OtpService.kt` | Redis OTP generation/verification (SMS/Email) | FR-001 |
-| N3 | `TotpService.kt` | `auth/application/TotpService.kt` | TOTP setup/verify (dev.samstevens.totp) | FR-002 |
-| N4 | `CaptchaVerifier.kt` | `auth/application/CaptchaVerifier.kt` | Interface + TurnstileAdapter | FR-004 |
-| N5 | `MfaController.kt` | `auth/adapter/in/web/MfaController.kt` | 5 MFA endpoints | FR-001,FR-002,FR-003 |
-| N6 | `SsoController.kt` | `auth/adapter/in/web/SsoController.kt` | 4 SSO endpoints | FR-006,FR-007,FR-008 |
-| N7 | `TokenController.kt` | `auth/adapter/in/web/TokenController.kt` | Introspect, JWKS, session revoke | FR-010,FR-011,FR-012 |
-| N8 | `UserIdentityEntity.kt` | `rbac/adapter/out/persistence/entity/UserIdentityEntity.kt` | SSO identity linking | FR-008 |
-| N9 | `PasswordPolicyEntity.kt` | `rbac/adapter/out/persistence/entity/PasswordPolicyEntity.kt` | Domain password policy config | FR-013 |
-| N10 | `PasswordHistoryEntity.kt` | `rbac/adapter/out/persistence/entity/PasswordHistoryEntity.kt` | Password reuse prevention | FR-014 |
-| N11 | `AuthRepositories.kt` | `auth/adapter/out/persistence/repository/AuthRepositories.kt` | UserIdentityRepository, PasswordPolicyRepository, PasswordHistoryRepository | FR-008,FR-013,FR-014 |
-| N12 | `V2__auth_core_features.sql` | `resources/db/migration/V2__auth_core_features.sql` | DDL for new tables + ALTER users | ALL |
-| N13 | `LoginResult.kt` | `auth/application/LoginResult.kt` | Sealed class LoginResult | FR-001 |
-| N14 | `MfaDtos.kt` | `auth/adapter/in/web/dto/MfaDtos.kt` | MFA request/response DTOs | FR-001,FR-002,FR-003 |
-| N15 | `SsoDtos.kt` | `auth/adapter/in/web/dto/SsoDtos.kt` | SSO request/response DTOs | FR-006,FR-007,FR-008 |
-| N16 | `TokenDtos.kt` | `auth/adapter/in/web/dto/TokenDtos.kt` | Introspection/JWKS DTOs | FR-010,FR-011 |
+> **Generated**: 2026-08-19 (v2) | **Classification**: EXTEND | **Flow**: Non-Financial
+> **Scope**: 3 functional gaps + integration tests + edge case hardening
+> **Prior**: v1 (2026-08-05) covered initial build. v2 focuses on remaining ~10%.
 
 ---
 
-## 2. Call Tree (affected call chains)
+## 1. Core Files — NƠI SỬA
 
-### 2.1 AuthService.login() — PRIMARY IMPACT
+> Chỉ liệt kê files CẦN MODIFY code. ~90% codebase KHÔNG cần thay đổi.
+
+| # | File | Line Range | Chức năng |
+|---|------|-----------|-----------|
+| 1 | [OAuth2TokenExchanger.kt](file:///home/nguyentthai96/Desktop/bigbang/boilerplate/services/auth-service/src/main/kotlin/com/ntt/authservice/auth/adapter/out/sso/OAuth2TokenExchanger.kt) | L42-52 | Config-driven provider endpoints (replace hardcoded URLs) |
+| 2 | [SecurityProperties.kt](file:///home/nguyentthai96/Desktop/bigbang/boilerplate/services/auth-service/src/main/kotlin/com/ntt/authservice/shared/config/SecurityProperties.kt) | L(SsoProperties section) | Add `providers: Map<String, ProviderConfig>` + `ProviderConfig` data class |
+| 3 | [MfaService.kt](file:///home/nguyentthai96/Desktop/bigbang/boilerplate/services/auth-service/src/main/kotlin/com/ntt/authservice/auth/application/MfaService.kt) | L(verifyMfa method) | Add `trustDevice`+`deviceHash` params, save hash after successful verify |
+| 4 | [MfaController.kt](file:///home/nguyentthai96/Desktop/bigbang/boilerplate/services/auth-service/src/main/kotlin/com/ntt/authservice/auth/adapter/in/web/MfaController.kt) | L(verify endpoint) | Pass trustDevice+deviceHash from DTO to MfaService |
+| 5 | [SsoAdapter.kt](file:///home/nguyentthai96/Desktop/bigbang/boilerplate/services/auth-service/src/main/kotlin/com/ntt/authservice/auth/application/SsoAdapter.kt) | L(handleCallback TODO) | Replace TODO with `eventPublisher.publish(SsoProvisionedEvent(...))` |
+| 6 | [EventPublisher.kt](file:///home/nguyentthai96/Desktop/bigbang/boilerplate/services/auth-service/src/main/kotlin/com/ntt/authservice/auth/application/port/out/EventPublisher.kt) | L(add event class) | Add `SsoProvisionedEvent` data class implementing `DomainEvent` |
+| 7 | [application.yml](file:///home/nguyentthai96/Desktop/bigbang/boilerplate/services/auth-service/src/main/resources/application.yml) | L(sso section) | Add `app.security.sso.providers.*` config entries |
+
+### 1.2 DTO MODIFY
+
+| # | File | Change |
+|---|------|--------|
+| 1 | MfaDtos.kt (in `auth/adapter/in/web/dto/`) | Add `trustDevice: Boolean = false`, `deviceHash: String? = null` to `MfaVerifyRequest` |
+
+### 1.3 NEW Files (Tests Only)
+
+| # | File | Purpose |
+|---|------|---------|
+| T1 | `MfaLoginFlowIntegrationTest.kt` | Full MFA login flow integration |
+| T2 | `SsoCallbackIntegrationTest.kt` | SSO callback with WireMock IdP |
+| T3 | `TokenIntrospectionIntegrationTest.kt` | Token introspection active/blacklisted |
+| T4 | `JwksEndpointIntegrationTest.kt` | JWKS response format + cache headers |
+| T5 | `PasswordChangeIntegrationTest.kt` | Password policy + history enforcement |
+| T6 | `TotpSetupFlowIntegrationTest.kt` | TOTP setup → confirm → verify flow |
+
+---
+
+## 2. Call Tree — LOGIC CẦN SỬA
+
+### 2.1 OAuth2TokenExchanger.exchange() (Gap 1 — Config-Driven)
 
 ```
-AuthController.login()  ← entry point
-  └── AuthService.login(LoginRequest)  ← MODIFY: return type → LoginResult
-        ├── userRepository.findByUsernameAndActiveTrue()
-        ├── [NEW] captchaVerifier.verify(captchaToken)  ← FR-004
-        ├── passwordEncoder.matches()
-        ├── handleFailedLogin()
-        ├── [NEW] check user.mfaEnabled  ← FR-001
-        │     ├── if true → mfaService.initiateMfa(userId, method)
-        │     │     ├── otpService.generateOtp()  ← FR-001
-        │     │     └── return LoginResult.MfaRequired
-        │     └── if false → generateAuthResponse()
-        └── generateAuthResponse()
-              ├── rbacEngine.getUserRoles()
-              ├── rbacEngine.getEffectivePermissions()
-              ├── jwtService.generateAccessToken()  ← MODIFY: RS256 signing
-              ├── jwtService.generateRefreshToken()  ← MODIFY: RS256 signing
-              └── refreshTokenRepository.save()
+⟶ OAuth2TokenExchanger.exchange(provider, code, redirectUri, clientId, clientSecret)
+├── getTokenEndpoint(provider)  // ← MODIFY: config lookup instead of when()
+│   └── BEFORE: when(provider) { "google" → hardcoded, "microsoft" → hardcoded, else → throw }
+│   └── AFTER: securityProperties.sso.providers[provider]?.tokenEndpoint ?: throw
+├── getUserInfoEndpoint(provider)  // ← MODIFY: same config lookup
+│   └── AFTER: securityProperties.sso.providers[provider]?.userInfoEndpoint ?: throw
+├── exchangeCode(tokenEndpoint, code, redirectUri, clientId, clientSecret)
+│   └── RestTemplate POST → token response
+└── fetchUserInfo(userInfoEndpoint, accessToken, provider)
+    └── RestTemplate GET → ExchangeResult(sub, email, name)
+    └── catch timeout → throw SsoProviderTimeoutException  // ← already exists
 ```
 
-### 2.2 JwtService — RS256 MIGRATION
+### 2.2 MfaService.verifyMfa() (Gap 2 — Trusted Device Save)
 
 ```
-JwtService.generateAccessToken()
-  ├── [MODIFY] signWith(keyPair.private, RS256)  ← was signWith(secretKey)
-  └── callers:
-      ├── AuthService.generateAuthResponse()
-      ├── MfaService.verifyMfa() [NEW]
-      └── SsoAdapter.handleCallback() [NEW]
+⟶ MfaService.verifyMfa(mfaToken, code, trustDevice?, deviceHash?)
+├── jwtService.parseMfaToken(mfaToken) → claims
+│   └── Extract: userId, method, exp
+├── method == "TOTP"?
+│   ├── true → totpService.verifyCode(decryptedSecret, code)
+│   └── false → otpService.verifyOtp(userId, channel, code)
+├── verification failed?
+│   ├── mfaRateLimitService.incrementAttempts(userId)
+│   └── throw MfaCodeInvalidException
+├── ✅ success:
+│   ├── mfaRateLimitService.resetCounters(userId)
+│   ├── [NEW] trustDevice && !deviceHash.isNullOrBlank()?  // ← GAP 2 logic
+│   │   ├── user = userRepository.findById(userId)
+│   │   ├── user.trustedDeviceHash = deviceHash
+│   │   ├── userRepository.save(user)
+│   │   └── auditLogService.logEvent(TRUSTED_DEVICE_SET)
+│   ├── auditLogService.logEvent(MFA_VERIFY_SUCCESS)
+│   └── tokenGenerator.generateAuthResponse(userId) → AuthResponse
+```
 
-JwtService.parseToken()
-  ├── [MODIFY] verifyWith(keyPair.public)  ← was verifyWith(secretKey)
-  ├── [NEW] fallback: verifyWith(legacyKey) if RS256 fails  ← 7-day migration
-  └── callers:
-      ├── JwtAuthFilter.doFilterInternal()
-      ├── AuthService.refreshToken()
-      └── TokenController.introspect() [NEW]
+### 2.3 SsoAdapter.handleCallback() (Gap 3 — EventPublisher)
 
-JwtService [NEW methods]:
-  ├── getJwks() → JWKS JSON for /.well-known/jwks.json
-  └── generateMfaToken(userId, method) → short-lived MFA JWT
+```
+⟶ SsoAdapter.handleCallback(code, provider, redirectUri)
+├── oAuth2TokenExchanger.exchange(provider, code, redirectUri, clientId, clientSecret)
+│   └── ExchangeResult(sub, email, name)
+├── userIdentityRepository.findByProviderAndProviderSub(provider, sub)
+├── identity found?
+│   ├── true → user = userRepository.findById(identity.userId)
+│   └── false → autoProvision?
+│       ├── true → createUser() + createIdentity()
+│       │   ├── [MODIFY] eventPublisher.publish(SsoProvisionedEvent(...))  // ← replace TODO
+│       │   └── auditLogService.logEvent(SSO_LOGIN)
+│       └── false → throw SsoUserNotProvisionedException
+└── tokenGenerator.generateAuthResponse(user.id) → AuthResponse
 ```
 
 ---
 
 ## 3. Blast Radius
 
-### 3.1 Per-component impact
+### 🔴 Direct Impact — auth-service (7 files)
 
-| Component | Direct (d=1) | Indirect (d=2) | Risk |
-|-----------|-------------|----------------|------|
-| `AuthService.login()` | 1 caller (AuthController) | 0 | 🟢 LOW |
-| `JwtService.signingKey` | 3 methods (generate×2, parse) | 2 callers (AuthService, JwtAuthFilter) | 🟡 MEDIUM |
-| `JwtService.parseToken()` | 3 callers | 5+ downstream (all authenticated endpoints) | 🟡 MEDIUM |
-| `UserEntity` | 9 callers (all repositories/services using UserEntity) | 15+ (via AuthService, RbacEngine) | 🟡 MEDIUM |
-| `SecurityConfig` | 1 (Spring Security chain) | ALL endpoints | 🟡 MEDIUM |
-| `AuthExceptions` | 11 callers (all handlers) | GlobalExceptionHandler | 🟢 LOW |
+| # | File | Link | Cách sử dụng |
+|---|------|------|-------------|
+| 1 | `OAuth2TokenExchanger.kt` | [OAuth2TokenExchanger](file:///home/nguyentthai96/Desktop/bigbang/boilerplate/services/auth-service/src/main/kotlin/com/ntt/authservice/auth/adapter/out/sso/OAuth2TokenExchanger.kt) | MODIFY: config-driven endpoints. Called by SsoAdapter. |
+| 2 | `SecurityProperties.kt` | [SecurityProperties](file:///home/nguyentthai96/Desktop/bigbang/boilerplate/services/auth-service/src/main/kotlin/com/ntt/authservice/shared/config/SecurityProperties.kt) | MODIFY: add ProviderConfig. Injected by OAuth2TokenExchanger, SsoAdapter, etc. |
+| 3 | `MfaService.kt` | [MfaService](file:///home/nguyentthai96/Desktop/bigbang/boilerplate/services/auth-service/src/main/kotlin/com/ntt/authservice/auth/application/MfaService.kt) | MODIFY: verifyMfa() add trusted device params. Called by MfaController. |
+| 4 | `MfaController.kt` | [MfaController](file:///home/nguyentthai96/Desktop/bigbang/boilerplate/services/auth-service/src/main/kotlin/com/ntt/authservice/auth/adapter/in/web/MfaController.kt) | MODIFY: pass new params. Entry point for MFA verify. |
+| 5 | `SsoAdapter.kt` | [SsoAdapter](file:///home/nguyentthai96/Desktop/bigbang/boilerplate/services/auth-service/src/main/kotlin/com/ntt/authservice/auth/application/SsoAdapter.kt) | MODIFY: replace TODO with eventPublisher.publish(). |
+| 6 | `EventPublisher.kt` | [EventPublisher](file:///home/nguyentthai96/Desktop/bigbang/boilerplate/services/auth-service/src/main/kotlin/com/ntt/authservice/auth/application/port/out/EventPublisher.kt) | MODIFY: add SsoProvisionedEvent class. |
+| 7 | `application.yml` | [application.yml](file:///home/nguyentthai96/Desktop/bigbang/boilerplate/services/auth-service/src/main/resources/application.yml) | MODIFY: add sso.providers config. |
 
-### 3.2 Cross-module impact
+### 🟡 Indirect Impact — auth-service (3 files)
 
-| Source Module | Target Module | Mechanism | Impact |
-|--------------|--------------|-----------|--------|
-| `auth/application` | `shared/security` | JwtService signing key type change | JwtAuthFilter must handle RS256 |
-| `auth/application` | `shared/config` | SecurityProperties new nested classes | SecurityConfig reads new props |
-| `auth/application` | `rbac/entity` | UserEntity new columns | Flyway migration + entity fields |
-| `auth/application` | External (Redis) | New dependency | OtpService, session management |
-| `auth/application` | External (OAuth2 IdP) | New dependency | SsoAdapter OAuth2 calls |
+| # | File | Link | Cách sử dụng |
+|---|------|------|-------------|
+| 1 | `MfaDtos.kt` | dto/ | DTO change: MfaVerifyRequest add 2 fields (backward-compatible defaults) |
+| 2 | `SsoController.kt` | [SsoController](file:///home/nguyentthai96/Desktop/bigbang/boilerplate/services/auth-service/src/main/kotlin/com/ntt/authservice/auth/adapter/in/web/SsoController.kt) | No change needed — calls SsoAdapter.handleCallback() unchanged signature |
+| 3 | `SpringEventPublisher.kt` | [SpringEventPublisher](file:///home/nguyentthai96/Desktop/bigbang/boilerplate/services/auth-service/src/main/kotlin/com/ntt/authservice/auth/adapter/out/event/SpringEventPublisher.kt) | No change needed — publishes any DomainEvent subclass |
+
+### 🟠 Cross-service Impact (0 files)
+
+No cross-service impact. All changes are internal to auth-service. EventPublisher uses Spring ApplicationEvent (in-process), not Kafka yet.
+
+### 🟢 Shared Utilities (0 changes)
+
+No shared utility changes needed. `AuthExceptions.kt`, `GlobalExceptionHandler.kt`, `AuthErrorCode.kt` all already have required exception/error code entries.
 
 ---
 
 ## 4. Reuse Map
 
-### 4.1 Reuse candidates
+| Logic Block | Existing Location | Match % | Decision | Impact | Action |
+|---|---|---|---|---|---|
+| SSO provider endpoint config | [OAuth2TokenExchanger:L42-52](file:///home/nguyentthai96/Desktop/bigbang/boilerplate/services/auth-service/src/main/kotlin/com/ntt/authservice/auth/adapter/out/sso/OAuth2TokenExchanger.kt) | 100% | **REUSE** (refactor) | 🟢 LOW (1 caller: SsoAdapter) | Replace hardcoded → config lookup |
+| MFA verify logic | [MfaService.verifyMfa()](file:///home/nguyentthai96/Desktop/bigbang/boilerplate/services/auth-service/src/main/kotlin/com/ntt/authservice/auth/application/MfaService.kt) | 100% | **REUSE** (extend) | 🟢 LOW (1 caller: MfaController) | Add optional params |
+| EventPublisher port | [EventPublisher.kt](file:///home/nguyentthai96/Desktop/bigbang/boilerplate/services/auth-service/src/main/kotlin/com/ntt/authservice/auth/application/port/out/EventPublisher.kt) | 100% | **REUSE** (add event class) | 🟢 LOW (2 callers: SsoAdapter, RegisterHandler) | Add SsoProvisionedEvent |
+| DomainEvent interface | [EventPublisher.kt](file:///home/nguyentthai96/Desktop/bigbang/boilerplate/services/auth-service/src/main/kotlin/com/ntt/authservice/auth/application/port/out/EventPublisher.kt) | 100% | **REUSE** | 🟢 LOW | Already generic |
+| AuditLogService | [AuditLogService.kt](file:///home/nguyentthai96/Desktop/bigbang/boilerplate/services/auth-service/src/main/kotlin/com/ntt/authservice/shared/audit/AuditLogService.kt) | 100% | **REUSE** | 🟢 LOW | May add TRUSTED_DEVICE_SET action |
+| UserEntity.trustedDeviceHash | [UserEntity.kt](file:///home/nguyentthai96/Desktop/bigbang/boilerplate/services/auth-service/src/main/kotlin/com/ntt/authservice/rbac/adapter/out/persistence/entity/UserEntity.kt) | 100% | **REUSE** | 🟢 LOW | Field exists, just needs to be set |
+| User.requiresMfa() | [User.kt (domain model)](file:///home/nguyentthai96/Desktop/bigbang/boilerplate/services/auth-service/src/main/kotlin/com/ntt/authservice/auth/domain/) | 100% | **REUSE** | 🟢 LOW | Already handles hash comparison |
 
-| Symbol | Match% | Decision | Reason |
-|--------|--------|----------|--------|
-| `SnowflakePersistentAuditableEntity` | 100% | **REUSE** | New entities (UserIdentityEntity, etc.) extend this |
-| `AuthException` | 100% | **REUSE** | New exceptions extend AuthException |
-| `GlobalExceptionHandler` | 100% | **REUSE** (extend) | Add new @ExceptionHandler methods |
-| `hashToken()` (AuthService:225) | 80% | **EXTRACT** | Used in AuthService + will be needed in MfaService for device hash |
-| `generateAuthResponse()` (AuthService:152) | 100% | **REUSE** | Called from MfaService.verifyMfa() and SsoAdapter.handleCallback() |
-| `PasswordPolicyService` | 100% | **REUSE** (rewrite) | Existing stub → full Passay implementation |
-| `SsoAdapter` | 100% | **REUSE** (rewrite) | Existing stub → full OAuth2 implementation |
+### No EXTRACT Candidates
 
-### 4.2 Extract candidates
+All changes in v2 are small extensions (add params, replace TODO, config refactor). No code duplication detected that warrants extraction.
 
-| Symbol | Source | Target | Callers | Impact |
-|--------|--------|--------|---------|--------|
-| `hashToken()` | `AuthService` (L225-228) | `TokenUtils.kt` (utility class) | AuthService, MfaService | 🟢 LOW (2 callers) |
-| `generateAuthResponse()` | `AuthService` (L152-198) | Keep in AuthService, expose as internal | AuthService, MfaService, SsoAdapter | 🟡 MEDIUM (3 callers) — make it `internal fun` |
+### No NEW Components
 
-### 4.3 New items (no match found)
-
-| Symbol | Reason |
-|--------|--------|
-| `MfaService` | No existing MFA logic anywhere |
-| `OtpService` | No OTP generation/Redis integration |
-| `TotpService` | No TOTP library usage |
-| `CaptchaVerifier` | No CAPTCHA integration |
-| `MfaController` | No MFA API endpoints |
-| `SsoController` | No SSO API endpoints |
-| `TokenController` | No token introspection/JWKS endpoints |
+All necessary components exist. Only modifications and additions to existing components.
 
 ---
 
-## 5. Context Snapshot
+## 5. Context Snapshot — ĐỦ ĐỂ CODE
 
-### 5.1 Dependencies (current → after)
+### Dependencies
 
-| Dependency | Current | After |
-|-----------|---------|-------|
-| `spring-boot-starter-security` | ✅ | ✅ |
-| `jjwt-api/impl/jackson` | ✅ | ✅ (RS256 support native) |
-| `spring-boot-starter-data-redis` | ❌ | ✅ NEW |
-| `spring-boot-starter-oauth2-resource-server` | ❌ | ✅ NEW |
-| `spring-boot-starter-oauth2-client` | ❌ | ✅ NEW |
-| `dev.samstevens.totp:totp:1.7.1` | ❌ | ✅ NEW |
-| `org.passay:passay:1.6.4` | ❌ | ✅ NEW |
+| Dependency | Type | Key Methods | Ghi chú |
+|-----------|------|-------------|---------|
+| `SecurityProperties` | `@ConfigurationProperties` (injected) | `.sso.providers`, `.sso.providers[name]?.tokenEndpoint` | Add ProviderConfig data class |
+| `EventPublisher` | Interface (injected) | `publish(DomainEvent)` | Port already exists, add SsoProvisionedEvent |
+| `SpringEventPublisher` | Adapter (auto-detected) | `publish(DomainEvent)` → Spring `ApplicationEventPublisher.publishEvent()` | No change needed |
+| `UserRepository` | JpaRepository (injected) | `findById(Long)`, `save(UserEntity)` | Used in MfaService for trusted device save |
+| `AuditLogService` | `@Service` (injected) | `logEvent(userId, action, ...)` | May add `TRUSTED_DEVICE_SET` to AuditAction enum |
+| `OAuth2TokenExchanger` | `@Component` (injected in SsoAdapter) | `exchange(provider, code, redirectUri, clientId, clientSecret)` | Refactor internals only |
 
-### 5.2 Database (current → after)
+### Config Keys
 
-| Table | Current | After |
-|-------|---------|-------|
-| `users` | ✅ 12 columns | ✅ 17 columns (+5: mfa_enabled, mfa_method, totp_secret_encrypted, trusted_device_hash, password_changed_at) |
-| `user_identities` | ❌ | ✅ NEW (SSO identity linking) |
-| `password_policies` | ❌ | ✅ NEW (domain-scoped policy) |
-| `password_history` | ❌ | ✅ NEW (reuse prevention) |
+| Key | Source | Ví dụ value | Nơi dùng |
+|-----|--------|------------|---------|
+| `app.security.sso.providers.google.token-endpoint` | application.yml | `https://oauth2.googleapis.com/token` | `OAuth2TokenExchanger.getTokenEndpoint()` |
+| `app.security.sso.providers.google.user-info-endpoint` | application.yml | `https://openidconnect.googleapis.com/v1/userinfo` | `OAuth2TokenExchanger.getUserInfoEndpoint()` |
+| `app.security.sso.providers.keycloak.token-endpoint` | application.yml | `${KEYCLOAK_TOKEN_ENDPOINT}` | `OAuth2TokenExchanger.getTokenEndpoint()` |
+| `app.security.sso.providers.keycloak.user-info-endpoint` | application.yml | `${KEYCLOAK_USERINFO_ENDPOINT}` | `OAuth2TokenExchanger.getUserInfoEndpoint()` |
 
-### 5.3 API Endpoints (current → after)
+### Error Codes Thrown (No New Codes)
 
-| Current (4) | New (14) | Total |
-|------------|----------|-------|
-| POST /api/auth/login | POST /api/auth/mfa/verify | 18 |
-| POST /api/auth/register | POST /api/auth/mfa/totp/setup | |
-| POST /api/auth/refresh | POST /api/auth/mfa/totp/confirm | |
-| POST /api/auth/switch-domain | POST /api/auth/mfa/resend | |
-| | PUT /api/auth/mfa/settings | |
-| | POST /api/auth/sso/callback | |
-| | GET /api/auth/sso/providers | |
-| | POST /api/auth/sso/link | |
-| | DELETE /api/auth/sso/unlink/{provider} | |
-| | POST /api/auth/introspect | |
-| | GET /.well-known/jwks.json | |
-| | POST /api/auth/sessions/{userId}/revoke-all | |
-| | POST /api/auth/change-password | |
-| | POST /api/auth/forgot-password | |
+All error codes already exist in `AuthErrorCode.kt` and `AuthCoreExceptions.kt`. No new exceptions needed.
 
-### 5.4 Configuration (application.yml additions)
+| Error Code | Condition | Status |
+|-----------|-----------|--------|
+| `SSO_TOKEN_INVALID` | Unknown/unsupported SSO provider | ✅ Exists |
+| `SSO_PROVIDER_TIMEOUT` | IdP timeout | ✅ Exists |
+| `MFA_CODE_INVALID` | OTP/TOTP code wrong | ✅ Exists |
+| `MFA_TOKEN_EXPIRED` | MFA JWT expired | ✅ Exists |
 
-```yaml
-# NEW sections to add:
-app.security.mfa.*           # OTP TTL, max attempts, TOTP window
-app.security.captcha.*       # provider, secret-key, site-key
-app.security.sso.*           # enabled, providers
-app.security.jwt.algorithm   # RS256
-app.security.jwt.private-key-path
-app.security.jwt.public-key-path
-app.security.jwt.key-id
-spring.data.redis.*          # Redis connection
-spring.security.oauth2.client.registration.*  # OAuth2 providers
-```
+### DTO Changes
+
+| DTO | Change | Match % | Decision |
+|-----|--------|---------|----------|
+| `MfaVerifyRequest` | Add `trustDevice: Boolean = false`, `deviceHash: String? = null` | EXTEND | Backward-compatible (default values) |
+
+### Base API Verification
+
+| API Call | Verified Method | Source | Status |
+|---------|----------------|--------|--------|
+| `eventPublisher.publish(DomainEvent)` | `EventPublisher.publish(event: DomainEvent)` | `EventPublisher.kt:7` | ✅ |
+| `userRepository.save(UserEntity)` | `JpaRepository.save(S)` | Spring Data JPA | ✅ |
+| `securityProperties.sso.providers[name]` | Map<String, ProviderConfig> | Needs to be added | ⚠️ PENDING |

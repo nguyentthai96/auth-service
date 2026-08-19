@@ -1,565 +1,453 @@
-# Design: Auth Core Features
+# Design: Auth Core Features — Completion & Hardening
 
 > **Change**: auth-core-features | **Type**: EXTEND | **Flow**: Non-Financial
+> **Direction**: Approach B — Gap Completion + Hardening + Testing (from brainstorm)
+> **_Generated**: 2026-08-19 (v2 — merged from v1 2026-08-05)
+> **Status**: ~90% code exists — design focuses on 3 gaps + testing + hardening
 
 ---
 
-## 1. Component Architecture
+## 1. Component Architecture (Current State)
+
+[CHANGED] All components EXIST. Diagram reflects current codebase, not planned state.
 
 ```mermaid
 graph TB
-    subgraph "API Layer (Controllers)"
-        AuthCtrl["AuthController<br/>(MODIFY: LoginResult handling)"]
-        MfaCtrl["MfaController<br/>(NEW: 5 endpoints)"]
-        SsoCtrl["SsoController<br/>(NEW: 4 endpoints)"]
-        TokenCtrl["TokenController<br/>(NEW: introspect, JWKS, revoke)"]
+    subgraph "API Layer (Controllers) — ALL EXIST"
+        AuthCtrl["AuthController<br/>(login, register, refresh)"]
+        CqrsCtrl["CqrsAuthController<br/>(CQRS endpoints)"]
+        MfaCtrl["MfaController<br/>(5 MFA endpoints)"]
+        SsoCtrl["SsoController<br/>(4 SSO endpoints)"]
+        TokenCtrl["TokenController<br/>(introspect, JWKS, revoke)"]
+        CaptchaCtrl["CaptchaController<br/>(CAPTCHA challenge)"]
     end
 
-    subgraph "Application Layer (Services)"
-        AuthSvc["AuthService<br/>(MODIFY: MFA checkpoint, CAPTCHA)"]
-        MfaSvc["MfaService<br/>(NEW: MFA orchestrator)"]
-        OtpSvc["OtpService<br/>(NEW: Redis OTP)"]
-        TotpSvc["TotpService<br/>(NEW: TOTP verify)"]
-        CaptchaV["CaptchaVerifier<br/>(NEW: pluggable interface)"]
-        SsoAdapt["SsoAdapter<br/>(MODIFY: full OAuth2 impl)"]
-        JwtSvc["JwtService<br/>(MODIFY: RS256 migration)"]
-        PwdSvc["PasswordPolicyService<br/>(MODIFY: Passay impl)"]
+    subgraph "Application Layer (Services) — ALL EXIST"
+        AuthSvc["AuthService<br/>(login, register, domain switch)"]
+        LoginH["LoginHandler<br/>(CQRS command handler)"]
+        MfaSvc["MfaService<br/>(MFA orchestrator)"]
+        OtpSvc["OtpService<br/>(Redis OTP)"]
+        TotpSvc["TotpService<br/>(TOTP verify + AES-256)"]
+        CaptchaV["CaptchaVerifier<br/>(pluggable interface)"]
+        SsoAdapt["SsoAdapter<br/>(OAuth2 impl)"]
+        JwtSvc["JwtService<br/>(RS256 dual-key)"]
+        PwdSvc["PasswordPolicyService<br/>(Passay + history)"]
+        MfaRL["MfaRateLimitService"]
+        LoginRL["LoginRateLimitService"]
+        LoginSess["LoginSessionService"]
+        AuditSvc["AuditLogService"]
     end
 
-    subgraph "Domain Layer (Entities)"
-        UserE["UserEntity<br/>(MODIFY: +5 columns)"]
-        UserIdE["UserIdentityEntity<br/>(NEW)"]
-        PwdPolicyE["PasswordPolicyEntity<br/>(NEW)"]
-        PwdHistE["PasswordHistoryEntity<br/>(NEW)"]
+    subgraph "Ports (Hexagonal) — ALL EXIST"
+        EventPub["EventPublisher<br/>(port/out)"]
+        CaptchaGw["CaptchaGateway<br/>(port/out)"]
+        SsoGw["SsoGateway<br/>(port/out)"]
+        TokenStore["TokenStore<br/>(port/out)"]
+        UserPort["UserPort<br/>(port/out)"]
+    end
+
+    subgraph "Adapters Out — ALL EXIST"
+        OAuth2Ex["OAuth2TokenExchanger<br/>⚠️ MODIFY: config-driven"]
+        SpringEP["SpringEventPublisher"]
+        AltchaV["AltchaCaptchaVerifier"]
+    end
+
+    subgraph "Domain (Entities) — ALL EXIST"
+        UserE["UserEntity<br/>(+MFA/SSO columns)"]
+        UserIdE["UserIdentityEntity"]
+        PwdPolicyE["PasswordPolicyEntity"]
+        PwdHistE["PasswordHistoryEntity"]
     end
 
     subgraph "Infrastructure"
-        Redis["Redis<br/>(OTP storage)"]
-        OAuth2["OAuth2 Providers<br/>(Google, Microsoft, Keycloak)"]
-        Kafka["Kafka<br/>(iam.user.sso_provisioned)"]
+        Redis["Redis<br/>(OTP, rate limit, sessions)"]
+        OAuth2P["OAuth2 Providers<br/>(Google, Microsoft, ⚠️Keycloak)"]
     end
 
     AuthCtrl --> AuthSvc
+    CqrsCtrl --> LoginH
     MfaCtrl --> MfaSvc
     SsoCtrl --> SsoAdapt
     TokenCtrl --> JwtSvc
 
-    AuthSvc --> CaptchaV
-    AuthSvc --> MfaSvc
-    AuthSvc --> JwtSvc
-    AuthSvc --> PwdSvc
+    LoginH --> MfaSvc
+    LoginH --> CaptchaV
+    LoginH --> LoginRL
+    LoginH --> LoginSess
+    LoginH --> JwtSvc
 
     MfaSvc --> OtpSvc
     MfaSvc --> TotpSvc
     MfaSvc --> JwtSvc
+    MfaSvc --> MfaRL
+    MfaSvc --> AuditSvc
+
+    SsoAdapt --> EventPub
+    SsoAdapt --> SsoGw
+    SsoAdapt --> AuditSvc
+    EventPub -.-> SpringEP
 
     OtpSvc --> Redis
-    SsoAdapt --> OAuth2
-    SsoAdapt --> Kafka
-    PwdSvc --> PwdPolicyE
-    PwdSvc --> PwdHistE
+    SsoGw -.-> OAuth2Ex
+    OAuth2Ex --> OAuth2P
+    CaptchaV -.-> AltchaV
 ```
 
 ---
 
-## 2. Component Specifications
+## 2. Gap Analysis — Components to MODIFY
 
-### 2.1 LoginResult (Sealed Class) — NEW
+### 2.1 OAuth2TokenExchanger — MODIFY (Config-Driven Providers) [Gap 1]
+
+> **Brainstorm D11**: Config-driven SSO providers — eliminate hardcoded URLs
+
+```
+Package: com.ntt.authservice.auth.adapter.out.sso
+File: OAuth2TokenExchanger.kt (EXISTING — 98 lines)
+
+BEFORE (lines 43-52 — hardcoded):
+  getTokenEndpoint("google")     → "https://oauth2.googleapis.com/token"         ✅
+  getTokenEndpoint("microsoft")  → "https://login.microsoftonline.com/..."       ✅
+  getTokenEndpoint("keycloak")   → throws "Unsupported SSO provider"             ❌
+
+AFTER (config lookup):
+  getTokenEndpoint(provider) →
+    securityProperties.sso.providers[provider]?.tokenEndpoint
+      ?: throw SsoTokenInvalidException("Unknown SSO provider: $provider")
+
+IMPACT:
+  - ~20 lines changed in OAuth2TokenExchanger.kt
+  - No public API change — exchange() signature unchanged
+  - All existing callers (SsoAdapter.handleCallback, linkIdentity) unaffected
+  - Config: application.yml → add providers map with Google/Microsoft/Keycloak endpoints
+```
+
+### 2.2 SecurityProperties.SsoProperties — MODIFY (Providers Map) [Gap 1]
+
+> **Brainstorm D11**: Add per-provider config
+
+```
+Package: com.ntt.authservice.shared.config
+File: SecurityProperties.kt (EXISTING)
+
+ADD to SsoProperties:
+  data class SsoProperties(
+      val enabled: Boolean = false,
+      val autoProvisionEnabled: Boolean = false,
+      val defaultDomainCode: String = "default",
+      val timeoutMs: Long = 10_000,
+      // [NEW] Config-driven provider endpoints
+      val providers: Map<String, ProviderConfig> = emptyMap()
+  ) {
+      data class ProviderConfig(
+          val tokenEndpoint: String,
+          val userInfoEndpoint: String,
+          val clientId: String = "",
+          val clientSecret: String = "",
+          val enabled: Boolean = true
+      )
+  }
+
+CONFIG (application.yml):
+  app:
+    security:
+      sso:
+        providers:
+          google:
+            token-endpoint: https://oauth2.googleapis.com/token
+            user-info-endpoint: https://openidconnect.googleapis.com/v1/userinfo
+          microsoft:
+            token-endpoint: https://login.microsoftonline.com/common/oauth2/v2.0/token
+            user-info-endpoint: https://graph.microsoft.com/oidc/userinfo
+          keycloak:
+            token-endpoint: ${KEYCLOAK_TOKEN_ENDPOINT:http://localhost:8080/realms/master/protocol/openid-connect/token}
+            user-info-endpoint: ${KEYCLOAK_USERINFO_ENDPOINT:http://localhost:8080/realms/master/protocol/openid-connect/userinfo}
+```
+
+### 2.3 MfaService.verifyMfa() — MODIFY (Trusted Device Save) [Gap 2]
+
+> **Brainstorm D12**: Save trustedDeviceHash on MFA verify success
 
 ```
 Package: com.ntt.authservice.auth.application
-File: LoginResult.kt
+File: MfaService.kt (EXISTING — ~175 lines)
 
+MODIFY verifyMfa() — add parameters + save logic:
+
+  BEFORE:
+    fun verifyMfa(mfaToken: String, code: String, ...): AuthResponse
+
+  AFTER:
+    fun verifyMfa(mfaToken: String, code: String,
+                  trustDevice: Boolean = false,
+                  deviceHash: String? = null, ...): AuthResponse
+
+  NEW LOGIC (after successful verify, before return):
+    if (trustDevice && !deviceHash.isNullOrBlank()) {
+        val user = userRepository.findById(userId).orElseThrow()
+        user.trustedDeviceHash = deviceHash
+        userRepository.save(user)
+        auditLogService.logEvent(userId, AuditAction.TRUSTED_DEVICE_SET, ...)
+    }
+
+IMPACT:
+  - MfaController.verifyMfa() → pass new params from DTO
+  - LoginHandler → no change (already reads trustedDeviceHash from command)
+  - MfaVerifyRequest DTO → add trustDevice + deviceHash fields
+```
+
+### 2.4 MfaVerifyRequest DTO — MODIFY (Trusted Device Fields) [Gap 2]
+
+```
+Package: com.ntt.authservice.auth.adapter.in.web.dto
+File: MfaDtos.kt (EXISTING)
+
+ADD fields to MfaVerifyRequest:
+  data class MfaVerifyRequest(
+      @field:NotBlank val mfaToken: String,
+      @field:NotBlank val code: String,
+      // [NEW] Trusted device opt-in
+      val trustDevice: Boolean = false,
+      val deviceHash: String? = null
+  )
+```
+
+### 2.5 SsoAdapter — MODIFY (EventPublisher Usage) [Gap 3]
+
+> **Brainstorm D13**: Replace TODO with EventPublisher port call
+
+```
+Package: com.ntt.authservice.auth.application
+File: SsoAdapter.kt (EXISTING — ~150 lines)
+
+CURRENT (TODO):
+  // TODO: Emit event via EventPublisher when Kafka is configured
+  // kafkaTemplate.send("iam.user.sso_provisioned", ...)
+
+AFTER:
+  eventPublisher.publish(SsoProvisionedEvent(
+      userId = user.id,
+      provider = provider,
+      email = exchangeResult.email,
+      domainCode = domainCode
+  ))
+
+EventPublisher port ALREADY EXISTS: auth/application/port/out/EventPublisher.kt
+SpringEventPublisher adapter ALREADY EXISTS: auth/adapter/out/event/SpringEventPublisher.kt
+
+NEW: Add SsoProvisionedEvent to EventPublisher.kt:
+  data class SsoProvisionedEvent(
+      val userId: Long,
+      val provider: String,
+      val email: String?,
+      val domainCode: String
+  ) : DomainEvent {
+      override val eventType: String = "iam.user.sso_provisioned"
+  }
+```
+
+---
+
+## 3. Existing Component Specifications (REUSE — No Changes)
+
+> These components are fully implemented and verified. Documented for reference only.
+
+### 3.1 LoginResult (Sealed Class) — EXISTS
+
+```
+File: auth/application/LoginResult.kt (EXISTING — 534 bytes)
 sealed class LoginResult
   ├── data class Success(response: AuthResponse)
   └── data class MfaRequired(mfaToken: String, method: String, expiresIn: Long)
 ```
 
-**Purpose**: Type-safe return from `AuthService.login()` to distinguish MFA-pending vs full authentication.
-
-### 2.2 MfaService — NEW
+### 3.2 MfaService — EXISTS
 
 ```
-Package: com.ntt.authservice.auth.application
-File: MfaService.kt
-Dependencies: OtpService, TotpService, JwtService, UserRepository, SecurityProperties
-
-Methods:
-  ├── initiateMfa(userId: Long, method: String): MfaInitResult
-  │     → Generate OTP or prepare TOTP challenge
-  │     → Return mfaToken (JWT, TTL=5min, type=mfa)
-  │
-  ├── verifyMfa(mfaToken: String, code: String): AuthResponse
-  │     → Parse mfaToken → extract userId, method
-  │     → Delegate to OtpService.verifyOtp() or TotpService.verifyTotp()
-  │     → On success: generateAuthResponse() via AuthService
-  │     → On fail: increment attempts, throw MfaCodeInvalidException
-  │
-  ├── setupTotp(userId: Long): TotpSetupResponse
-  │     → Generate secret → store pending in Redis (TTL=10min)
-  │     → Return { secret, qrCodeUri, issuer }
-  │
-  ├── confirmTotp(userId: Long, code: String): Boolean
-  │     → Load pending secret from Redis → verify code
-  │     → On success: AES-256 encrypt → save to UserEntity.totpSecretEncrypted
-  │
-  ├── resendOtp(mfaToken: String): MfaInitResult
-  │     → Parse mfaToken → regenerate OTP → store Redis
-  │
-  └── updateSettings(userId: Long, enabled: Boolean, method: String?): MfaSettingsResponse
-        → Validate TOTP setup if switching to TOTP
-        → Update UserEntity.mfaEnabled, mfaMethod
+File: auth/application/MfaService.kt (EXISTING — 8775 bytes)
+Methods: initiateMfa(), verifyMfa(), setupTotp(), confirmTotp(), resendOtp(), updateSettings()
+Dependencies: OtpService, TotpService, JwtService, UserRepository, MfaRateLimitService, AuditLogService
 ```
 
-### 2.3 OtpService — NEW
+### 3.3 OtpService — EXISTS
 
 ```
-Package: com.ntt.authservice.auth.application
-File: OtpService.kt
-Dependencies: StringRedisTemplate, SecurityProperties
-
-Methods:
-  ├── generateOtp(userId: Long, channel: String): String
-  │     → code = 6-digit SecureRandom
-  │     → Redis SET "otp:{userId}:{channel}" = code, TTL=300s
-  │     → Redis SET "otp:{userId}:{channel}:attempts" = 0, TTL=300s
-  │     → Return code (for SMS/Email delivery)
-  │
-  ├── verifyOtp(userId: Long, channel: String, code: String): Boolean
-  │     → Redis GET "otp:{userId}:{channel}"
-  │     → Compare code (constant-time comparison)
-  │     → If match: Redis DEL both keys → return true
-  │     → If no match: Redis INCR attempts
-  │     →   If attempts >= maxAttempts: DEL keys → throw MfaMaxAttemptsException
-  │     →   Else: throw MfaCodeInvalidException
-  │
-  └── deleteOtp(userId: Long, channel: String): Unit
-        → Redis DEL "otp:{userId}:{channel}" + ":attempts"
-
-Redis Key Schema:
-  otp:{userId}:{channel}           → "482931"    (TTL 300s)
-  otp:{userId}:{channel}:attempts  → "2"          (TTL 300s)
-  mfa:totp:setup:{userId}          → "JBSWY3DPEHPK3PXP" (TTL 600s)
+File: auth/application/OtpService.kt (EXISTING — 3614 bytes)
+Methods: generateOtp(), verifyOtp(), deleteOtp()
+Redis keys: otp:{userId}:{channel}, otp:{userId}:{channel}:attempts, mfa:totp:setup:{userId}
 ```
 
-### 2.4 TotpService — NEW
+### 3.4 TotpService — EXISTS
 
 ```
-Package: com.ntt.authservice.auth.application
-File: TotpService.kt
-Dependencies: dev.samstevens.totp (DefaultSecretGenerator, DefaultCodeGenerator, DefaultCodeVerifier)
-
-Methods:
-  ├── generateSecret(): String
-  │     → new DefaultSecretGenerator(32).generate()
-  │
-  ├── generateQrUri(secret: String, username: String, issuer: String): String
-  │     → new QrData.Builder().secret(secret).issuer(issuer).label(username).build()
-  │     → Return otpauth:// URI
-  │
-  ├── verifyCode(secret: String, code: String): Boolean
-  │     → DefaultCodeVerifier(DefaultCodeGenerator())
-  │     → verifier.isValidCode(secret, code) with discrepancy=1
-  │
-  ├── encryptSecret(secret: String): String
-  │     → AES-256-GCM encrypt with key from env TOTP_ENCRYPTION_KEY
-  │     → Return Base64(iv + ciphertext + tag)
-  │
-  └── decryptSecret(encrypted: String): String
-        → Decode Base64 → extract iv, ciphertext, tag
-        → AES-256-GCM decrypt → return plaintext secret
+File: auth/application/TotpService.kt (EXISTING — 4585 bytes)
+Methods: generateSecret(), generateQrUri(), verifyCode(), encryptSecret(), decryptSecret()
+Library: dev.samstevens.totp:totp:1.7.1
+Encryption: AES-256-GCM via TOTP_ENCRYPTION_KEY env var
 ```
 
-### 2.5 CaptchaVerifier (Interface + Adapters) — NEW
+### 3.5 CaptchaVerifier — EXISTS
 
 ```
-Package: com.ntt.authservice.auth.application
-File: CaptchaVerifier.kt
-
-Interface:
-  fun verify(token: String): Boolean
-
-Implementations (selected by app.security.captcha.provider):
-  ├── TurnstileCaptchaVerifier   → Cloudflare Turnstile API
-  ├── HCaptchaVerifier           → hCaptcha API
-  ├── RecaptchaVerifier           → Google reCAPTCHA v2/v3
-  └── NoopCaptchaVerifier         → Always returns true (dev/test)
-
-Factory:
-  @Bean
-  fun captchaVerifier(props: SecurityProperties, restTemplate: RestTemplate): CaptchaVerifier =
-      when (props.captcha.provider) {
-          "turnstile" -> TurnstileCaptchaVerifier(props.captcha, restTemplate)
-          "hcaptcha"  -> HCaptchaVerifier(props.captcha, restTemplate)
-          "recaptcha" -> RecaptchaVerifier(props.captcha, restTemplate)
-          else        -> NoopCaptchaVerifier()
-      }
+File: auth/application/CaptchaVerifier.kt (EXISTING — 2120 bytes)
+Interface: CaptchaVerifier { fun verify(token: String): Boolean }
+Adapters: AltchaCaptchaVerifier (primary), NoopCaptchaVerifier (dev)
 ```
 
-### 2.6 SsoAdapter — MODIFY (full rewrite)
+### 3.6 SsoAdapter — EXISTS (MODIFY for EventPublisher)
 
 ```
-Package: com.ntt.authservice.auth.application
-File: SsoAdapter.kt (existing → full rewrite)
-Dependencies: RestTemplate (OAuth2), UserRepository, UserIdentityRepository, DomainRepository,
-              KafkaTemplate, JwtService, SecurityProperties
-
-Methods:
-  ├── handleCallback(code: String, provider: String, redirectUri: String): AuthResponse
-  │     → Exchange code for tokens (POST IdP /token endpoint)
-  │     → Parse id_token → extract sub, email, name
-  │     → Lookup UserIdentityEntity by (provider, sub)
-  │     → If found: generate internal JWT
-  │     → If not found: check domain autoProvision
-  │     →   If true: create user + identity → Kafka event → generate JWT
-  │     →   If false: throw SsoUserNotProvisionedException
-  │
-  ├── getProviders(domainCode: String?): List<SsoProviderInfo>
-  │     → Read from Spring OAuth2 client registrations
-  │     → Filter by domain SSO config (if domainCode specified)
-  │
-  ├── linkIdentity(userId: Long, code: String, provider: String): UserIdentityEntity
-  │     → Exchange code → parse id_token → create UserIdentityEntity
-  │     → Validate: sub not already linked to another user
-  │
-  └── unlinkIdentity(userId: Long, provider: String): Unit
-        → Delete UserIdentityEntity
-        → Validate: user has password OR other SSO identities
+File: auth/application/SsoAdapter.kt (EXISTING — 7624 bytes)
+Methods: handleCallback(), getProviders(), linkIdentity(), unlinkIdentity()
+Dependencies: OAuth2TokenExchanger, UserRepository, UserIdentityRepository, DomainRepository, EventPublisher, AuditLogService
 ```
 
-### 2.7 JwtService — MODIFY (RS256 Migration)
+### 3.7 JwtService — EXISTS (RS256 Dual-Key)
 
 ```
-Package: com.ntt.authservice.auth.application
-File: JwtService.kt (existing → modify)
-
-Changes:
-  ├── signingKey property:
-  │     BEFORE: Keys.hmacShaKeyFor(secretKey.toByteArray())
-  │     AFTER:  loadKeyPair(privateKeyPath, publicKeyPath)
-  │
-  ├── legacyKey property (7-day migration):
-  │     IF secretKey is non-empty → Keys.hmacShaKeyFor() for fallback verify
-  │
-  ├── generateAccessToken():
-  │     BEFORE: .signWith(signingKey)
-  │     AFTER:  .signWith(keyPair.private, Jwts.SIG.RS256)
-  │     + Add "kid" header for JWKS matching
-  │
-  ├── parseToken():
-  │     BEFORE: .verifyWith(signingKey)
-  │     AFTER:  try RS256 first → catch → fallback HMAC verify → catch → throw
-  │
-  ├── getJwks(): Map<String, Any> (NEW)
-  │     → Build JWK from public key: { kty, kid, n, e, alg, use }
-  │     → Return { keys: [...] }
-  │
-  ├── generateMfaToken(userId: Long, method: String): String (NEW)
-  │     → Short-lived JWT (TTL=5min, type=mfa, sub=userId, method=method)
-  │
-  └── parseMfaToken(token: String): Claims (NEW)
-        → Parse JWT → validate type=mfa → return claims
+File: auth/application/JwtService.kt (EXISTING — 8698 bytes)
+Features: RS256 primary, HMAC legacy fallback, kid header, JWKS generation
+Methods: generateAccessToken(), generateRefreshToken(), parseToken(), getJwks(), generateMfaToken(), parseMfaToken()
 ```
 
-### 2.8 PasswordPolicyService — MODIFY (Passay implementation)
+### 3.8 PasswordPolicyService — EXISTS (Passay Integration)
 
 ```
-Package: com.ntt.authservice.auth.application
-File: PasswordPolicyService.kt (existing stub → full impl)
+File: auth/application/PasswordPolicyService.kt (EXISTING — 6703 bytes)
+Methods: validatePasswordStrength(), checkPasswordHistory(), changePassword(), getPolicy(), updatePolicy()
+Cache: ConcurrentHashMap<Long, PasswordValidator> per domainId
+```
 
-State:
-  validatorCache: ConcurrentHashMap<Long, PasswordValidator>  // domainId → Passay validator
+### 3.9 LoginHandler (CQRS) — EXISTS
 
-Methods:
-  ├── validatePasswordStrength(password: String, domainId: Long): List<String>
-  │     → Load or build Passay PasswordValidator from domain policy
-  │     → validator.validate(PasswordData(password))
-  │     → Return list of violation messages (empty = valid)
-  │
-  ├── checkPasswordHistory(userId: Long, newPassword: String, historyCount: Int): Boolean
-  │     → Load last N hashes from PasswordHistoryEntity
-  │     → BCrypt.matches(newPassword, eachHash)
-  │     → Return true if no match
-  │
-  ├── changePassword(userId: Long, oldPassword: String, newPassword: String): Unit
-  │     → Validate old password
-  │     → Load domain policy → validate strength
-  │     → Check history → insert history → update user.passwordHash
-  │     → Update user.passwordChangedAt → prune old history entries
-  │
-  ├── getPolicy(domainId: Long): PasswordPolicyEntity
-  │     → Repository lookup with fallback defaults
-  │
-  ├── updatePolicy(domainId: Long, dto: PasswordPolicyUpdateRequest): PasswordPolicyEntity
-  │     → Save entity → invalidate cached validator
-  │
-  └── buildValidator(policy: PasswordPolicyEntity): PasswordValidator (private)
-        → Passay rules: LengthRule, CharacterRule (upper/lower/digit/special)
-        → CharacterCharacteristicsRule (minCharacterTypes)
-        → WhitespaceRule
+```
+File: auth/application/command/LoginHandler.kt (EXISTING — 7152 bytes)
+Entry: handleLogin(LoginCommand) → LoginResult
+Flow: validate credentials → CAPTCHA check → MFA check → token generation
+Dependencies: UserPort, CaptchaVerifier, MfaService, JwtService, LoginRateLimitService, LoginSessionService
 ```
 
 ---
 
-## 3. Entity Design
+## 4. Entity Design (ALL EXIST — V2 Migration Applied)
 
-### 3.1 UserEntity — MODIFY
+### 4.1 UserEntity — EXISTS (MFA/SSO columns applied)
 
 ```kotlin
-// Add to existing UserEntity.kt
-@Column(name = "mfa_enabled", nullable = false)
+// Fields added by V2 migration — ALL EXIST in UserEntity.kt
 var mfaEnabled: Boolean = false
-
-@Column(name = "mfa_method", length = 20)
 var mfaMethod: String = "NONE"  // NONE | SMS | EMAIL | TOTP
-
-@Column(name = "totp_secret_encrypted", length = 500)
 var totpSecretEncrypted: String? = null
-
-@Column(name = "trusted_device_hash", length = 255)
 var trustedDeviceHash: String? = null
-
-@Column(name = "password_changed_at")
-var passwordChangedAt: java.time.Instant? = null
+var passwordChangedAt: Instant? = null
 ```
 
-### 3.2 UserIdentityEntity — NEW
+### 4.2 UserIdentityEntity — EXISTS
 
-```kotlin
-package com.ntt.authservice.rbac.adapter.out.persistence.entity
-
-@Entity
-@Table(name = "user_identities",
-       uniqueConstraints = [UniqueConstraint(columnNames = ["provider", "provider_sub"])])
-class UserIdentityEntity : SnowflakeBaseEntity() {
-
-    @Column(name = "user_id", nullable = false)
-    var userId: Long = 0
-
-    @Column(nullable = false, length = 50)
-    lateinit var provider: String  // google | microsoft | keycloak
-
-    @Column(name = "provider_sub", nullable = false, length = 255)
-    lateinit var providerSub: String
-
-    @Column(name = "provider_email", length = 255)
-    var providerEmail: String? = null
-
-    @Column(name = "provider_name", length = 200)
-    var providerName: String? = null
-
-    @Column(name = "linked_at", nullable = false)
-    var linkedAt: Instant = Instant.now()
-
-    @Column(nullable = false)
-    var active: Boolean = true
-}
+```
+File: rbac/adapter/out/persistence/entity/UserIdentityEntity.kt
+Base: SnowflakeBaseEntity
+Fields: userId, provider, providerSub, providerEmail, providerName, linkedAt, active
+Constraint: UNIQUE(provider, provider_sub)
 ```
 
-### 3.3 PasswordPolicyEntity — NEW
+### 4.3 PasswordPolicyEntity — EXISTS
 
-```kotlin
-package com.ntt.authservice.rbac.adapter.out.persistence.entity
-
-@Entity
-@Table(name = "password_policies")
-class PasswordPolicyEntity : SnowflakeBaseEntity() {
-
-    @Column(name = "domain_id", nullable = false, unique = true)
-    var domainId: Long = 0
-
-    @Column(name = "min_length", nullable = false)
-    var minLength: Int = 8
-
-    @Column(name = "max_length", nullable = false)
-    var maxLength: Int = 128
-
-    @Column(name = "require_uppercase", nullable = false)
-    var requireUppercase: Boolean = true
-
-    @Column(name = "require_lowercase", nullable = false)
-    var requireLowercase: Boolean = true
-
-    @Column(name = "require_digit", nullable = false)
-    var requireDigit: Boolean = true
-
-    @Column(name = "require_special", nullable = false)
-    var requireSpecial: Boolean = false
-
-    @Column(name = "min_character_types", nullable = false)
-    var minCharacterTypes: Int = 3
-
-    @Column(name = "history_count", nullable = false)
-    var historyCount: Int = 5
-
-    @Column(name = "max_age_days", nullable = false)
-    var maxAgeDays: Int = 90
-
-    @Column(name = "lockout_threshold", nullable = false)
-    var lockoutThreshold: Int = 5
-
-    @Column(name = "lockout_duration_minutes", nullable = false)
-    var lockoutDurationMinutes: Int = 15
-
-    @Column(name = "created_at", nullable = false, updatable = false)
-    var createdAt: Instant = Instant.now()
-
-    @Column(name = "updated_at", nullable = false)
-    var updatedAt: Instant = Instant.now()
-}
+```
+File: rbac/adapter/out/persistence/entity/PasswordPolicyEntity.kt
+Base: SnowflakeBaseEntity
+Fields: domainId (unique), minLength..maxAgeDays, lockout config, timestamps
 ```
 
-### 3.4 PasswordHistoryEntity — NEW
+### 4.4 PasswordHistoryEntity — EXISTS
 
-```kotlin
-package com.ntt.authservice.rbac.adapter.out.persistence.entity
-
-@Entity
-@Table(name = "password_history")
-class PasswordHistoryEntity : SnowflakeBaseEntity() {
-
-    @Column(name = "user_id", nullable = false)
-    var userId: Long = 0
-
-    @Column(name = "password_hash", nullable = false, length = 255)
-    lateinit var passwordHash: String
-
-    @Column(name = "created_at", nullable = false, updatable = false)
-    var createdAt: Instant = Instant.now()
-}
+```
+File: rbac/adapter/out/persistence/entity/PasswordHistoryEntity.kt
+Base: SnowflakeBaseEntity
+Fields: userId, passwordHash, createdAt
 ```
 
 ---
 
-## 4. SecurityProperties Extended Design
+## 5. SecurityProperties Design (EXISTS — Extend for Providers)
+
+[CHANGED] Only addition: `SsoProperties.providers` map + `ProviderConfig` nested class.
 
 ```kotlin
+// EXISTING — all nested classes already present
 @ConfigurationProperties(prefix = "app.security")
 data class SecurityProperties(
     val enabled: Boolean = true,
-    val jwt: JwtProperties = JwtProperties(),
-    val password: PasswordProperties = PasswordProperties(),
-    val mfa: MfaProperties = MfaProperties(),          // NEW
-    val captcha: CaptchaProperties = CaptchaProperties(), // NEW
-    val sso: SsoProperties = SsoProperties()             // NEW
+    val jwt: JwtProperties = JwtProperties(),          // ✅ EXISTS — RS256 config
+    val password: PasswordProperties = PasswordProperties(), // ✅ EXISTS
+    val mfa: MfaProperties = MfaProperties(),          // ✅ EXISTS
+    val captcha: CaptchaProperties = CaptchaProperties(), // ✅ EXISTS
+    val sso: SsoProperties = SsoProperties()             // ✅ EXISTS — MODIFY: add providers map
+)
+
+// [MODIFY] Add providers map to SsoProperties
+data class SsoProperties(
+    val enabled: Boolean = false,
+    val autoProvisionEnabled: Boolean = false,
+    val defaultDomainCode: String = "default",
+    val timeoutMs: Long = 10_000,
+    val providers: Map<String, ProviderConfig> = emptyMap()  // [NEW]
 ) {
-    data class JwtProperties(
-        val secretKey: String = "",              // HMAC legacy (remove after migration)
-        val algorithm: String = "RS256",          // NEW
-        val privateKeyPath: String = "",          // NEW
-        val publicKeyPath: String = "",           // NEW
-        val keyId: String = "auth-service-key-1", // NEW
-        val accessTokenExpirationMs: Long = 1_800_000,
-        val refreshTokenExpirationMs: Long = 604_800_000,
-        val issuer: String = "auth-service"
-    )
-
-    data class PasswordProperties(
-        val bcryptStrength: Int = 12,
-        val maxFailedAttempts: Int = 3,
-        val lockDurationMinutes: Int = 15
-    )
-
-    data class MfaProperties(                     // NEW
-        val otpTtlSeconds: Long = 300,
-        val maxAttempts: Int = 3,
-        val totpWindow: Int = 1,
-        val mfaTokenTtlSeconds: Long = 300,
-        val trustedDeviceTtlDays: Long = 30
-    )
-
-    data class CaptchaProperties(                  // NEW
-        val provider: String = "noop",  // turnstile | hcaptcha | recaptcha | noop
-        val secretKey: String = "",
-        val siteKey: String = "",
-        val verifyUrl: String = ""
-    )
-
-    data class SsoProperties(                      // NEW
-        val enabled: Boolean = false,
-        val autoProvisionEnabled: Boolean = false,
-        val defaultDomainCode: String = "default",
-        val timeoutMs: Long = 10_000
+    data class ProviderConfig(                                 // [NEW]
+        val tokenEndpoint: String,
+        val userInfoEndpoint: String,
+        val clientId: String = "",
+        val clientSecret: String = "",
+        val enabled: Boolean = true
     )
 }
 ```
 
 ---
 
-## 5. Controller Design
+## 6. Controller Design (ALL EXIST — No Changes)
 
-### 5.1 AuthController — MODIFY
-
-```
-Existing endpoints (unchanged):
-  POST /api/auth/register
-  POST /api/auth/refresh
-  POST /api/auth/switch-domain
-
-Modified:
-  POST /api/auth/login
-    Request: LoginRequestDto + optional captchaToken
-    Response: LoginResult → when {
-      is Success → 200 OK (AuthResponse)
-      is MfaRequired → 200 OK (MfaRequiredResponse)
-    }
-
-New endpoints:
-  POST /api/auth/change-password (JWT auth)
-    Request: { oldPassword, newPassword }
-    Response: 200 OK
-
-  POST /api/auth/forgot-password (Public)
-    Request: { email }
-    Response: 200 OK (always — prevent email enumeration)
-```
-
-### 5.2 MfaController — NEW
+### 6.1 MfaController — EXISTS
 
 ```
-Package: com.ntt.authservice.auth.adapter.in.web
-
-POST /api/auth/mfa/verify        → mfaService.verifyMfa(mfaToken, code)
+POST /api/auth/mfa/verify        → mfaService.verifyMfa(mfaToken, code, trustDevice, deviceHash)  [MODIFY: add trusted device params]
 POST /api/auth/mfa/totp/setup    → mfaService.setupTotp(userId)
 POST /api/auth/mfa/totp/confirm  → mfaService.confirmTotp(userId, code)
 POST /api/auth/mfa/resend        → mfaService.resendOtp(mfaToken)
 PUT  /api/auth/mfa/settings      → mfaService.updateSettings(userId, enabled, method)
 ```
 
-### 5.3 SsoController — NEW
+### 6.2 SsoController — EXISTS
 
 ```
-Package: com.ntt.authservice.auth.adapter.in.web
-
 POST   /api/auth/sso/callback            → ssoAdapter.handleCallback(code, provider, redirectUri)
 GET    /api/auth/sso/providers            → ssoAdapter.getProviders(domainCode)
 POST   /api/auth/sso/link                → ssoAdapter.linkIdentity(userId, code, provider)
 DELETE /api/auth/sso/unlink/{provider}    → ssoAdapter.unlinkIdentity(userId, provider)
 ```
 
-### 5.4 TokenController — NEW
+### 6.3 TokenController — EXISTS
 
 ```
-Package: com.ntt.authservice.auth.adapter.in.web
-
-POST /api/auth/introspect                   → jwtService.parseToken(token) → IntrospectionResponse
+POST /api/auth/introspect                   → jwtService.introspect(token)
 GET  /.well-known/jwks.json                  → jwtService.getJwks()
-POST /api/auth/sessions/{userId}/revoke-all  → authService.revokeAllSessions(userId)
+POST /api/auth/sessions/{userId}/revoke-all  → revokeSessionsHandler.handle(command)
 ```
 
 ---
 
-## 6. Exception Design
+## 7. Exception Design (ALL EXIST)
 
 ```
-AuthException (existing base)
-  ├── MfaCodeInvalidException       → 401 MFA_CODE_INVALID
-  ├── MfaTokenExpiredException      → 401 MFA_TOKEN_EXPIRED
-  ├── MfaMaxAttemptsException       → 403 MFA_MAX_ATTEMPTS
-  ├── TotpNotSetupException         → 400 TOTP_NOT_SETUP
-  ├── CaptchaRequiredException      → 403 CAPTCHA_REQUIRED
-  ├── CaptchaFailedException        → 403 CAPTCHA_FAILED
-  ├── SsoTokenInvalidException      → 401 SSO_TOKEN_INVALID
+AuthException (shared/exception/AuthExceptions.kt)
+AuthCoreExceptions (shared/exception/AuthCoreExceptions.kt — 4878 bytes):
+  ├── MfaCodeInvalidException        → 401 MFA_CODE_INVALID
+  ├── MfaTokenExpiredException       → 401 MFA_TOKEN_EXPIRED
+  ├── MfaMaxAttemptsException        → 429 MFA_MAX_ATTEMPTS
+  ├── TotpNotSetupException          → 400 TOTP_NOT_SETUP
+  ├── CaptchaRequiredException       → 403 CAPTCHA_REQUIRED
+  ├── CaptchaFailedException         → 403 CAPTCHA_FAILED
+  ├── SsoTokenInvalidException       → 401 SSO_TOKEN_INVALID
   ├── SsoUserNotProvisionedException → 403 SSO_USER_NOT_PROVISIONED
   ├── SsoIdentityConflictException   → 409 SSO_IDENTITY_CONFLICT
   ├── CannotUnlinkLastIdentityException → 400 CANNOT_UNLINK_LAST_IDENTITY
@@ -567,20 +455,67 @@ AuthException (existing base)
   ├── PasswordRecentlyUsedException  → 400 PASSWORD_RECENTLY_USED
   ├── PasswordExpiredException       → 403 PASSWORD_EXPIRED
   └── PasswordPolicyViolationException → 400 PASSWORD_POLICY_VIOLATION
+
+AuthErrorCode enum (shared/exception/AuthErrorCode.kt — 5469 bytes)
+  → Contains all error code constants with HTTP status mappings
 ```
 
 ---
 
-## 7. Open Questions Carried Forward
+## 8. Testing Strategy (from brainstorm Q5)
 
-> ⚠️ OPEN QUESTION: Q8 — TOTP secret encryption: Jasypt vs custom EncryptionService?
-> **Impact**: TotpService encrypt/decrypt methods implementation.
-> **Recommendation**: Custom EncryptionService with AES-256-GCM — more transparent, no framework dependency.
+### 8.1 Existing Tests (REUSE)
 
-> ⚠️ OPEN QUESTION: Q9 — JWKS key rotation: auto-rotate vs manual?
-> **Impact**: JwtService.getJwks() — single key vs multi-key support.
-> **Recommendation**: Manual initially (single kid), design getJwks() as `List<JWK>` for future rotation.
+| Test Class | Type | Status |
+|-----------|------|--------|
+| `LoginHandlerTest` | Unit | ✅ EXISTS |
+| `MfaServiceTest` | Unit | ✅ EXISTS |
+| `PasswordPolicyServiceTest` | Unit | ✅ EXISTS |
+| `OtpServiceTest` | Unit | ✅ EXISTS |
+| `SsoAdapterTest` | Unit | ✅ EXISTS |
+| `MfaRateLimitServiceTest` | Unit | ✅ EXISTS |
+| `AuthControllerIntegrationTest` | Integration | ✅ EXISTS |
+| `MfaRateLimitIntegrationTest` | Integration | ✅ EXISTS |
 
-> ⚠️ OPEN QUESTION: Q10 — SSO auto-provision default domain mapping?
-> **Impact**: SsoAdapter.handleCallback() — which domain to assign JIT users.
-> **Recommendation**: Use `app.security.sso.default-domain-code` config property.
+### 8.2 New Integration Tests (Phase 4)
+
+| # | Test Class | Coverage | Effort |
+|---|-----------|----------|--------|
+| T1 | `MfaLoginFlowIntegrationTest` | UC-001: login → MFA → verify → tokens | 3h |
+| T2 | `SsoCallbackIntegrationTest` | UC-002: SSO callback + WireMock IdP + Keycloak | 3h |
+| T3 | `TokenIntrospectionIntegrationTest` | UC-003: active + blacklisted tokens | 1h |
+| T4 | `JwksEndpointIntegrationTest` | FR-010: JWKS response + Cache-Control | 0.5h |
+| T5 | `PasswordChangeIntegrationTest` | UC-004: policy + history enforcement | 2h |
+| T6 | `TotpSetupFlowIntegrationTest` | UC-005: setup → confirm → MFA verify | 2h |
+
+### 8.3 Edge Case Unit Tests (Phase 5)
+
+| Test Case | Expected Behavior | FR |
+|-----------|------------------|-----|
+| Expired mfaToken + valid code | `MfaTokenExpiredException` | FR-001 |
+| Wrong MFA method in token claims | `MfaCodeInvalidException` | FR-001 |
+| SSO callback with revoked auth code | `SsoTokenInvalidException` | FR-006 |
+| Password change without domain policy | Fallback to default policy | FR-013 |
+| TOTP confirm with expired Redis key | `TotpNotSetupException` | FR-002 |
+| Concurrent MFA verify (same mfaToken) | First succeeds, second fails (Redis DEL idempotency) | FR-015 |
+
+---
+
+## 9. Design Decisions (Final State)
+
+| # | Decision | Status | Impact |
+|---|----------|--------|--------|
+| D1 | Sealed class `LoginResult` | ✅ IMPLEMENTED | - |
+| D2 | MFA token = JWT stateless (5min TTL) | ✅ IMPLEMENTED | - |
+| D3 | RS256 via refresh-based migration | ✅ IMPLEMENTED | - |
+| D4 | CAPTCHA at service level | ✅ IMPLEMENTED | - |
+| D5 | SSO hybrid (OAuth2 Client + manual controller) | ✅ IMPLEMENTED | - |
+| D6 | UserEntity columns (not separate entity) | ✅ IMPLEMENTED | - |
+| D7 | Passay factory per domain (ConcurrentHashMap cache) | ✅ IMPLEMENTED | - |
+| D8 | SSO-only: passwordHash = "!SSO_ONLY!" | ✅ IMPLEMENTED | - |
+| D9 | Redis key namespace: `otp:{userId}:{channel}` | ✅ IMPLEMENTED | - |
+| D10 | Feature config via SecurityProperties | ✅ IMPLEMENTED | - |
+| D11 | Config-driven SSO providers (SsoProperties.providers map) | **PENDING** | OAuth2TokenExchanger, SecurityProperties |
+| D12 | Trusted device save on MFA verify success | **PENDING** | MfaService, MfaDtos |
+| D13 | EventPublisher port for SSO provisioning event | **PENDING** | SsoAdapter (port exists, usage pending) |
+| D14 | Defer trusted device TTL to separate migration | **ACCEPTED** | No code change needed now |

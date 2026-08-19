@@ -2,7 +2,7 @@
 
 API responses hiện tại sử dụng hardcoded English messages — không hỗ trợ đa ngôn ngữ. Frontend JwtSignInForm.tsx có ~12 hardcoded error message strings, tự build message từ error code (switch/case). Khi mở rộng ngôn ngữ hoặc thêm error mới, phải sửa cả backend lẫn frontend. Cần chuẩn hóa: server render message i18n hoàn chỉnh → client chỉ hiển thị `detail`/`message` field.
 
-## What Changes
+## Changes
 
 - **Server-side i18n**: Spring `MessageSource` resolve message theo `Accept-Language` header cho tất cả API responses
 - **Dual message source**: Common/static codes → `.properties` files, dynamic messages → database table `i18n_messages` (quản lý runtime)

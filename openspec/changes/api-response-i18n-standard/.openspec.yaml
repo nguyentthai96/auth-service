@@ -3,6 +3,7 @@ type: EXTEND
 flow: Command
 status: complete
 created: 2026-08-11
+updated: 2026-08-11
 artifacts:
   - id: impact_analysis
     type: markdown
@@ -24,6 +25,14 @@ artifacts:
     type: markdown
     status: done
     dependencies: [design, srs, impact_analysis]
+  - id: api_contract
+    type: markdown
+    status: done
+    dependencies: [srs, design]
+  - id: fe_tasks
+    type: markdown
+    status: done
+    dependencies: [api_contract, tasks]
 applyRequires:
   - tasks
 context:

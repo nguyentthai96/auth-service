@@ -2,7 +2,7 @@
 
 ## 1. Feature Overview
 
-Chuẩn hóa API request/response format với i18n support: Server render message hoàn chỉnh (interpolated) theo `Accept-Language` header → client chỉ hiển thị. Dual response: `ApiResponse<T>` (2xx), `ProblemDetail` (4xx/5xx). Dual message source: file (static) + database (dynamic).
+Chuẩn hóa API request/response format với i18n support: Server render message hoàn chỉnh (interpolated) theo `Accept-Language` header → client chỉ hiển thị. Dual response: `ApiResponse<T>` (2xx), `ProblemDetail` (4xx/5xx). Dual message source: file (static) + database (dynamic). Content-Language header trên mọi response via Servlet Filter (100% coverage).
 
 ## 2. Functional Requirements
 
@@ -25,7 +25,7 @@ Chuẩn hóa API request/response format với i18n support: Server render messa
 ### FR-003: Message bundle infrastructure [IDEA]
 - **Static bundles** (file): `messages.properties` (en), `messages_vi.properties` (vi)
 - base-core bundles: common API error codes (`api.bad_request`, `api.not_found`, `api.system_error`, `api.forbidden`, `api.validation_error`, `api.success`)
-- auth-service bundles: 21 `AuthErrorCode` message keys (`auth.invalid_credentials`, `auth.account_locked`, ...)
+- auth-service bundles: 21 existing `AuthErrorCode` message keys + 15 new E2EE/Anonymous keys + 7 success keys
 - Encoding: UTF-8
 - Location: `classpath:messages/` (base-core), `classpath:messages/` (auth-service)
 - Spring `ReloadableResourceBundleMessageSource` — fallback chain built-in
@@ -35,26 +35,29 @@ Chuẩn hóa API request/response format với i18n support: Server render messa
 - **Dynamic bundles** (database): `i18n_messages` table
 - Schema: `code` (message key), `locale` (BCP 47), `message` (resolved text), `module` (service grouping), `is_active`, `created_at`, `updated_at`
 - `DatabaseMessageSource extends AbstractMessageSource` — query by (code, locale)
-- Cache: Caffeine (5 min TTL) — avoid DB hit per request
+- Cache: Caffeine (5 min TTL, maxSize=500) — avoid DB hit per request
 - Fallback: DB miss → delegate to file-based `MessageSource`
 - CRUD management: future admin API (out of scope for this change)
-- **Error**: `I18N_DB_UNAVAILABLE` — fallback to file bundle silently, log warning
+- **Error**: DB unavailable → fallback to file bundle silently, log warning
 
 ### FR-004: Error response ProblemDetail i18n [IDEA]
 - `AuthControllerAdvice.handleAuthException()` → `ProblemDetail.setDetail(resolvedMessage)`
 - `resolvedMessage = messageSource.getMessage(authError.msgCode, args, locale)`
 - Response `Content-Type: application/problem+json`
-- `Content-Language` header = resolved locale
-- **Error**: `AUTH_001`→`AUTH_021` (21 codes) — all resolved via MessageSource
+- Covers ALL AuthException subtypes including E2EE (AUTH_030-039) and Anonymous (AUTH_040-044)
+- Message interpolation args: `RateLimitExceededException` → [retryAfterSeconds, dimension], `SessionLimitExceededException` → [maxSessions], `AnonymousDataLimitExceededException` → [currentSize, maxSize]
+- **Error**: `AUTH_001`→`AUTH_044` (33 codes) — all resolved via MessageSource
 
-### FR-005: Success response ApiResponse i18n [IDEA]
-- `ApiResponse.success(data, message)` → message = `messageSource.getMessage("api.success", null, locale)` hoặc custom key
-- Controllers có thể pass custom success message key
+### FR-005: Success response i18n [IDEA]
+- Action endpoints (logout, change-password, deactivate, etc.) → include i18n `message` field via `messageSource.getMessage(key, null, locale)`
+- Data-only endpoints (get sessions, introspect token, CRUD) → no forced i18n message
+- Controllers inject `MessageSource` directly (proven pattern in CqrsAuthController)
 - **Error**: N/A
 
 ### FR-006: Content-Language response header [IDEA]
-- Server set `Content-Language` response header = locale thực tế đã dùng
-- Implement via `LocaleContextHolder.getLocale()` in advice/filter
+- Server set `Content-Language` response header = locale thực tế đã dùng trên ALL responses
+- Implement via `ContentLanguageFilter` (OncePerRequestFilter) on `/api/**` paths — 100% coverage (NFR-004)
+- Defense-in-depth: `AuthControllerAdvice.setContentLanguageHeader()` also sets for error responses
 - **Error**: N/A
 
 ### FR-007: Client Accept-Language header [IDEA]
@@ -67,7 +70,7 @@ Chuẩn hóa API request/response format với i18n support: Server render messa
 ### FR-008: Client X-App-Version header [IDEA]
 - Frontend inject `X-App-Version: {version}` header
 - Version từ `import.meta.env.VITE_APP_VERSION` hoặc `package.json` version
-- Format: semver `x.y.z`
+- Format: semver `x.y.z` (regex: `^\d+\.\d+\.\d+$`)
 - **Error**: Missing header → server ignores (audit only)
 
 ### FR-009: Client hiển thị message trực tiếp [IDEA]
@@ -82,29 +85,35 @@ Chuẩn hóa API request/response format với i18n support: Server render messa
 - Missing key KHÔNG gây exception — trả fallback message
 - **Error**: Log warning `"Missing i18n key: {key}, locale: {locale}"`
 
-### FR-011: Client metadata X-Client-Platform [ENRICHED]
+### FR-011: Client metadata filter cho logging [ENRICHED]
+- `ClientMetadataFilter` (OncePerRequestFilter) extracts `X-App-Version`, `X-Client-Platform` → MDC
+- Filter on `/api/**` paths only
+- MDC keys: `appVersion`, `clientPlatform`
+- Cleanup in finally block to prevent MDC leak
 - Header `X-Client-Platform: web` cho admin dashboard
 - Server dùng cho audit/logging, không business logic
-- **Error**: N/A
+- **Error**: Missing header → MDC value = "unknown"
 
 ### FR-012: Supported locales whitelist [ENRICHED]
-- Whitelist config: `app.i18n.supported-locales=en,vi`
+- `AcceptHeaderLocaleResolver` bean configured with `supportedLocales = [en, vi]`
+- `defaultLocale = ENGLISH`
 - Unsupported locale → fallback `en`
-- Config via `application.yml`
+- Config via bean in `I18nConfig`
 - **Error**: N/A
 
 ### FR-013: Idempotent locale resolution [ENRICHED]
 - Cùng `Accept-Language` header → cùng resolved locale → cùng `Content-Language` response
-- Spring `AcceptHeaderLocaleResolver` đảm bảo deterministic
+- Spring `AcceptHeaderLocaleResolver` đảm bảo deterministic (stateless)
 - **Error**: N/A
 
 ## 3. Non-functional Requirements
 
 - NFR-001: MessageSource loading < 100ms startup overhead
-- NFR-002: `getMessage()` latency < 1ms (in-memory cache)
+- NFR-002: `getMessage()` latency < 1ms (in-memory Caffeine cache hit), < 50ms (DB cold hit)
 - NFR-003: Backward compatible — existing API consumers không break nếu không gửi `Accept-Language`
-- NFR-004: DB MessageSource cache TTL = 5 min (Caffeine)
-- NFR-005: DB unavailable → degrade gracefully to file bundles (no error to client)
+- NFR-004: ALL responses MUST have `Content-Language` header — 100% coverage via ContentLanguageFilter
+- NFR-005: DB MessageSource cache TTL = 5 min (Caffeine, maxSize=500), hit ratio > 95%
+- NFR-006: DB unavailable → degrade gracefully to file bundles (no error to client, log warning)
 
 ## 4. Database Schema
 
@@ -136,7 +145,7 @@ CREATE INDEX idx_i18n_messages_module ON i18n_messages (module);
 | `Accept-Language` | Request | Optional (fallback en) | `vi`, `en` |
 | `X-App-Version` | Request | Optional | `1.0.0` |
 | `X-Client-Platform` | Request | Optional | `web` |
-| `Content-Language` | Response | Always | `vi`, `en` |
+| `Content-Language` | Response | Always (NFR-004) | `vi`, `en` |
 
 ### Response Format
 
@@ -145,7 +154,7 @@ CREATE INDEX idx_i18n_messages_module ON i18n_messages (module);
 {
   "code": "00",
   "msgCode": "SUCCESS",
-  "message": "Đăng nhập thành công",  // ← i18n resolved
+  "message": "Đăng nhập thành công",
   "data": { ... },
   "timestamp": 1723372800000
 }
@@ -157,9 +166,17 @@ CREATE INDEX idx_i18n_messages_module ON i18n_messages (module);
   "type": "https://auth-service/errors/rate_limited",
   "title": "AUTH_020",
   "status": 429,
-  "detail": "Quá nhiều lần đăng nhập từ IP",  // ← i18n resolved
+  "detail": "Quá nhiều lần đăng nhập từ IP",
   "errorCode": "AUTH_020",
   "retryAfterSeconds": 60,
   "dimension": "IP"
 }
 ```
+
+### Message Interpolation Examples
+
+| Error Code | Args | EN Message | VI Message |
+|-----------|------|-----------|------------|
+| AUTH_020 | [5, "IP"] | Too many login attempts (IP). Wait 5s | Quá nhiều lần đăng nhập (IP). Vui lòng đợi 5 giây |
+| AUTH_021 | [3] | Maximum active sessions (3) reached | Đã đạt tối đa 3 phiên hoạt động |
+| AUTH_041 | [1024, 2048] | Data 1024 exceeds limit 2048 | Dữ liệu 1024 vượt quá giới hạn 2048 |

@@ -8,6 +8,7 @@ import com.ntt.authservice.shared.config.SecurityProperties
 import com.ntt.authservice.shared.exception.AnonymousMaxRenewalsException
 import com.ntt.authservice.shared.exception.AnonymousSessionExpiredException
 import com.ntt.eventsourcingutils.lib.cqrs.command.CommandHandler
+import io.micrometer.core.instrument.MeterRegistry
 import org.slf4j.LoggerFactory
 import org.springframework.data.redis.core.StringRedisTemplate
 import org.springframework.stereotype.Component
@@ -26,7 +27,8 @@ class RenewAnonymousTokenHandler(
     private val jwtService: JwtService,
     private val redisTemplate: StringRedisTemplate,
     private val tokenBlacklistRepository: TokenBlacklistRepository,
-    private val securityProperties: SecurityProperties
+    private val securityProperties: SecurityProperties,
+    private val meterRegistry: MeterRegistry
 ) : CommandHandler<RenewAnonymousTokenCommand, AnonymousSessionResult> {
 
     private val log = LoggerFactory.getLogger(RenewAnonymousTokenHandler::class.java)
@@ -80,6 +82,9 @@ class RenewAnonymousTokenHandler(
         val ops = redisTemplate.opsForHash<String, String>()
         ops.put(sessionKey, "renewalCount", (renewalCount + 1).toString())
         redisTemplate.expire(sessionKey, Duration.ofSeconds(securityProperties.anonymous.sessionTtlSeconds))
+
+        // Metrics: session renewed
+        meterRegistry.counter("auth.anonymous.sessions.renewed").increment()
 
         log.info("Anonymous token renewed: sessionId={} renewalCount={}", sessionId, renewalCount + 1)
 

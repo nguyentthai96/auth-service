@@ -60,8 +60,15 @@ class MfaService(
 
     /**
      * Verify MFA code (OTP or TOTP) and return full auth response on success.
+     * Optionally saves trusted device hash to skip MFA on subsequent logins (FR-005).
      */
-    fun verifyMfa(mfaToken: String, code: String, authResponseBuilder: (Long) -> AuthResponse): AuthResponse {
+    fun verifyMfa(
+        mfaToken: String,
+        code: String,
+        trustDevice: Boolean = false,
+        deviceHash: String? = null,
+        authResponseBuilder: (Long) -> AuthResponse
+    ): AuthResponse {
         val claims = try {
             jwtService.parseMfaToken(mfaToken)
         } catch (e: Exception) {
@@ -97,6 +104,17 @@ class MfaService(
 
         // Reset rate limit counters on successful verification (FR-011)
         rateLimitService.resetCounters(userId)
+
+        // Save trusted device hash if requested (FR-005)
+        if (trustDevice && !deviceHash.isNullOrBlank()) {
+            val user = userRepository.findById(userId).orElseThrow {
+                ResourceNotFoundException("User", userId)
+            }
+            user.trustedDeviceHash = deviceHash
+            userRepository.save(user)
+            log.info("Trusted device set for userId={}", userId)
+            auditLogService.logEvent(userId, AuditAction.TRUSTED_DEVICE_SET, "User", userId.toString(), "method=$method")
+        }
 
         log.info("MFA verified for userId={}, method={}", userId, method)
         auditLogService.logEvent(userId, AuditAction.MFA_VERIFY_SUCCESS, "User", userId.toString(), "method=$method")

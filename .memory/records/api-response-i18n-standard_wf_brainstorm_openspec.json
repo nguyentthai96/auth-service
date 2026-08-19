@@ -1,0 +1,15 @@
+{
+  "feature": "api-response-i18n-standard",
+  "workflow": "wf_brainstorm_openspec",
+  "outcome": "success",
+  "timestamp": "2026-08-19T07:54:49.131398+00:00",
+  "duration_seconds": 225,
+  "tokens_used": 0,
+  "prompt_layer_tokens": {},
+  "output_artifacts": [
+    "/home/nguyentthai96/Desktop/bigbang/boilerplate/services/auth-service/openspec/changes/api-response-i18n-standard/brainstorm_notes.md"
+  ],
+  "errors": [],
+  "lesson_extracted": null,
+  "recovery_pattern": null
+}

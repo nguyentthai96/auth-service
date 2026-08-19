@@ -11,7 +11,8 @@ import org.springframework.web.client.RestTemplate
 
 /**
  * Exchanges OAuth2 authorization codes for user info via provider token endpoints.
- * Supports Google and Microsoft out of the box.
+ * Provider endpoints are resolved from SecurityProperties.sso.providers configuration,
+ * supporting Google, Microsoft, Keycloak, and any custom OIDC provider at runtime.
  */
 @Component
 class OAuth2TokenExchanger(
@@ -36,18 +37,14 @@ class OAuth2TokenExchanger(
         return fetchUserInfo(userInfoEndpoint, accessToken, provider)
     }
 
-    // Provider-specific endpoints
-    private fun getTokenEndpoint(provider: String): String = when (provider) {
-        "google" -> "https://oauth2.googleapis.com/token"
-        "microsoft" -> "https://login.microsoftonline.com/common/oauth2/v2.0/token"
-        else -> throw SsoTokenInvalidException("Unsupported SSO provider: $provider")
-    }
+    // Provider endpoints resolved from configuration (config-driven — supports dynamic providers)
+    private fun getTokenEndpoint(provider: String): String =
+        securityProperties.sso.providers[provider]?.tokenEndpoint
+            ?: throw SsoTokenInvalidException("Unknown SSO provider: $provider")
 
-    private fun getUserInfoEndpoint(provider: String): String = when (provider) {
-        "google" -> "https://openidconnect.googleapis.com/v1/userinfo"
-        "microsoft" -> "https://graph.microsoft.com/oidc/userinfo"
-        else -> throw SsoTokenInvalidException("Unsupported SSO provider: $provider")
-    }
+    private fun getUserInfoEndpoint(provider: String): String =
+        securityProperties.sso.providers[provider]?.userInfoEndpoint
+            ?: throw SsoTokenInvalidException("Unknown SSO provider: $provider")
 
     private fun exchangeCode(endpoint: String, code: String, redirectUri: String,
                               clientId: String, clientSecret: String): Map<*, *> {

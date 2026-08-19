@@ -5,6 +5,8 @@ import com.ntt.authservice.auth.application.AnonymousSessionResult
 import com.ntt.authservice.auth.application.JwtService
 import com.ntt.authservice.shared.config.SecurityProperties
 import com.ntt.eventsourcingutils.lib.cqrs.command.CommandHandler
+import io.micrometer.core.instrument.MeterRegistry
+import io.micrometer.core.instrument.Timer
 import org.slf4j.LoggerFactory
 import org.springframework.data.redis.core.StringRedisTemplate
 import org.springframework.stereotype.Component
@@ -23,7 +25,8 @@ class AnonymousSessionHandler(
     private val anonymousRateLimitService: AnonymousRateLimitService,
     private val jwtService: JwtService,
     private val redisTemplate: StringRedisTemplate,
-    private val securityProperties: SecurityProperties
+    private val securityProperties: SecurityProperties,
+    private val meterRegistry: MeterRegistry
 ) : CommandHandler<CreateAnonymousSessionCommand, AnonymousSessionResult> {
 
     private val log = LoggerFactory.getLogger(AnonymousSessionHandler::class.java)
@@ -41,8 +44,10 @@ class AnonymousSessionHandler(
         // Step 2: Generate session ID
         val sessionId = UUID.randomUUID().toString()
 
-        // Step 3: Generate anonymous JWT token
+        // Step 3: Generate anonymous JWT token (timed)
+        val tokenSample = Timer.start(meterRegistry)
         val token = jwtService.generateAnonymousToken(sessionId)
+        tokenSample.stop(meterRegistry.timer("auth.anonymous.token.generation.duration"))
 
         // Step 4: Initialize Redis session metadata
         val sessionKey = "$SESSION_PREFIX$sessionId"
@@ -57,6 +62,9 @@ class AnonymousSessionHandler(
 
         redisTemplate.opsForHash<String, String>().putAll(sessionKey, sessionData)
         redisTemplate.expire(sessionKey, sessionTtl)
+
+        // Metrics: session created
+        meterRegistry.counter("auth.anonymous.sessions.created").increment()
 
         log.info("Anonymous session created: sessionId={} ip={}", sessionId, command.ipAddress)
 

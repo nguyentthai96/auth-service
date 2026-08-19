@@ -1,0 +1,15 @@
+{
+  "feature": "auth-core-features",
+  "workflow": "wf_pre_openspec",
+  "outcome": "success",
+  "timestamp": "2026-08-19T08:37:45.053827+00:00",
+  "duration_seconds": 357,
+  "tokens_used": 0,
+  "prompt_layer_tokens": {},
+  "output_artifacts": [
+    "/home/nguyentthai96/Desktop/bigbang/boilerplate/services/auth-service/openspec/changes/auth-core-features/pre_openspec.md"
+  ],
+  "errors": [],
+  "lesson_extracted": null,
+  "recovery_pattern": null
+}

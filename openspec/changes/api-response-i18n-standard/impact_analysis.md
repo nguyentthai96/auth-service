@@ -1,92 +1,208 @@
-## Impact Analysis: api-response-i18n-standard
+# Impact Analysis: api-response-i18n-standard
 
-### 1. Core Files (Affected)
+_Generated: 2026-08-11 | Updated: 2026-08-11 (wf_openspec merge)_
 
-| # | File | Type | Action | Reason |
-|---|------|------|--------|--------|
-| 1 | `base-core/.../web/BaseControllerAdvice.kt` | Shared library | [MODIFY] | Inject `MessageSource`, resolve i18n messages in all error handlers |
-| 2 | `base-core/.../payload/ApiResponse.kt` | Shared library | [MODIFY] | Update `success()` factory to accept i18n message |
-| 3 | `base-core/.../configuration/BaseCoreServletAutoConfiguration.kt` | Config | [MODIFY] | Add `LocaleResolver` + `MessageSource` beans |
-| 4 | `auth-service/.../exception/GlobalExceptionHandler.kt` | Service | [MODIFY] | Use `MessageSource` for `ProblemDetail.detail` i18n |
-| 5 | `auth-service/.../web/CqrsAuthController.kt` | Controller | [MODIFY] | Pass i18n success messages |
-| 6 | `admindashboard/src/utils/api.ts` | Frontend | [MODIFY] | Inject `Accept-Language`, `X-App-Version`, `X-Client-Platform` headers |
-| 7 | `admindashboard/src/@i18n/I18nProvider.tsx` | Frontend | [MODIFY] | Update languages list, sync `Accept-Language` header |
-| 8 | `admindashboard/src/@i18n/i18n.ts` | Frontend | [MODIFY] | Add language detector, `vi` resources |
-| 9 | `admindashboard/src/@auth/.../JwtSignInForm.tsx` | Frontend | [MODIFY] | Replace hardcoded messages with `problem.detail` |
+---
 
-### 2. New Files
+## 1. Core Files — NƠI SỬA
+
+> Chỉ liệt kê files CẦN MODIFY code. BẮT BUỘC `file:///` link + line range.
+
+| # | File | Line Range | Chức năng |
+|---|------|-----------|-----------|
+| 1 | [GlobalExceptionHandler.kt](file:///home/nguyentthai96/Desktop/bigbang/boilerplate/services/auth-service/src/main/kotlin/com/ntt/authservice/shared/exception/GlobalExceptionHandler.kt) | L31-140 | `AuthControllerAdvice` — error ProblemDetail i18n, Content-Language header (EXISTING — verify i18n coverage) |
+| 2 | [I18nConfig.kt](file:///home/nguyentthai96/Desktop/bigbang/boilerplate/services/auth-service/src/main/kotlin/com/ntt/authservice/shared/config/I18nConfig.kt) | L1-41 | CompositeMessageSource chain config — add `AcceptHeaderLocaleResolver` bean with locale whitelist |
+| 3 | [CqrsAuthController.kt](file:///home/nguyentthai96/Desktop/bigbang/boilerplate/services/auth-service/src/main/kotlin/com/ntt/authservice/auth/adapter/in/web/CqrsAuthController.kt) | L37-282 | Extend success i18n to remaining endpoints (login, register, refresh, switch-domain) |
+| 4 | [auth-messages.properties](file:///home/nguyentthai96/Desktop/bigbang/boilerplate/services/auth-service/src/main/resources/messages/auth-messages.properties) | L1-44 | Add 17 missing message keys (E2EE AUTH_030-039, Anonymous AUTH_040-044, success messages) |
+| 5 | [auth-messages_vi.properties](file:///home/nguyentthai96/Desktop/bigbang/boilerplate/services/auth-service/src/main/resources/messages/auth-messages_vi.properties) | L1-44 | Add 17 missing Vietnamese translations matching en bundle |
+
+## New Files
 
 | # | File | Type | Purpose |
 |---|------|------|---------|
-| 1 | `base-core/.../configuration/I18nAutoConfiguration.kt` | Config | MessageSource + LocaleResolver beans |
-| 2 | `base-core/src/main/resources/messages.properties` | Resource | Default (English) message bundle |
-| 3 | `base-core/src/main/resources/messages_vi.properties` | Resource | Vietnamese message bundle |
-| 4 | `auth-service/src/main/resources/messages.properties` | Resource | Auth-specific English messages |
-| 5 | `auth-service/src/main/resources/messages_vi.properties` | Resource | Auth-specific Vietnamese messages |
-| 6 | `auth-service/V5__create_i18n_messages.sql` | Migration | `i18n_messages` table for dynamic messages |
-| 7 | `auth-service/.../I18nMessageEntity.kt` | Entity | JPA entity for i18n messages |
-| 8 | `auth-service/.../I18nMessageRepository.kt` | Repository | JPA repository for i18n messages |
-| 9 | `auth-service/.../DatabaseMessageSource.kt` | Service | Custom `MessageSource` backed by database |
+| 1 | `auth-service/src/main/kotlin/com/ntt/authservice/auth/adapter/in/web/filter/ContentLanguageFilter.kt` | Filter | `OncePerRequestFilter` — sets `Content-Language` on ALL `/api/**` responses (NFR-004 100% coverage) |
+| 2 | `auth-service/src/main/kotlin/com/ntt/authservice/auth/adapter/in/web/filter/ClientMetadataFilter.kt` | Filter | `OncePerRequestFilter` — extracts `X-App-Version`, `X-Client-Platform` → MDC for audit logging |
 
-### 3. Call Tree (BaseControllerAdvice refactor)
+---
+
+## 2. Call Tree — LOGIC CẦN SỬA
+
+> BẮT BUỘC ASCII tree. KHÔNG dùng Mermaid.
+
+#### Request Processing Chain (Full i18n flow)
 
 ```
-BaseControllerAdvice (MODIFIED)
-├── constructor(validator, messageSource?)  ← NEW parameter (nullable)
-├── handleForbidden()
-│   └── MessageSource.getMessage("api.forbidden", args, locale)
-├── handleBadRequestException()
-│   └── MessageSource.getMessage("api.bad_request", args, locale)
-├── handleNotFound()
-│   └── MessageSource.getMessage("api.not_found", args, locale)
-├── handleBusinessException()
-│   └── MessageSource.getMessage(err.msgCode, args, locale)
-├── processValidationError()
-│   └── MessageSource.getMessage("api.validation_error", args, locale)
-└── handleException()
-    └── MessageSource.getMessage("api.system_error", args, locale)
-         + correlationId in response
-
-AuthControllerAdvice (MODIFIED) extends BaseControllerAdvice
-├── constructor(validator, messageSource?)  ← pass to super
-└── handleAuthException()
-    └── MessageSource.getMessage(authError.msgCode, args, locale)
-         → ProblemDetail.detail = resolved message
+⟶ HTTP Request (Accept-Language: vi, X-App-Version: 1.0.0, X-Client-Platform: web)
+├── AcceptHeaderLocaleResolver.resolveLocale(request)  // ← Spring built-in, configured in I18nConfig
+│   ├── supportedLocales = [en, vi]
+│   ├── match("vi") → Locale("vi")
+│   └── → LocaleContextHolder.setLocale(vi)
+│
+├── ClientMetadataFilter.doFilterInternal(request, response, chain)  // ← NEW filter
+│   ├── MDC.put("appVersion", request.getHeader("X-App-Version"))
+│   ├── MDC.put("clientPlatform", request.getHeader("X-Client-Platform"))
+│   └── chain.doFilter() → cleanup MDC in finally
+│
+├── ContentLanguageFilter.doFilterInternal(request, response, chain)  // ← NEW filter
+│   ├── chain.doFilter()  // ← controller processes request
+│   └── response.setHeader("Content-Language", LocaleContextHolder.getLocale().toLanguageTag())
+│
+├── [SUCCESS PATH]
+│   └── CqrsAuthController.logout(request, response)  // ← example endpoint
+│       └── messageSource.getMessage("auth.logout_success", null, locale)
+│           ├── DatabaseMessageSource.resolveCode("auth.logout_success", vi)  // ← cache check
+│           │   ├── cache HIT → return MessageFormat
+│           │   └── cache MISS → repository.findByCodeAndLocaleAndIsActiveTrue()
+│           │       ├── found → cache.put() + return MessageFormat
+│           │       └── null → delegate to parent ↓
+│           └── ReloadableResourceBundleMessageSource  // ← file bundle fallback
+│               └── auth-messages_vi.properties → "Đã đăng xuất thành công"
+│
+└── [ERROR PATH]
+    └── AuthException thrown → AuthControllerAdvice.handleAuthException(ex, response)
+        ├── extractMessageArgs(ex)  // ← RateLimitExceededException → [retryAfterSeconds, dimension]
+        ├── resolveMessage(authError.msgCode, args, fallback)
+        │   └── messageSource.getMessage("auth.rate_limited", [5, "IP"], "Too many...", vi)
+        │       └── → "Quá nhiều lần đăng nhập (IP). Vui lòng đợi 5 giây."
+        ├── ProblemDetail.forStatusAndDetail(429, resolvedMessage)
+        └── setContentLanguageHeader(response)  // ← redundant with filter, defense-in-depth
 ```
 
-### 4. Blast Radius
+#### Filter Ordering
 
-| Level | Component | Impact |
-|-------|-----------|--------|
-| d=1 (direct) | `BaseControllerAdvice` → ALL services using base-core | 🟡 Medium — nullable `MessageSource`, backward compatible |
-| d=1 (direct) | `ApiResponse.success()` → ALL controllers calling success | 🟢 Low — overload, existing calls unaffected |
-| d=1 (direct) | `api.ts` → ALL frontend API calls | 🟢 Low — only adds headers, no breaking change |
-| d=2 (indirect) | auth-service, other services | 🟢 Low — services opting in to `MessageSource` get i18n, others unchanged |
+```
+Spring Filter Chain:
+  1. SecurityFilterChain (Spring Security — authentication)
+  2. LoginRateLimitFilter (existing — pre-auth rate limiting)
+  3. ClientMetadataFilter (NEW — request-phase: headers → MDC)
+  4. ContentLanguageFilter (NEW — response-phase: wraps doFilter, sets Content-Language AFTER)
+  5. Controller dispatch
+```
 
-**Overall Risk**: 🟢 **LOW** — all changes backward compatible via nullable injection + method overloads.
+---
 
-### 5. Reuse Map
+## 3. Blast Radius
 
-| Pattern | Source | Reuse |
-|---------|--------|-------|
-| `ErrorCodeBase.msgCode` | base-core | ✅ Direct key for MessageSource |
-| `ApiResponse.errorLang()` | base-core | ✅ Wire MessageSource as resolver |
-| `setGlobalHeaders()` | admindashboard/api.ts | ✅ Inject Accept-Language |
-| `I18nProvider.changeLanguage()` | admindashboard/@i18n | ✅ Extend to sync header |
-| `MfaRateLimitService` Redis pattern | auth-service | ⬜ Not applicable |
-| Spring `AcceptHeaderLocaleResolver` | Spring Framework | ✅ Built-in, zero custom code |
-| Spring `ReloadableResourceBundleMessageSource` | Spring Framework | ✅ Built-in for file bundles |
-| Spring `AbstractMessageSource` | Spring Framework | ✅ Extend for DB-backed source |
+### 🔴 Direct Impact — auth-service (5 files)
 
-### 6. Context Snapshot
+| # | File | Link | Cách sử dụng |
+|---|------|------|-------------|
+| 1 | `GlobalExceptionHandler.kt` | [AuthControllerAdvice](file:///home/nguyentthai96/Desktop/bigbang/boilerplate/services/auth-service/src/main/kotlin/com/ntt/authservice/shared/exception/GlobalExceptionHandler.kt) | Already uses MessageSource for ProblemDetail.detail — verify E2EE/Anonymous coverage |
+| 2 | `CqrsAuthController.kt` | [CqrsAuthController](file:///home/nguyentthai96/Desktop/bigbang/boilerplate/services/auth-service/src/main/kotlin/com/ntt/authservice/auth/adapter/in/web/CqrsAuthController.kt) | Inject MessageSource (already done for 3/7 endpoints), extend to remaining |
+| 3 | `I18nConfig.kt` | [I18nConfig](file:///home/nguyentthai96/Desktop/bigbang/boilerplate/services/auth-service/src/main/kotlin/com/ntt/authservice/shared/config/I18nConfig.kt) | Add AcceptHeaderLocaleResolver bean with locale whitelist [en, vi] |
+| 4 | `auth-messages.properties` | [en bundle](file:///home/nguyentthai96/Desktop/bigbang/boilerplate/services/auth-service/src/main/resources/messages/auth-messages.properties) | Add 17 missing keys (E2EE, Anonymous, success) |
+| 5 | `auth-messages_vi.properties` | [vi bundle](file:///home/nguyentthai96/Desktop/bigbang/boilerplate/services/auth-service/src/main/resources/messages/auth-messages_vi.properties) | Add 17 missing Vietnamese translations |
 
-**Design Decision (from brainstorm):**
-- Dual MessageSource: Common static codes → `.properties` file, dynamic messages → database table `i18n_messages`
-- Locale detection: Hybrid Cascade (`localStorage` → `navigator.languages` → `"en"`)
-- Supported locales: `en` (default), `vi`
-- Format: BCP 47 (RFC 5646)
+### 🟡 Indirect Impact — auth-service (3 files)
 
-**User Decisions:**
-- base-core errors → i18n via `Accept-Language` header ✅
-- `ApiResponse.success()` → i18n ✅
-- Common codes → file, dynamic codes → DB table ✅
+| # | File | Link | Cách sử dụng |
+|---|------|------|-------------|
+| 1 | `SessionController.kt` | (in auth/adapter/in/web/) | Has 2 hardcoded English strings ("Session revoked", "All sessions revoked") — needs messageSource |
+| 2 | `AccountLifecycleController.kt` | (in auth/adapter/in/web/) | Has 3 hardcoded English strings — needs messageSource |
+| 3 | `DatabaseMessageSource.kt` | [DatabaseMessageSource](file:///home/nguyentthai96/Desktop/bigbang/boilerplate/services/auth-service/src/main/kotlin/com/ntt/authservice/shared/i18n/DatabaseMessageSource.kt) | EXISTING — no changes needed, works as-is |
+
+### 🟠 Cross-service Impact (2 files — base-core)
+
+| # | File | Link | Protocol | Cách sử dụng |
+|---|------|------|----------|-------------|
+| 1 | `BaseControllerAdvice.kt` | base-core shared library | In-process | Inject `MessageSource?` nullable — backward compatible for all services |
+| 2 | `ApiResponse.kt` | base-core shared library | In-process | Optional: document `message` field for i18n usage — no code change needed |
+
+### 🟢 Shared Utilities (0 files)
+
+No shared utility extractions needed. All patterns reuse existing Spring framework components.
+
+---
+
+## 4. Reuse Map
+
+> Follows `reuse_rules_compact.md` Step 2 Decision Framework.
+
+| Logic Block | Existing Location | Match % | Decision | Impact | Action |
+|---|---|---|---|---|---|
+| Error message i18n | `AuthControllerAdvice.resolveMessage()` L125-130 | 100% | **REUSE** | 🟢 (1 caller) | Already in place — extend coverage to E2EE/Anonymous |
+| CompositeMessageSource chain | `I18nConfig.messageSource()` L24-41 | 100% | **REUSE** | 🟢 (1 caller) | Already configured — add locale resolver bean |
+| DatabaseMessageSource cache | `DatabaseMessageSource.resolveCode()` L28-52 | 100% | **REUSE** | 🟢 (0 direct callers) | Transparent via MessageSource chain — no changes |
+| Success message pattern | `CqrsAuthController.logout()` L172+ | 100% | **REUSE** | 🟢 (1 caller) | Proven pattern — apply to remaining endpoints |
+| Content-Language header | `AuthControllerAdvice.setContentLanguageHeader()` L134-140 | 80% | **EXTRACT** | 🟢 Low (1 caller) | Extract to `ContentLanguageFilter` for 100% coverage (NFR-004) |
+| `setGlobalHeaders()` | `admindashboard/src/utils/api.ts` | 100% | **REUSE** | 🟢 (1 caller) | Wire Accept-Language via existing utility |
+| Spring AcceptHeaderLocaleResolver | Spring Framework built-in | 100% | **REUSE** | 🟢 (0 custom code) | Configure bean — zero custom code |
+| Spring AbstractMessageSource | Spring Framework built-in | 100% | **REUSE** | 🟢 (1 subclass) | DatabaseMessageSource already extends this |
+
+### EXTRACT Details
+
+#### E1: Content-Language Header → ContentLanguageFilter
+
+**Source:** `AuthControllerAdvice.setContentLanguageHeader()` — L134-140, sets `Content-Language` for error responses only
+**Target:** `ContentLanguageFilter` — `auth/adapter/in/web/filter/ContentLanguageFilter.kt`
+**Callers found:** 1 file (`AuthControllerAdvice`)
+- AuthControllerAdvice → keep existing call (defense-in-depth, same value)
+
+**Impact level:** 🟢 Low
+**Breaking changes:** None — filter is additive
+**Migration plan:** Add filter, keep AuthControllerAdvice logic (redundant but harmless — both set same value from LocaleContextHolder)
+
+---
+
+## 5. Context Snapshot — ĐỦ ĐỂ CODE
+
+> Agent đọc section này → đủ info bắt tay code, KHÔNG cần search thêm.
+
+### Dependencies
+
+| Dependency | Type | Key Methods | Ghi chú |
+|-----------|------|-------------|---------|
+| `MessageSource` | Interface (Spring, injected) | `getMessage(code, args, locale)`, `getMessage(code, args, defaultMessage, locale)` | CompositeMessageSource chain from I18nConfig |
+| `LocaleContextHolder` | Static utility | `getLocale()` | Thread-bound locale from AcceptHeaderLocaleResolver |
+| `I18nMessageRepository` | JPA Repository (injected) | `findByCodeAndLocaleAndIsActiveTrue(code, locale)` | Used by DatabaseMessageSource |
+| `Caffeine` | Cache library | `cache.getIfPresent(key)`, `cache.put(key, value)` | 5-min TTL, maxSize=500 |
+
+### Config Keys
+
+| Key | Source | Example Value | Nơi dùng |
+|-----|--------|--------------|---------|
+| `app.security.cqrs.enabled` | `application.yml` | `true` | CqrsAuthController conditional |
+| Supported locales | `AcceptHeaderLocaleResolver` bean | `[en, vi]` | I18nConfig |
+| Default locale | `AcceptHeaderLocaleResolver` bean | `ENGLISH` | I18nConfig |
+
+### Error Codes Thrown
+
+| Error Code | Message Key | Missing in Bundle? |
+|-----------|-------------|-------------------|
+| AUTH_001-021 | `auth.invalid_credentials` ... `auth.session_limit` | ✅ All present (21 keys) |
+| AUTH_030-039 | `auth.e2ee_time_skew` ... `auth.e2ee_max_devices` | ❌ All 10 MISSING — need to add |
+| AUTH_040-044 | `auth.anonymous_session_expired` ... `auth.anonymous_max_renewals` | ❌ All 5 MISSING — need to add |
+
+### Success Message Keys (Missing)
+
+| Key | Endpoint | Status |
+|-----|----------|--------|
+| `auth.login_success` | CqrsAuthController.login() | ✅ Present |
+| `auth.logout_success` | CqrsAuthController.logout() | ✅ Present |
+| `auth.password_changed` | CqrsAuthController.changePassword() | ✅ Present |
+| `auth.token_refreshed` | CqrsAuthController.refresh() | ✅ Present |
+| `auth.password_reset_sent` | CqrsAuthController.forgotPassword() | ✅ Present |
+| `auth.register_success` | CqrsAuthController.register() | ❌ MISSING |
+| `auth.switch_domain_success` | CqrsAuthController.switchDomain() | ❌ MISSING |
+| `auth.session_revoked` | SessionController.revokeSession() | ❌ MISSING |
+| `auth.all_sessions_revoked` | SessionController.revokeAllSessions() | ❌ MISSING |
+| `auth.account_deactivated` | AccountLifecycleController | ❌ MISSING |
+| `auth.deletion_requested` | AccountLifecycleController | ❌ MISSING |
+| `auth.deletion_cancelled` | AccountLifecycleController | ❌ MISSING |
+
+### Design Decision (from brainstorm Selected Direction)
+
+- **Content-Language**: Servlet Filter (`ContentLanguageFilter`) for 100% coverage — NOT per-controller
+- **Client metadata**: Separate filter (`ClientMetadataFilter`) for MDC logging
+- **Success i18n**: Direct MessageSource injection in controllers (~5 controllers need it)
+- **Locale detection (frontend)**: Hybrid Cascade (localStorage → navigator.languages → "en")
+- **Supported locales**: `[en, vi]` — extensible later
+
+### Base API Verification
+
+| API Call | Verified Method | Source | Status |
+|---|---|---|---|
+| `messageSource.getMessage()` | `MessageSource.getMessage(String, Object[], String, Locale)` | Spring Framework | ✅ |
+| `LocaleContextHolder.getLocale()` | `LocaleContextHolder.getLocale(): Locale` | Spring Framework | ✅ |
+| `response.setHeader("Content-Language", ...)` | `HttpServletResponse.setHeader(String, String)` | Jakarta Servlet | ✅ |
+| `MDC.put(key, value)` | `MDC.put(String, String)` | SLF4J | ✅ |

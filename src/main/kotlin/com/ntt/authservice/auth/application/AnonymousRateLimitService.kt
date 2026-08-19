@@ -2,6 +2,7 @@ package com.ntt.authservice.auth.application
 
 import com.ntt.authservice.shared.config.SecurityProperties
 import com.ntt.authservice.shared.exception.AnonymousRateLimitedException
+import io.micrometer.core.instrument.MeterRegistry
 import org.slf4j.LoggerFactory
 import org.springframework.data.redis.RedisConnectionFailureException
 import org.springframework.data.redis.core.StringRedisTemplate
@@ -16,7 +17,8 @@ import java.time.Duration
 @Service
 class AnonymousRateLimitService(
     private val redisTemplate: StringRedisTemplate,
-    private val securityProperties: SecurityProperties
+    private val securityProperties: SecurityProperties,
+    private val meterRegistry: MeterRegistry
 ) {
 
     private val log = LoggerFactory.getLogger(AnonymousRateLimitService::class.java)
@@ -53,6 +55,8 @@ class AnonymousRateLimitService(
                     "ANONYMOUS_RATE_LIMIT_EXCEEDED ip={} attempts={} maxAttempts={} retryAfter={}s",
                     ipAddress, attempts, config.maxAttempts, ttl
                 )
+                // Metrics: rate limited
+                meterRegistry.counter("auth.anonymous.rate_limited").increment()
                 throw AnonymousRateLimitedException(retryAfterSeconds = ttl)
             }
         } catch (ex: AnonymousRateLimitedException) {

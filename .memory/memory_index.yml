@@ -1,6 +1,8 @@
 features:
   anonymous-login-optimization: completed
+  api-response-i18n-standard: completed
+  auth-core-features: completed
 lessons: []
 total_failures: 1
-total_records: 9
-total_successes: 8
+total_records: 20
+total_successes: 19

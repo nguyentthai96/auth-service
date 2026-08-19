@@ -1,6 +1,6 @@
 package com.ntt.authservice.auth.application.command
 
-import com.ntt.authservice.auth.domain.model.AuthToken
+import com.ntt.authservice.auth.application.RegisterResult
 import com.ntt.eventsourcingutils.lib.cqrs.command.Command
 
 /**
@@ -13,5 +13,6 @@ data class RegisterCommand(
     val fullName: String,
     val phone: String? = null,
     val domainCode: String,
-    val anonymousSessionId: String? = null
-) : Command<AuthToken>
+    val anonymousSessionId: String? = null,
+    val anonymousTokenJti: String? = null
+) : Command<RegisterResult>

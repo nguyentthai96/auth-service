@@ -2,10 +2,12 @@ package com.ntt.authservice.auth.adapter.`in`.web
 
 import com.ntt.authservice.auth.adapter.`in`.web.dto.AuthResponse
 import com.ntt.authservice.auth.adapter.`in`.web.dto.DataTransferredInfo
+import com.ntt.authservice.auth.application.JwtService
 import com.ntt.authservice.auth.application.LoginResult
 import com.ntt.authservice.auth.application.LoginSessionService
 import com.ntt.authservice.auth.application.PasswordPolicyService
 import com.ntt.authservice.auth.application.PromotionResult
+import com.ntt.authservice.auth.application.RegisterResult
 import com.ntt.authservice.auth.application.command.*
 import com.ntt.authservice.auth.application.query.BuildAuthResponseQuery
 import com.ntt.authservice.auth.application.query.BuildAuthResponseHandler
@@ -42,13 +44,32 @@ class CqrsAuthController(
     private val passwordPolicyService: PasswordPolicyService,
     private val loginSessionService: LoginSessionService,
     private val securityProperties: SecurityProperties,
-    private val messageSource: MessageSource
+    private val messageSource: MessageSource,
+    private val jwtService: JwtService
 ) {
+
+    private val log = org.slf4j.LoggerFactory.getLogger(CqrsAuthController::class.java)
+
+    /**
+     * Extract JTI from anonymous token string. Returns null if token is invalid or expired.
+     * Graceful: promotion is best-effort — invalid token means JTI won't be blacklisted.
+     */
+    private fun extractAnonymousTokenJti(anonymousToken: String?): String? {
+        if (anonymousToken.isNullOrBlank()) return null
+        return try {
+            jwtService.parseAnonymousToken(anonymousToken).id
+        } catch (e: Exception) {
+            log.warn("Failed to parse anonymous token for JTI extraction: {}", e.message)
+            null
+        }
+    }
 
     @PostMapping("/register")
     fun register(
         @Valid @RequestBody request: com.ntt.authservice.auth.adapter.`in`.web.dto.RegisterRequestDto
     ): ResponseEntity<AuthResponse> {
+        val anonymousTokenJti = extractAnonymousTokenJti(request.anonymousToken)
+
         val command = RegisterCommand(
             username = request.username,
             email = request.email,
@@ -56,37 +77,43 @@ class CqrsAuthController(
             fullName = request.fullName,
             phone = request.phone,
             domainCode = request.domainCode,
-            anonymousSessionId = request.anonymousSessionId
+            anonymousSessionId = request.anonymousSessionId,
+            anonymousTokenJti = anonymousTokenJti
         )
-        val authToken = registerHandler.handle(command)
+        val result = registerHandler.handle(command)
 
-        // Build response with promotion metadata if applicable
-        val promotionResult = registerHandler.lastPromotionResult
-        val response = AuthResponse.from(authToken).let { resp ->
-            if (promotionResult != null && promotionResult.status == PromotionResult.Status.SUCCESS) {
-                resp.copy(
-                    promotedFromAnonymous = true,
-                    dataTransferred = DataTransferredInfo(
-                        itemCount = promotionResult.itemCount,
-                        namespaces = promotionResult.namespaces,
-                        status = promotionResult.status.name
+        // Build response with promotion metadata from RegisterResult (DD-013)
+        val locale = LocaleContextHolder.getLocale()
+        val successMessage = messageSource.getMessage("auth.register_success", null, "Registration successful", locale)
+        val response = when (result) {
+            is RegisterResult.Success -> {
+                val promotionResult = result.promotionResult
+                val baseResponse = AuthResponse.from(result.authToken)
+                if (promotionResult != null && promotionResult.status == PromotionResult.Status.SUCCESS) {
+                    baseResponse.copy(
+                        promotedFromAnonymous = true,
+                        dataTransferred = DataTransferredInfo(
+                            itemCount = promotionResult.itemCount,
+                            namespaces = promotionResult.namespaces,
+                            status = promotionResult.status.name
+                        )
                     )
-                )
-            } else if (promotionResult != null) {
-                resp.copy(
-                    promotedFromAnonymous = false,
-                    dataTransferred = DataTransferredInfo(
-                        itemCount = promotionResult.itemCount,
-                        namespaces = promotionResult.namespaces,
-                        status = promotionResult.status.name
+                } else if (promotionResult != null) {
+                    baseResponse.copy(
+                        promotedFromAnonymous = false,
+                        dataTransferred = DataTransferredInfo(
+                            itemCount = promotionResult.itemCount,
+                            namespaces = promotionResult.namespaces,
+                            status = promotionResult.status.name
+                        )
                     )
-                )
-            } else {
-                resp
+                } else {
+                    baseResponse
+                }
             }
         }
 
-        return ResponseEntity.status(HttpStatus.CREATED).body(response)
+        return ResponseEntity.status(HttpStatus.CREATED).body(response.copy(message = successMessage))
     }
 
     @PostMapping("/login")
@@ -95,6 +122,8 @@ class CqrsAuthController(
         httpRequest: HttpServletRequest,
         httpResponse: HttpServletResponse
     ): ResponseEntity<Any> {
+        val anonymousTokenJti = extractAnonymousTokenJti(request.anonymousToken)
+
         val command = LoginCommand(
             username = request.username,
             password = request.password,
@@ -104,7 +133,8 @@ class CqrsAuthController(
             ipAddress = extractClientIp(httpRequest),
             userAgent = httpRequest.getHeader("User-Agent"),
             deviceFingerprint = httpRequest.getHeader("X-Device-Fingerprint"),
-            anonymousSessionId = request.anonymousSessionId
+            anonymousSessionId = request.anonymousSessionId,
+            anonymousTokenJti = anonymousTokenJti
         )
         val result = loginHandler.handle(command)
         return when (result) {
@@ -207,7 +237,9 @@ class CqrsAuthController(
         val userId = getCurrentUserId()
         val command = SwitchDomainCommand(userId = userId, newDomainCode = request.domainCode)
         val authToken = switchDomainHandler.handle(command)
-        return ResponseEntity.ok(AuthResponse.from(authToken))
+        val locale = LocaleContextHolder.getLocale()
+        val message = messageSource.getMessage("auth.switch_domain_success", null, "Domain switched successfully", locale)
+        return ResponseEntity.ok(AuthResponse.from(authToken).copy(message = message))
     }
 
     private fun getCurrentUserId(): Long {

@@ -23,6 +23,8 @@ class MfaController(
         val response = mfaService.verifyMfa(
             mfaToken = request.mfaToken,
             code = request.code,
+            trustDevice = request.trustDevice,
+            deviceHash = request.deviceHash,
             authResponseBuilder = { userId -> authService.buildAuthResponseForUser(userId) }
         )
         return ResponseEntity.ok(response)

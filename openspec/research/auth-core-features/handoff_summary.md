@@ -1,65 +1,98 @@
-# Handoff Summary: Auth Core Features → OpenSpec Pipeline
+# Research Handoff: Auth Core Features
 
-## Feature
-**Name**: `auth-core-features`
-**Scope**: FR-001 (MFA), FR-002 (SSO/OAuth2), FR-003 (Token RS256), FR-004 (Password Policy)
-**Service**: `auth-service`
+> Bridge document — tóm tắt kết quả research để downstream workflows (`/wf_brainstorm_openspec`, `/wf_pre_openspec`) có thể tiếp nhận context nhanh.
 
-## Research Verdict
-- **Approach**: BUILD — tận dụng codebase hiện có + open source libraries
-- **Gap Score**: 100% coverage (10/10 gaps addressed)
-- **Risk Level**: MEDIUM (RS256 migration + OAuth2 config là phần phức tạp nhất)
+---
 
-## Key Decisions (cho downstream workflows)
+## Metadata
 
-### Libraries để adopt
-| Library | Version | Purpose |
-|---|---|---|
-| `dev.samstevens.totp:totp` | 1.7.1 | TOTP MFA generation/verification |
-| `org.passay:passay` | 1.6.4 | Dynamic password validation rules |
-| `spring-boot-starter-oauth2-resource-server` | (managed) | JWT RS256 decoding, JWKS |
-| `spring-boot-starter-oauth2-client` | (managed) | OAuth2 Login flow with IdPs |
-| `spring-boot-starter-data-redis` | (managed) | OTP storage, session, rate limiting |
+| Mục | Nội dung |
+|-----|----------|
+| **Feature** | Auth Core Features (FR-001 → FR-004) |
+| **Ngày hoàn thành** | 2026-08-19 |
+| **Recommendation** | build (using open source libraries for primitives) |
+| **Research directory** | `openspec/research/auth-core-features/` |
+| **Status** | complete |
 
-### Architecture Patterns
-1. **Two-Phase Login**: Login → MFA challenge → verify → full JWT
-2. **JIT Provisioning**: SSO callback → check DB → create if auto-provision ON → Kafka event
-3. **JWKS Endpoint**: `/.well-known/jwks.json` expose public key for resource servers
-4. **Pluggable CAPTCHA**: `CaptchaVerifier` interface + adapter per provider
-5. **Domain-scoped Policy**: `PasswordPolicyEntity` per domain + Passay factory pattern
-6. **Password History**: Separate table, BCrypt.matches() on last N hashes
+---
 
-### Schema Changes
-- **New tables**: `user_identities`, `password_policies`, `password_history`
-- **Alter**: `users` table thêm: `mfa_enabled`, `mfa_method`, `totp_secret_encrypted`, `trusted_device_hash`, `password_changed_at`
+## 1. Recommendation
 
-### New API Endpoints (14 total)
-- MFA: 5 endpoints (`/mfa/*`)
-- SSO: 4 endpoints (`/sso/*`)
-- Token: 3 endpoints (`/introspect`, `/jwks`, `/sessions/revoke`)
-- Password: 2 endpoints (`/change-password`, `/forgot-password` + `/reset-password`)
+**BUILD from scratch** sử dụng battle-tested open source libraries (dev.samstevens.totp, Passay, Spring OAuth2, JJWT). Auth là core business logic — custom code chỉ cần cho orchestration layer (MfaService, SsoAdapter, PasswordPolicyService). ~90% code đã implemented, V2 database migration đã applied.
 
-## Files to Feed into OpenSpec Pipeline
+---
 
-| File | Content | Feeds Into |
-|---|---|---|
-| `business_analysis.md` | Use cases, flows, business rules | `pre_openspec.md` (URD source) |
-| `technical_spec.md` | Architecture, ERD, sequence diagrams, API spec | `design.md` |
-| `comparison_analysis.md` | Library decisions, gap analysis | `brainstorm_notes.md` |
-| `opensource_findings.md` | Dependency list | `build.gradle.kts` changes |
+## 2. Key Findings
 
-## Suggested Next Steps
+| Category | Finding | Source |
+|----------|---------|-------|
+| Open Source | Top libraries: Spring OAuth2 (10.0/10), JJWT (9.7/10), Passay (8.65/10), dev.samstevens.totp (8.1/10) — all adopted, all integrated | [opensource_findings.md](./opensource_findings.md) |
+| Web Research | Two-phase MFA login pattern (Spring Boot 3.x), RS256 dual-key migration, Passay factory pattern — 9 unique sources across 4 iterations | [web_research.md](./web_research.md) |
+| Gap Coverage | 10/10 gaps addressed: MFA done, SSO done, RS256 done, introspection done, password policy done. 1 partial: `revokeAllSessions()` TODO | [comparison_analysis.md](./comparison_analysis.md) |
+| Current System | Hexagonal architecture, Snowflake IDs, CQRS pattern, Redis integration, 9 Flyway migrations. All auth-core entities/services already exist. | [research_brief.md](./research_brief.md) |
 
-```
-→ /wf_pre_openspec auth-core-features
-    (Uses business_analysis.md as URD source)
-→ /wf_brainstorm_openspec auth-core-features
-    (Deep thinking with research context)
-→ /wf_openspec auth-core-features
-    (Generate implementation artifacts)
-```
+---
 
-## Warnings
-- ⚠️ Spring Boot 3.2 KHÔNG hỗ trợ `@EnableMultiFactorAuthentication` (Spring Security 7+). Phải dùng manual two-phase flow.
-- ⚠️ RS256 key pair cần generate trước khi deploy. Recommend: `openssl genrsa -out private.pem 2048` + `openssl rsa -in private.pem -pubout -out public.pem`
-- ⚠️ TOTP secret phải encrypt at rest (AES-256). Recommend: Spring Cloud Config encryption hoặc Jasypt.
+## 3. Use Cases Identified
+
+| UC ID | Tên | Mô tả ngắn | Priority |
+|-------|-----|------------|----------|
+| UC-001 | Đăng nhập với MFA | Two-phase login: credentials → mfaToken → OTP/TOTP verify → full JWT | Must |
+| UC-002 | Đăng nhập qua SSO/OAuth2 | OAuth2 authorization code flow + JIT provisioning (Google, Microsoft, Keycloak) | Must |
+| UC-003 | Token Introspection & Session | RFC 7662 introspection, JWKS endpoint, force logout | Must |
+| UC-004 | Thay đổi Password | Domain-scoped Passay validation + BCrypt history check + expiry enforcement | Must |
+| UC-005 | Thiết lập TOTP Authenticator | QR code URI generation, AES-256-GCM secret encryption, confirm flow | Must |
+| UC-006 | Cấu hình Password Policy | Admin endpoint to CRUD per-domain password policy + cache invalidation | Should |
+
+---
+
+## 4. Technical Highlights
+
+| Aspect | Decision/Finding |
+|--------|-----------------|
+| Architecture | Hexagonal (port/adapter) — `adapter/in/web`, `adapter/out/persistence`, `application` |
+| Data model | 4 entities: UserEntity (altered), UserIdentityEntity (new), PasswordPolicyEntity (new), PasswordHistoryEntity (new) |
+| APIs | 18 endpoints identified (5 MFA + 4 SSO + 3 Token + 6 Password/Admin) |
+| Key dependencies | `dev.samstevens.totp:1.7.1`, `org.passay:1.6.4`, `spring-oauth2-client`, `spring-oauth2-resource-server`, `spring-data-redis` |
+| Risk areas | 1) `dev.samstevens.totp` GitHub 404 (Maven Central still works), 2) `revokeAllSessions()` partially implemented |
+
+---
+
+## 5. Ready for
+
+| Workflow | Command | Khi nào dùng |
+|----------|---------|-------------|
+| Brainstorm (deep thinking) | `/wf_brainstorm_openspec auth-core-features --from-research` | Muốn explore thêm, có nhiều hướng tiếp cận |
+| URD Analysis | `/wf_pre_openspec openspec/research/auth-core-features/business_analysis.md` | Đã rõ requirements, muốn formalize |
+| OpenSpec (direct) | `/wf_openspec auth-core-features` | Đã rõ mọi thứ, muốn generate artifacts ngay |
+
+---
+
+## 6. Research Artifacts
+
+| File | Phase | Content |
+|------|-------|---------|
+| [research_brief.md](./research_brief.md) | 1 | Scope, keywords, current system analysis (14 related features, tech stack, integration points) |
+| [opensource_findings.md](./opensource_findings.md) | 2 | Open source evaluation: 5 projects scored (8 found, 5 evaluated) + gap analysis per project |
+| [web_research.md](./web_research.md) | 3 | Internet research: 4 iterations, 9 sources, 6 patterns/approaches identified |
+| [comparison_analysis.md](./comparison_analysis.md) | 4 | Comparison matrix (4 solutions), feature matrix (16 features), decision matrix, cost estimate |
+| [business_analysis.md](./business_analysis.md) | 5 | Business analysis: 6 use cases, 18 business rules, traceability matrix, NFRs |
+| [technical_spec.md](./technical_spec.md) | 6 | Technical specification: ERD, 3 sequence diagrams, 18 API endpoints, 18 classes, 18 test cases |
+| [validation_report.md](./validation_report.md) | 7 | Quality review: all 5 checks PASS on first iteration |
+
+---
+
+## 7. Review Status
+
+| Check | Status | Notes |
+|-------|:---:|-------|
+| Source Verification | ✅ | All sources verified. `dev.samstevens.totp` GitHub 404 marked [ARCHIVED], Maven Central OK |
+| Consistency | ✅ | BA ↔ Tech Spec fully aligned — UCs → APIs → Entities → BRs consistent |
+| Completeness | ✅ | All UCs have flows, all entities have schemas, all APIs have examples |
+| Feasibility | ✅ | Feasible with current stack — ~90% code already exists and working |
+| Gap Coverage | ✅ | 10/10 gaps addressed, 1 partial (revokeAllSessions TODO in code) |
+
+---
+
+> **Generated by**: `wf_feature_research` workflow
+> **Next step**: Choose a downstream workflow from section 5

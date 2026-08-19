@@ -150,14 +150,10 @@ class LoginHandler(
         // Anonymous session promotion (best-effort — DD-007)
         val promotionResult = if (!command.anonymousSessionId.isNullOrBlank()) {
             try {
-                // Extract JTI from the auth response access token for blacklisting reference
-                // We use the anonymous session ID to locate the session; JTI comes from the anon token
-                // Since we don't have the anon token here, we pass a placeholder JTI
-                // The promotion service handles blacklisting with the session context
                 sessionPromotionService.promoteSession(
                     sessionId = command.anonymousSessionId,
                     userId = user.id.value,
-                    anonymousJti = "" // JTI is extracted at controller level when available
+                    anonymousJti = command.anonymousTokenJti ?: ""
                 )
             } catch (e: Exception) {
                 log.warn("Anonymous session promotion failed for session {}: {}", command.anonymousSessionId, e.message)

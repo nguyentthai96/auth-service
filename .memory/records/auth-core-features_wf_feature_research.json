@@ -1,0 +1,22 @@
+{
+  "feature": "auth-core-features",
+  "workflow": "wf_feature_research",
+  "outcome": "success",
+  "timestamp": "2026-08-19T08:31:47.877639+00:00",
+  "duration_seconds": 862,
+  "tokens_used": 0,
+  "prompt_layer_tokens": {},
+  "output_artifacts": [
+    "/home/nguyentthai96/Desktop/bigbang/boilerplate/services/auth-service/openspec/research/auth-core-features/research_brief.md",
+    "/home/nguyentthai96/Desktop/bigbang/boilerplate/services/auth-service/openspec/research/auth-core-features/business_analysis.md",
+    "/home/nguyentthai96/Desktop/bigbang/boilerplate/services/auth-service/openspec/research/auth-core-features/technical_spec.md",
+    "/home/nguyentthai96/Desktop/bigbang/boilerplate/services/auth-service/openspec/research/auth-core-features/opensource_findings.md",
+    "/home/nguyentthai96/Desktop/bigbang/boilerplate/services/auth-service/openspec/research/auth-core-features/web_research.md",
+    "/home/nguyentthai96/Desktop/bigbang/boilerplate/services/auth-service/openspec/research/auth-core-features/comparison_analysis.md",
+    "/home/nguyentthai96/Desktop/bigbang/boilerplate/services/auth-service/openspec/research/auth-core-features/validation_report.md",
+    "/home/nguyentthai96/Desktop/bigbang/boilerplate/services/auth-service/openspec/research/auth-core-features/handoff_summary.md"
+  ],
+  "errors": [],
+  "lesson_extracted": null,
+  "recovery_pattern": null
+}

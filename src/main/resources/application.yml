@@ -127,6 +127,16 @@ app:
       auto-provision-enabled: ${SSO_AUTO_PROVISION:false}
       default-domain-code: ${SSO_DEFAULT_DOMAIN:default}
       timeout-ms: 10000
+      providers:
+        google:
+          token-endpoint: https://oauth2.googleapis.com/token
+          user-info-endpoint: https://openidconnect.googleapis.com/v1/userinfo
+        microsoft:
+          token-endpoint: https://login.microsoftonline.com/common/oauth2/v2.0/token
+          user-info-endpoint: https://graph.microsoft.com/oidc/userinfo
+        keycloak:
+          token-endpoint: ${KEYCLOAK_TOKEN_ENDPOINT:http://localhost:8080/realms/master/protocol/openid-connect/token}
+          user-info-endpoint: ${KEYCLOAK_USERINFO_ENDPOINT:http://localhost:8080/realms/master/protocol/openid-connect/userinfo}
     # Login Rate Limiting (multi-dimensional)
     login-rate-limit:
       ip:

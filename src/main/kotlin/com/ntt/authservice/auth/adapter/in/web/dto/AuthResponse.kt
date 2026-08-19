@@ -15,7 +15,9 @@ data class AuthResponse(
     val roles: List<String>,
     val permissions: List<String>,
     val promotedFromAnonymous: Boolean = false,
-    val dataTransferred: DataTransferredInfo? = null
+    val dataTransferred: DataTransferredInfo? = null,
+    @com.fasterxml.jackson.annotation.JsonInclude(com.fasterxml.jackson.annotation.JsonInclude.Include.NON_NULL)
+    val message: String? = null
 ) {
     companion object {
         /**

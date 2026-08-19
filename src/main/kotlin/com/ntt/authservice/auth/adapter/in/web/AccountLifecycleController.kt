@@ -4,6 +4,8 @@ import com.ntt.authservice.auth.application.AccountLifecycleService
 import com.ntt.authservice.shared.exception.InvalidCredentialsException
 import jakarta.validation.Valid
 import jakarta.validation.constraints.Size
+import org.springframework.context.MessageSource
+import org.springframework.context.i18n.LocaleContextHolder
 import org.springframework.http.ResponseEntity
 import org.springframework.security.core.context.SecurityContextHolder
 import org.springframework.web.bind.annotation.*
@@ -17,11 +19,14 @@ import org.springframework.web.bind.annotation.*
  * - Cancel deletion request
  * - Request data export (GDPR Right to Data Portability)
  * - Check export status
+ *
+ * FR-005: Success response i18n — messages resolved via MessageSource.
  */
 @RestController
 @RequestMapping("/api/account")
 class AccountLifecycleController(
-    private val accountLifecycleService: AccountLifecycleService
+    private val accountLifecycleService: AccountLifecycleService,
+    private val messageSource: MessageSource
 ) {
 
     /**
@@ -31,8 +36,11 @@ class AccountLifecycleController(
     fun deactivateAccount(): ResponseEntity<Map<String, String>> {
         val userId = getCurrentUserId()
         accountLifecycleService.deactivateAccount(userId)
+        val locale = LocaleContextHolder.getLocale()
+        val message = messageSource.getMessage("auth.account_deactivated", null,
+            "Account deactivated. Contact admin to reactivate.", locale)
         return ResponseEntity.ok(mapOf(
-            "message" to "Account deactivated. Contact admin to reactivate."
+            "message" to message
         ))
     }
 
@@ -46,8 +54,11 @@ class AccountLifecycleController(
     ): ResponseEntity<Map<String, Any>> {
         val userId = getCurrentUserId()
         val result = accountLifecycleService.requestDeletion(userId, request?.reason)
+        val locale = LocaleContextHolder.getLocale()
+        val message = messageSource.getMessage("auth.deletion_requested", null,
+            "Deletion request created. Account will be permanently deleted after grace period.", locale)
         return ResponseEntity.ok(mapOf(
-            "message" to "Deletion request created. Account will be permanently deleted after grace period.",
+            "message" to message,
             "requestId" to (result.id ?: 0),
             "scheduledDeleteAt" to result.scheduledDeleteAt.toString(),
             "gracePeriodDays" to AccountLifecycleService.DELETION_GRACE_PERIOD_DAYS
@@ -61,8 +72,11 @@ class AccountLifecycleController(
     fun cancelDeletion(): ResponseEntity<Map<String, String>> {
         val userId = getCurrentUserId()
         accountLifecycleService.cancelDeletion(userId)
+        val locale = LocaleContextHolder.getLocale()
+        val message = messageSource.getMessage("auth.deletion_cancelled", null,
+            "Deletion request cancelled. Account restored to active.", locale)
         return ResponseEntity.ok(mapOf(
-            "message" to "Deletion request cancelled. Account restored to active."
+            "message" to message
         ))
     }
 

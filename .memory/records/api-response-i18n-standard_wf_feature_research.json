@@ -1,0 +1,22 @@
+{
+  "feature": "api-response-i18n-standard",
+  "workflow": "wf_feature_research",
+  "outcome": "success",
+  "timestamp": "2026-08-19T07:46:27.787502+00:00",
+  "duration_seconds": 743,
+  "tokens_used": 0,
+  "prompt_layer_tokens": {},
+  "output_artifacts": [
+    "/home/nguyentthai96/Desktop/bigbang/boilerplate/services/auth-service/openspec/research/api-response-i18n-standard/research_brief.md",
+    "/home/nguyentthai96/Desktop/bigbang/boilerplate/services/auth-service/openspec/research/api-response-i18n-standard/business_analysis.md",
+    "/home/nguyentthai96/Desktop/bigbang/boilerplate/services/auth-service/openspec/research/api-response-i18n-standard/technical_spec.md",
+    "/home/nguyentthai96/Desktop/bigbang/boilerplate/services/auth-service/openspec/research/api-response-i18n-standard/opensource_findings.md",
+    "/home/nguyentthai96/Desktop/bigbang/boilerplate/services/auth-service/openspec/research/api-response-i18n-standard/web_research.md",
+    "/home/nguyentthai96/Desktop/bigbang/boilerplate/services/auth-service/openspec/research/api-response-i18n-standard/comparison_analysis.md",
+    "/home/nguyentthai96/Desktop/bigbang/boilerplate/services/auth-service/openspec/research/api-response-i18n-standard/validation_report.md",
+    "/home/nguyentthai96/Desktop/bigbang/boilerplate/services/auth-service/openspec/research/api-response-i18n-standard/handoff_summary.md"
+  ],
+  "errors": [],
+  "lesson_extracted": null,
+  "recovery_pattern": null
+}

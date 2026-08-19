@@ -1,98 +1,86 @@
-# Proposal: Auth Core Features
+## Why
 
-## 1. Tổng quan
+Auth-service đã implement ~90% core authentication features (MFA, SSO, RS256 JWT, Password Policy). Tuy nhiên, 3 functional gaps còn lại và thiếu integration test coverage khiến feature chưa production-ready:
 
-Mở rộng `auth-service` với 4 nhóm tính năng xác thực lõi cho hệ thống ERP IAM:
-1. **Multi-Factor Authentication (MFA)**: OTP SMS/Email, TOTP Authenticator, CAPTCHA, Trusted Device
-2. **SSO/OAuth2 Integration**: Google, Microsoft, Keycloak với JIT user provisioning
-3. **JWT RS256 Migration**: Chuyển từ HMAC-SHA256 sang RSA asymmetric signing + JWKS endpoint
-4. **Dynamic Password Policy**: Per-domain complexity rules, password history, expiry
+1. **🟡 GAP — Keycloak SSO**: `OAuth2TokenExchanger.getTokenEndpoint("keycloak")` throws "Unsupported SSO provider" — hardcoded endpoints chỉ có Google + Microsoft. `getProviders()` trả về Keycloak nhưng code không xử lý được.
+2. **🟡 GAP — Trusted Device Save**: `User.requiresMfa(deviceHash)` so sánh hash đúng, nhưng không có logic SET `trustedDeviceHash` sau MFA verify thành công. User không bao giờ có thể trust device.
+3. **🟡 GAP — SSO Provisioning Event**: `SsoAdapter.handleCallback()` có TODO comment cho Kafka event `iam.user.sso_provisioned`. `EventPublisher` port + `SpringEventPublisher` adapter đã tồn tại nhưng chưa được gọi từ SSO flow.
+4. **🔴 GAP — Zero Integration Test Coverage**: 6 unit test classes exist, nhưng không có integration test cho full login→MFA→verify flow, SSO callback, token introspection, JWKS, password change, hay TOTP setup flow.
 
-## 2. Phạm vi thay đổi
+## Changes
 
-| Nhóm | Files Modified | Files New | Endpoints New | DB Tables New |
-|------|---------------|-----------|--------------|--------------|
-| MFA | 4 (AuthService, AuthController, UserEntity, SecurityConfig) | 5 (MfaService, OtpService, TotpService, CaptchaVerifier, MfaController) | 5 | 0 |
-| SSO | 2 (SsoAdapter, SecurityConfig) | 3 (SsoController, UserIdentityEntity, SsoDtos) | 4 | 1 (user_identities) |
-| RS256 | 3 (JwtService, JwtAuthFilter, SecurityConfig) | 1 (TokenController) | 3 | 0 |
-| Password | 2 (PasswordPolicyService, AuthController) | 2 (PasswordPolicyEntity, PasswordHistoryEntity) | 2 | 2 (password_policies, password_history) |
-| Shared | 4 (SecurityProperties, AuthExceptions, GlobalExceptionHandler, build.gradle.kts) | 3 (V2 migration, LoginResult, AuthRepositories) | 0 | 0 |
-| **Total** | **13** | **16** | **14** | **3** |
+[CHANGED] Scope thu hẹp từ v1 (30 tasks — full build) → v2 (17 tasks — completion + testing). ~90% code đã implemented.
 
-## 3. Approach
+- **GAP-001: Config-Driven SSO Providers** — Refactor `OAuth2TokenExchanger` từ hardcoded `when()` → config lookup via `SecurityProperties.sso.providers` map. Add `ProviderConfig` nested data class. Add Keycloak config in `application.yml` with env var fallback. ~20 lines changed, 3 files.
+- **GAP-002: Trusted Device Save on MFA Verify** — Add `trustDevice: Boolean` + `deviceHash: String?` to `MfaVerifyRequest` DTO. In `MfaService.verifyMfa()`: after successful verify, save `user.trustedDeviceHash`. Pass params from `MfaController`. 3 files modified.
+- **GAP-003: SSO Provisioning Event** — Add `SsoProvisionedEvent` data class to `EventPublisher.kt`. Replace TODO in `SsoAdapter.handleCallback()` with `eventPublisher.publish(SsoProvisionedEvent(...))`. 2 files modified.
+- **TEST-001: Integration Test Suite** — 6 new integration test classes covering: MFA login flow, SSO callback with WireMock, token introspection, JWKS endpoint, password change with policy, TOTP setup flow.
+- **TEST-002: Edge Case Tests** — 1 new unit test class for concurrent MFA verify idempotency and MFA token method mismatch.
+- **DOC-001: SecurityProperties Documentation** — Add KDoc comments documenting default values for CAPTCHA threshold, MFA token TTL, OTP TTL.
 
-**Layered Extension (Bottom-Up)** — từ brainstorm analysis:
+**Total**: 8 files modified, 7 files new (0 production + 7 test), ~20h effort.
 
-```
-Phase 1: Infrastructure (non-breaking)
-  ├── Dependencies (build.gradle.kts)
-  ├── V2 Flyway migration
-  ├── New entities + repositories
-  ├── SecurityProperties extend
-  └── JwtService RS256 (with HMAC fallback)
+## Capabilities
 
-Phase 2: Domain Services
-  ├── PasswordPolicyService (Passay)
-  ├── OtpService + TotpService + MfaService
-  ├── CaptchaVerifier interface + adapter
-  └── SsoAdapter full implementation
+### Fixed Capabilities
+- `sso-keycloak-support`: OAuth2TokenExchanger supports Keycloak via config-driven endpoints (GAP-001)
+- `trusted-device-persistence`: MfaService saves trustedDeviceHash after MFA verify success (GAP-002)
+- `sso-provisioning-event`: SsoAdapter publishes SsoProvisionedEvent via EventPublisher port (GAP-003)
 
-Phase 3: API Layer
-  ├── MfaController, SsoController, TokenController
-  ├── AuthController modifications
-  ├── SecurityConfig public endpoints
-  └── AuthExceptions + GlobalExceptionHandler
-```
+### New Capabilities
+- `sso-config-driven-providers`: All SSO provider endpoints configurable via `app.security.sso.providers.*` — extensible to any OIDC provider
+- `auth-integration-tests`: 6 integration test classes covering all critical auth flows (TEST-001)
+- `auth-edge-case-tests`: Edge case unit tests for MFA idempotency and method mismatch (TEST-002)
 
-## 4. Dependencies mới
+### Unchanged Capabilities (REUSE — Fully Implemented)
+- `mfa-otp-sms-email` — OtpService + MfaService (FR-001) ✅
+- `mfa-totp-authenticator` — TotpService + AES-256-GCM encryption (FR-002) ✅
+- `mfa-settings-management` — MfaService.updateSettings() + MfaController (FR-003) ✅
+- `captcha-integration` — CaptchaVerifier + AltchaCaptchaVerifier (FR-004) ✅
+- `sso-oauth2-login` — SsoAdapter + OAuth2TokenExchanger for Google/Microsoft (FR-006) ✅
+- `sso-jit-provisioning` — SsoAdapter.handleCallback() JIT logic (FR-007) ✅
+- `sso-identity-linking` — SsoAdapter.linkIdentity/unlinkIdentity (FR-008) ✅
+- `jwt-rs256-signing` — JwtService dual-key RS256+HMAC fallback (FR-009) ✅
+- `jwks-endpoint` — TokenController.jwks() with Cache-Control (FR-010) ✅
+- `token-introspection` — TokenController.introspect() RFC 7662 (FR-011) ✅
+- `force-logout` — TokenController.revokeAllSessions() (FR-012) ✅
+- `password-policy-passay` — PasswordPolicyService + Passay + cache (FR-013) ✅
+- `password-history` — PasswordPolicyService.checkPasswordHistory() (FR-014) ✅
+- `mfa-verify-idempotency` — OtpService Redis DEL after success (FR-015) ✅
+- `audit-logging` — AuditLogService + AuditAction enum (FR-016) ✅
+- `idp-timeout-handling` — SsoProviderTimeoutException (FR-017) ✅
 
-| Library | Version | Purpose |
-|---------|---------|---------|
-| `spring-boot-starter-data-redis` | managed | OTP storage, session binding |
-| `spring-boot-starter-oauth2-client` | managed | SSO OAuth2 flow |
-| `spring-boot-starter-oauth2-resource-server` | managed | JWKS, JWT RS256 decoding |
-| `dev.samstevens.totp:totp` | 1.7.1 | TOTP generation/verification |
-| `org.passay:passay` | 1.6.4 | Password validation rules |
+## Impact
 
-## 5. Rủi ro & Giảm thiểu
+### Backend (auth-service)
 
-| # | Risk | Impact | Mitigation |
-|---|------|--------|------------|
-| R1 | RS256 migration invalidates existing tokens | 🟡 | Refresh-based migration — HMAC fallback 7 ngày |
-| R2 | Redis dependency — single point of failure | 🟡 | TOTP stateless fallback, Redis Sentinel cho HA |
-| R3 | TOTP secret encryption key management | 🟡 | AES-256-GCM, key via env var `TOTP_ENCRYPTION_KEY` |
-| R4 | OAuth2 IdP downtime | 🟢 | SSO users có thể set password local, timeout 10s |
+**MODIFY** (8 existing files):
+- `OAuth2TokenExchanger.kt` — replace hardcoded `when()` with `securityProperties.sso.providers[provider]` config lookup (~20 lines)
+- `SecurityProperties.kt` — add `providers: Map<String, ProviderConfig>` to `SsoProperties` + add `ProviderConfig` data class (~15 lines)
+- `application.yml` — add `app.security.sso.providers.*` section with Google/Microsoft/Keycloak configs (~15 lines)
+- `MfaService.kt` — add `trustDevice`/`deviceHash` params to `verifyMfa()`, save hash after success (~10 lines)
+- `MfaController.kt` — pass `request.trustDevice` and `request.deviceHash` to `mfaService.verifyMfa()` (~2 lines)
+- `MfaDtos.kt` — add `trustDevice: Boolean = false`, `deviceHash: String? = null` to `MfaVerifyRequest` (~2 lines)
+- `EventPublisher.kt` — add `SsoProvisionedEvent` data class implementing `DomainEvent` (~8 lines)
+- `SsoAdapter.kt` — replace TODO with `eventPublisher.publish(SsoProvisionedEvent(...))` (~3 lines)
 
-## 6. Ước lượng effort
+**NEW** (7 test files):
+- `MfaLoginFlowIntegrationTest.kt` — full MFA login flow (6 test cases)
+- `SsoCallbackIntegrationTest.kt` — SSO callback with WireMock IdP (6 test cases)
+- `TokenIntrospectionIntegrationTest.kt` — token introspection (4 test cases)
+- `JwksEndpointIntegrationTest.kt` — JWKS response + cache headers (3 test cases)
+- `PasswordChangeIntegrationTest.kt` — password policy + history (5 test cases)
+- `TotpSetupFlowIntegrationTest.kt` — TOTP setup → confirm → verify (5 test cases)
+- `MfaServiceEdgeCaseTest.kt` — concurrent verify + method mismatch (2 test cases)
 
-| Phase | Tasks | Complexity | Sprint |
-|-------|-------|-----------|--------|
-| Phase 1: Infrastructure | 8 | MEDIUM | Sprint 1 |
-| Phase 2: Services | 7 | HIGH | Sprint 1-2 |
-| Phase 3: API | 7 | MEDIUM | Sprint 2 |
-| Phase 4: Testing | 5 | MEDIUM | Sprint 2 |
-| **Total** | **27** | | **2 sprints** |
+### Database
+- **No changes** — V2 migration already applied, no new tables or columns
 
-## 7. FR Traceability
+### External Systems
+- **No changes** — same Redis key namespaces, same OAuth2 endpoints (now configurable), same PostgreSQL schema
+- **New config**: Keycloak token/userinfo endpoints via env vars `KEYCLOAK_TOKEN_ENDPOINT`, `KEYCLOAK_USERINFO_ENDPOINT`
 
-| FR | Component | Status |
-|-----|-----------|--------|
-| FR-001 | OtpService + MfaService | Planned |
-| FR-002 | TotpService + MfaService | Planned |
-| FR-003 | MfaController + MfaService | Planned |
-| FR-004 | CaptchaVerifier + AuthService | Planned |
-| FR-005 | MfaService (trusted device cookie) | Planned |
-| FR-006 | SsoAdapter + SsoController | Planned |
-| FR-007 | SsoAdapter (JIT provisioning) | Planned |
-| FR-008 | SsoController (link/unlink) | Planned |
-| FR-009 | JwtService (RS256 migration) | Planned |
-| FR-010 | TokenController (JWKS endpoint) | Planned |
-| FR-011 | TokenController (introspection) | Planned |
-| FR-012 | AuthService (force logout) | Planned |
-| FR-013 | PasswordPolicyService (Passay) | Planned |
-| FR-014 | PasswordPolicyService (history) | Planned |
-| FR-015 | MfaService (idempotent verify) | Planned |
-| FR-016 | AuditLogAspect (audit events) | Planned |
-| FR-017 | SsoAdapter (timeout handling) | Planned |
-
-17/17 FRs covered ✅
+### Cross-Feature Coordination
+- `LoginHandler.kt` — shared with `anonymous-login-optimization` but different code regions (no conflict)
+- `AuthCoreExceptions.kt` — shared with `api-response-i18n-standard` but no changes needed (all exceptions exist)
+- `SecurityProperties.kt` — isolated change (add providers map), no overlap with other features

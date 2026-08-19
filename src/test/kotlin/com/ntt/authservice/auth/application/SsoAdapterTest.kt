@@ -2,6 +2,7 @@ package com.ntt.authservice.auth.application
 
 import com.ntt.authservice.auth.adapter.`in`.web.dto.AuthResponse
 import com.ntt.authservice.auth.adapter.out.sso.OAuth2TokenExchanger
+import com.ntt.authservice.auth.application.port.out.EventPublisher
 import com.ntt.authservice.rbac.adapter.out.persistence.entity.UserEntity
 import com.ntt.authservice.rbac.adapter.out.persistence.entity.UserIdentityEntity
 import com.ntt.authservice.rbac.adapter.out.persistence.repository.*
@@ -35,6 +36,7 @@ class SsoAdapterTest {
     @Mock private lateinit var securityProperties: SecurityProperties
     @Mock private lateinit var oauth2TokenExchanger: OAuth2TokenExchanger
     @Mock private lateinit var auditLogService: AuditLogService
+    @Mock private lateinit var eventPublisher: EventPublisher
     @Mock private lateinit var ssoProperties: SecurityProperties.SsoProperties
 
     private lateinit var ssoAdapter: SsoAdapter
@@ -55,7 +57,7 @@ class SsoAdapterTest {
     fun setUp() {
         ssoAdapter = SsoAdapter(
             userRepository, userIdentityRepository, domainRepository,
-            jwtService, securityProperties, oauth2TokenExchanger, auditLogService
+            jwtService, securityProperties, oauth2TokenExchanger, auditLogService, eventPublisher
         )
     }
 

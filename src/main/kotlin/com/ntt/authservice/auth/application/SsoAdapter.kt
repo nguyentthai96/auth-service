@@ -2,6 +2,8 @@ package com.ntt.authservice.auth.application
 
 import com.ntt.authservice.auth.adapter.`in`.web.dto.AuthResponse
 import com.ntt.authservice.auth.adapter.out.sso.OAuth2TokenExchanger
+import com.ntt.authservice.auth.application.port.out.EventPublisher
+import com.ntt.authservice.auth.application.port.out.SsoProvisionedEvent
 import com.ntt.authservice.rbac.adapter.out.persistence.entity.UserEntity
 import com.ntt.authservice.rbac.adapter.out.persistence.entity.UserIdentityEntity
 import com.ntt.authservice.rbac.adapter.out.persistence.repository.*
@@ -24,7 +26,8 @@ class SsoAdapter(
     private val jwtService: JwtService,
     private val securityProperties: SecurityProperties,
     private val oauth2TokenExchanger: OAuth2TokenExchanger,
-    private val auditLogService: AuditLogService
+    private val auditLogService: AuditLogService,
+    private val eventPublisher: EventPublisher
 ) {
 
     private val log = LoggerFactory.getLogger(SsoAdapter::class.java)
@@ -63,8 +66,13 @@ class SsoAdapter(
         log.info("SSO JIT provisioned: userId={}, provider={}", user.id, provider)
         auditLogService.logEvent(user.id, AuditAction.SSO_LOGIN, "User", user.id.toString(), "provider=$provider, jitProvisioned=true")
 
-        // TODO: Emit event via EventPublisher when Kafka is configured
-        // kafkaTemplate.send("iam.user.sso_provisioned", user.id.toString(), provider)
+        // Publish SSO provisioning domain event (FR-007)
+        eventPublisher.publish(SsoProvisionedEvent(
+            userId = user.id!!,
+            provider = provider,
+            email = idpUser.email,
+            domainCode = securityProperties.sso.defaultDomainCode
+        ))
 
         return authResponseBuilder(user.id!!)
     }

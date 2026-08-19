@@ -3,6 +3,8 @@ package com.ntt.authservice.auth.application
 import com.ntt.authservice.rbac.adapter.out.persistence.entity.TokenBlacklistEntity
 import com.ntt.authservice.rbac.adapter.out.persistence.repository.TokenBlacklistRepository
 import com.ntt.authservice.shared.config.SecurityProperties
+import io.micrometer.core.instrument.MeterRegistry
+import io.micrometer.core.instrument.Timer
 import org.slf4j.LoggerFactory
 import org.springframework.data.redis.core.StringRedisTemplate
 import org.springframework.stereotype.Service
@@ -21,7 +23,8 @@ class SessionPromotionService(
     private val redisTemplate: StringRedisTemplate,
     private val anonymousSessionDataService: AnonymousSessionDataService,
     private val tokenBlacklistRepository: TokenBlacklistRepository,
-    private val securityProperties: SecurityProperties
+    private val securityProperties: SecurityProperties,
+    private val meterRegistry: MeterRegistry
 ) {
 
     private val log = LoggerFactory.getLogger(SessionPromotionService::class.java)
@@ -42,9 +45,12 @@ class SessionPromotionService(
      * @param anonymousJti the JTI of the anonymous token to blacklist
      */
     fun promoteSession(sessionId: String, userId: Long, anonymousJti: String): PromotionResult {
+        val sample = Timer.start(meterRegistry)
+
         // Step 1: Acquire distributed lock
         if (!acquireLock(sessionId)) {
             log.warn("Promotion lock acquisition failed for session={} — concurrent promotion detected", sessionId)
+            meterRegistry.counter("auth.anonymous.sessions.promoted", "status", "CONFLICT").increment()
             return PromotionResult(status = PromotionResult.Status.CONFLICT)
         }
 
@@ -52,6 +58,7 @@ class SessionPromotionService(
             // Step 2: Verify session exists
             if (!anonymousSessionDataService.verifySessionExists(sessionId)) {
                 log.warn("Anonymous session not found during promotion: session={}", sessionId)
+                meterRegistry.counter("auth.anonymous.sessions.promoted", "status", "FAILED").increment()
                 return PromotionResult(status = PromotionResult.Status.FAILED)
             }
 
@@ -91,6 +98,10 @@ class SessionPromotionService(
                 transferResult.partial -> PromotionResult.Status.PARTIAL
                 else -> PromotionResult.Status.SUCCESS
             }
+
+            // Metrics: promotion completed
+            meterRegistry.counter("auth.anonymous.sessions.promoted", "status", status.name).increment()
+            sample.stop(meterRegistry.timer("auth.anonymous.promotion.duration"))
 
             log.info(
                 "Anonymous session promotion completed: session={} userId={} status={} items={}",

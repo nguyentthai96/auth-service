@@ -10,7 +10,13 @@ data class MfaVerifyRequest(
     val mfaToken: String,
 
     @field:NotBlank(message = "Verification code is required")
-    val code: String
+    val code: String,
+
+    /** When true, save device fingerprint hash to skip MFA on subsequent logins. */
+    val trustDevice: Boolean = false,
+
+    /** SHA-256 hash of device fingerprint (userAgent + screenRes + timezone). */
+    val deviceHash: String? = null
 )
 
 data class MfaRequiredResponse(

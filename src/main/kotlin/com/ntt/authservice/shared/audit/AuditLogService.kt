@@ -103,6 +103,7 @@ enum class AuditAction {
     MFA_OTP_LOCKED,
     MFA_LOGIN_LOCKED,
     MFA_ADMIN_UNLOCKED,
+    TRUSTED_DEVICE_SET,
 
     // E2EE Audit Actions
     E2EE_KEY_EXCHANGE,

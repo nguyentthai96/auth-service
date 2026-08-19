@@ -5,6 +5,16 @@ import org.springframework.boot.context.properties.ConfigurationProperties
 /**
  * Centralized security configuration properties.
  * Maps to `app.security.*` in application.yml.
+ *
+ * **Key Defaults:**
+ * - CAPTCHA threshold: Triggered after `password.maxFailedAttempts` (default: 3) consecutive login failures per user.
+ *   CAPTCHA provider defaults to `noop` (disabled) — set to `altcha`, `turnstile`, `hcaptcha`, or `recaptcha` in production.
+ * - MFA token TTL: `mfa.mfaTokenTtlSeconds` (default: 300s / 5 minutes) — JWT challenge token lifetime.
+ * - OTP TTL: `mfa.otpTtlSeconds` (default: 300s / 5 minutes) — Redis-backed OTP code lifetime.
+ * - Trusted device: `mfa.trustedDeviceTtlDays` (default: 30 days) — currently stored as SHA-256 hash on UserEntity,
+ *   TTL enforcement deferred to future migration (no Redis-backed expiry yet).
+ * - JWT: RS256 asymmetric signing (primary), HMAC-SHA256 fallback for legacy migration (7-day window).
+ * - Password: BCrypt strength 12, account locks after 3 failed attempts for 15 minutes.
  */
 @ConfigurationProperties(prefix = "app.security")
 data class SecurityProperties(
@@ -18,6 +28,18 @@ data class SecurityProperties(
     val session: SessionProperties = SessionProperties(),
     val anonymous: AnonymousProperties = AnonymousProperties()
 ) {
+    /**
+     * JWT signing and token lifetime configuration.
+     * @property secretKey HMAC secret key (legacy fallback only, ignored when algorithm=RS256).
+     * @property algorithm Signing algorithm — `RS256` (asymmetric, recommended) or `HS256` (symmetric, legacy).
+     * @property privateKeyPath Path to RSA private key PEM file (required for RS256).
+     * @property publicKeyPath Path to RSA public key PEM file (required for RS256).
+     * @property keyId Key ID (`kid`) header in JWT — used for JWKS key rotation.
+     * @property accessTokenExpirationMs Access token lifetime — default 900,000ms (15 minutes, sliding window).
+     * @property refreshTokenExpirationMs Refresh token lifetime — default 604,800,000ms (7 days).
+     * @property absoluteCeilingMs Absolute session ceiling — default 36,000,000ms (10 hours).
+     * @property issuer JWT `iss` claim value.
+     */
     data class JwtProperties(
         val secretKey: String = "",
         val algorithm: String = "RS256",
@@ -30,12 +52,27 @@ data class SecurityProperties(
         val issuer: String = "auth-service"
     )
 
+    /**
+     * Password security configuration.
+     * @property bcryptStrength BCrypt hashing strength — default 12 (recommended 10-14).
+     * @property maxFailedAttempts Failed login attempts before account lock / CAPTCHA trigger — default 3.
+     * @property lockDurationMinutes Account lock duration after max failed attempts — default 15 minutes.
+     */
     data class PasswordProperties(
         val bcryptStrength: Int = 12,
         val maxFailedAttempts: Int = 3,
         val lockDurationMinutes: Int = 15
     )
 
+    /**
+     * Multi-Factor Authentication configuration.
+     * @property otpTtlSeconds OTP code lifetime in Redis — default 300s (5 minutes). Key format: `otp:{userId}:{channel}`.
+     * @property maxAttempts Max OTP verification attempts per MFA session — default 3. Exceeding throws MfaMaxAttemptsException.
+     * @property totpWindow TOTP time-step drift tolerance — default 1 (±30 seconds). Uses dev.samstevens.totp library.
+     * @property mfaTokenTtlSeconds MFA challenge JWT token lifetime — default 300s (5 minutes). Contains userId + method claims.
+     * @property trustedDeviceTtlDays Trusted device validity period — default 30 days.
+     *   Currently stored as SHA-256 hash on UserEntity.trustedDeviceHash; TTL enforcement deferred to future migration.
+     */
     data class MfaProperties(
         val otpTtlSeconds: Long = 300,
         val maxAttempts: Int = 3,
@@ -57,6 +94,16 @@ data class SecurityProperties(
         )
     }
 
+    /**
+     * CAPTCHA configuration — pluggable provider pattern.
+     * CAPTCHA is required after [PasswordProperties.maxFailedAttempts] (default: 3) consecutive login failures.
+     * @property provider Active CAPTCHA provider — `noop` (disabled/dev), `altcha` (PoW), `turnstile`, `hcaptcha`, `recaptcha`.
+     *   Default: `noop` — **must be changed for production**.
+     * @property secretKey Provider-specific secret key (env: `CAPTCHA_SECRET_KEY`).
+     * @property siteKey Provider-specific site/public key (env: `CAPTCHA_SITE_KEY`).
+     * @property verifyUrl Provider server-side verification URL.
+     * @property altcha ALTCHA Proof-of-Work specific config (self-hosted, no third-party dependency).
+     */
     data class CaptchaProperties(
         val provider: String = "noop",
         val secretKey: String = "",
@@ -64,6 +111,12 @@ data class SecurityProperties(
         val verifyUrl: String = "",
         val altcha: AltchaProperties = AltchaProperties()
     ) {
+        /**
+         * ALTCHA Proof-of-Work CAPTCHA configuration.
+         * @property hmacKey HMAC key for challenge signing — **must be ≥32 chars in production**.
+         * @property difficulty SHA-256 iteration count for PoW — default 50,000.
+         * @property challengeTtlSeconds Challenge validity period — default 300s (5 minutes).
+         */
         data class AltchaProperties(
             val hmacKey: String = "",
             val difficulty: Int = 50_000,
@@ -75,8 +128,22 @@ data class SecurityProperties(
         val enabled: Boolean = false,
         val autoProvisionEnabled: Boolean = false,
         val defaultDomainCode: String = "default",
-        val timeoutMs: Long = 10_000
-    )
+        val timeoutMs: Long = 10_000,
+        /** Config-driven SSO provider endpoints — keyed by provider ID (e.g., "google", "keycloak"). */
+        val providers: Map<String, ProviderConfig> = emptyMap()
+    ) {
+        /**
+         * Per-provider OAuth2/OIDC endpoint configuration.
+         * Allows runtime addition of providers (e.g., Keycloak) without code changes.
+         */
+        data class ProviderConfig(
+            val tokenEndpoint: String,
+            val userInfoEndpoint: String,
+            val clientId: String = "",
+            val clientSecret: String = "",
+            val enabled: Boolean = true
+        )
+    }
 
     /**
      * Multi-dimensional login rate limiting configuration.

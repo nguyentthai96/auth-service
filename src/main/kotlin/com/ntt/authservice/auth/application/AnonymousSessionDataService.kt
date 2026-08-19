@@ -3,6 +3,7 @@ package com.ntt.authservice.auth.application
 import com.ntt.authservice.shared.config.SecurityProperties
 import com.ntt.authservice.shared.exception.AnonymousDataLimitExceededException
 import com.ntt.authservice.shared.exception.AnonymousSessionExpiredException
+import io.micrometer.core.instrument.MeterRegistry
 import org.slf4j.LoggerFactory
 import org.springframework.data.redis.core.ScanOptions
 import org.springframework.data.redis.core.StringRedisTemplate
@@ -19,7 +20,8 @@ import java.time.Duration
 @Service
 class AnonymousSessionDataService(
     private val redisTemplate: StringRedisTemplate,
-    private val securityProperties: SecurityProperties
+    private val securityProperties: SecurityProperties,
+    private val meterRegistry: MeterRegistry
 ) {
 
     private val log = LoggerFactory.getLogger(AnonymousSessionDataService::class.java)
@@ -43,6 +45,7 @@ class AnonymousSessionDataService(
         val newDataSize = value.toByteArray().size.toLong()
         val maxSize = securityProperties.anonymous.maxDataSizeBytes
         if (currentSize + newDataSize > maxSize) {
+            meterRegistry.counter("auth.anonymous.data.size_exceeded").increment()
             throw AnonymousDataLimitExceededException(currentSize + newDataSize, maxSize)
         }
 
@@ -51,6 +54,9 @@ class AnonymousSessionDataService(
             ?: securityProperties.anonymous.sessionTtlSeconds
 
         redisTemplate.opsForValue().set(dataKey, value, Duration.ofSeconds(sessionTtl))
+
+        // Metrics: data stored
+        meterRegistry.counter("auth.anonymous.data.stored").increment()
     }
 
     /**
