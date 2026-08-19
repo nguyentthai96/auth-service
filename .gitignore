@@ -45,3 +45,8 @@ logs/
 .logs/
 openspec/changes/*/pipeline.log
 openspec/changes/*/pipeline_progress.yml
+
+# Pipeline logs (too large for git)
+.logs_/
+openspec/pipeline.log
+logs/
