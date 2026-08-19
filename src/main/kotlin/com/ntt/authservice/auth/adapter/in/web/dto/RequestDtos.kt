@@ -13,7 +13,8 @@ data class RegisterRequestDto(
     @field:NotBlank @field:Size(min = 8, max = 100) val password: String,
     @field:NotBlank val fullName: String,
     val phone: String? = null,
-    val domainCode: String = "default"
+    val domainCode: String = "default",
+    val anonymousSessionId: String? = null
 )
 
 data class LoginRequestDto(
@@ -23,7 +24,8 @@ data class LoginRequestDto(
     val captchaToken: String? = null,
     val trustedDeviceHash: String? = null,
     val deviceFingerprint: String? = null,
-    val captchaPayload: String? = null
+    val captchaPayload: String? = null,
+    val anonymousSessionId: String? = null
 )
 
 data class RefreshTokenRequestDto(

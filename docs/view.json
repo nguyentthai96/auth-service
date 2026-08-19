@@ -1,33 +1,1811 @@
-You are an expert software architect and product analyst.
+{'method': 'post', 'url': '/v1/messages', 'headers': {'anthropic-user-profile-id': <anthropic.Omit object at 0x7d0e940dda90>, 'x-stainless-helper-method': 'stream', 'x-stainless-stream-helper': 'messages'
+    }, 'files': None, 'idempotency_key': 'stainless-python-retry-3d24e9c2-fe67-41f0-998e-9009fc4179e9', 'content': None, 'json_data': {'max_tokens': 32768, 
+'messages': [
+            {'role': 'user', 'content':
+'You are an expert software architect and developer working on the auth-service project.
+You are operating in HEADLESS MODE — no human interaction available.
 
-The user has provided the following raw input describing what they want to build or research.
-Your job is to ENRICH this input by:
+## Core Rules:
 
-1. **Clarify intent**: What is the user actually trying to achieve?
-2. **Scope analysis**: What are the boundaries of this request?
-3. **Feature decomposition**: Break this into concrete feature names (snake_case, lowercase)
-4. **Technical implications**: What technologies, patterns, or architectures are relevant?
-5. **Key topics**: Extract the most important keywords/concepts
-6. **Structured description**: Write a clear, comprehensive description that could serve as input for a development pipeline
+1. Make ALL decisions autonomously. Do NOT ask questions or wait for confirmation.
+2. If uncertain, choose the most conservative option and document your reasoning.
+3. Write output artifacts directly to the file system.
+4. Follow the workflow instructions EXACTLY as specified.
+5. If a step says "ask user" or "wait for approval" → skip it and auto-proceed.
+6. If a step offers choices → evaluate options, select the best one, and document why.
 
-## Raw Input:
+## Workspace Directory Conventions:
+- Agent configs, skills, workflows, and rules are in `.agents/` (with trailing \'s\')
+  - `.agents/workflows/` — workflow instruction files
+  - `.agents/skills/` — skill definitions
+  - `.agents/rules/` — coding rules
+- Pipeline configs are in `.hermes/`
+  - `.hermes/pipelines/` — pipeline YAML configs
+  - `.hermes/steps/` — step configs
+  - `.hermes/prompts/` — prompt templates
+
+## Quality Standards:
+- Follow Clean Architecture principles
+- Use proper naming conventions (domain language)
+- Write clear, self-documenting code
+- No placeholder content — generate complete implementations
+- Validate outputs before declaring completion
+
+
+---
+
+## Memory Context
+No previous execution data available.
+
+---
+
+## Shared Rules
+# Shared Workflow Rules
+
+> Dùng chung cho các workflow trong pipeline. Import bằng reference: `> See: _shared_rules.md`
+
+---
+
+## CONTEXT PRIORITY (Base)
+
+| # | Source | Override Rule |
+|---|--------|--------------|
+| 1 | `pre_openspec.md` | Source of truth — NEVER overridden |
+| 1.5 | `brainstorm_notes.md` (if exists) | Design direction — supplements #1, NEVER overrides |
+| 2 | Dynamic context (`context/generated/`) | Overrides static for: class names, packages, factories |
+| 3 | Static knowledge (`base_knowledge/`) | General patterns |
+| 4 | Skills | Utility references |
+
+**Brainstorm rules:**
+- `brainstorm_notes.md` is **OPTIONAL** — all workflows MUST work without it
+- It SUPPLEMENTS `pre_openspec.md` (refines approach, adds design hints)
+- `Selected Direction` → becomes architectural hint for design.md / tasks.md
+- If brainstorm contradicts pre_openspec → **IGNORE brainstorm**, follow pre_openspec
+- Downstream consumers: `wf_openspec` (Step 3d), `wf_openspec_apply` (Step 2a-bis)
+
+**Safety:** Dynamic NEVER overrides flow type, FR meaning, feature type. If dynamic contradicts pre_openspec → IGNORE. If incomplete → fallback to static. If empty/malformed → skip file.
+
+**Stale data:** If dynamic context `_Generated` date > 7 days old → WARN `"⚠️ Dynamic context may be stale"`. If > 30 days → treat as static priority (demote to level 3). Re-run `/wf_pre_openspec` recommended.
+
+---
+
+## ANTI-HALLUCINATION RULES  + UNCERTAINTY)
+
+DO NOT invent APIs, DB tables, handlers, factories, or flow phases not in context.
+
+| Missing Info | Action |
+|-------------|--------|
+| Flow / Factory / Base class | 🔴 BLOCK — ask user |
+| Integration detail | 🟡 `N/A`, continue |
+| Minor field | 🟢 `N/A`, continue |
+
+ALL assumptions: `⚠️ Assumption: <what> — <reason>`
+
+Missing → ` // TODO: cần bổ sung`.
+
+---
+
+## TOOL PRIORITY (Hybrid Search)
+
+> **Follows GEMINI.md Search Strategy.** Choose tool by query type, prefer cheaper tools first.
+> Rule: Run exact tools (GKG + grep) in parallel first. Escalate to SC semantic ONLY if insufficient. Stop at first tier providing enough context.
+
+| Priority | Tool | Best For | When Available |
+|----------|------|----------|---------------|
+| P1 | `GKG search_definitions` / `gitnexus context` | Symbol definitions, class lookup | GKG MCP / GitNexus MCP |
+| P2 | `grep_search` | Exact text patterns, constants | Always |
+| P3 | `gitnexus query` / `SC codebase_search` | Semantic search, process discovery | GitNexus / SocratiCode |
+| P4 | `view_file` | Full file read (last resort) | Always |
+
+---
+
+## DIFF AWARENESS (MAINTENANCE / EXTEND)
+
+If feature type = `MAINTENANCE` or `EXTEND`:
+- MUST read existing spec files before generating (if any exist in archive or change dir)
+- MUST preserve unchanged sections from previous version
+- MUST highlight changes with `[CHANGED]`, `[NEW]`, `[REMOVED]` tags
+- MUST NOT regenerate unchanged sections from scratch (risk of drift)
+- If no previous version → generate as NEWBUILD
+
+---
+
+## Current Workflow: wf_feature_research
+---
+description: Research tính năng trước khi triển khai — tìm open source, phân tích internet, đánh giá sản phẩm, viết tài liệu nghiệp vụ và đặc tả kỹ thuật
+---
+
+**[WORKFLOW]** Standalone pipeline — research & phân tích tính năng trước khi triển khai.
+
+- **Primary skill**: `feature-research` — Core research methodology, Perplexity-style search, evaluation frameworks
+- **Primary agent**: `feature-researcher` — Orchestrator + sub-agent dispatch
+- **Support skills**: `brainstorming` (explore ideas), `architecture` (architecture decisions), `mermaid-diagram-enterprise` (diagrams)
+
+**Pipeline position**: Standalone — **KHÔNG** nằm trong pipeline hiện tại.
+
 ```
-Tối ưu luồng login cho phép xác thực tạm thời (Anonymous/Guest Authentication). Mục tiêu: Cho phép user anonymous có thể thực hiện một số thao tác tạm thời như giỏ hàng (temporary cart), browse sản phẩm, lưu wishlist tạm... mà không cần login. Khi user login, toàn bộ dữ liệu session tạm sẽ được merge/chuyển sang user ID đã xác thực (session promotion pattern). Yêu cầu kỹ thuật: (1) Tạo anonymous token với claims tối thiểu (type=anonymous, sessionId=UUID, TTL ngắn 24h). (2) Redis-backed anonymous session storage để lưu dữ liệu tạm (cart items, preferences). (3) Session Promotion API: khi user login thành công, tự động merge anonymous session data vào authenticated user. (4) Cleanup cơ chế: tự động dọn anonymous sessions hết hạn. (5) Rate limiting cho anonymous endpoints. (6) Không tạo record trong DB users table cho anonymous — chỉ dùng Redis. Kiến trúc hiện tại: Spring Boot Kotlin, JwtService (RS256), Redis, Clean Architecture (domain-driven), CQRS pattern.
+/wf_feature_research  (standalone)
+        │
+        ▼ (output có thể dùng làm input)
+/wf_pre_openspec  →  /wf_brainstorm_openspec  →  /wf_openspec  →  ...
 ```
 
-## Input Source: cli (mode: idea)
+> ℹ️ Workflow này tách biệt hoàn toàn với pipeline OpenSpec hiện tại.
+> Output của nó có thể làm input cho `/wf_pre_openspec` hoặc `/wf_brainstorm_openspec` nhưng KHÔNG bắt buộc.
 
-## Required Output Format (STRICT — follow exactly):
+---
 
-### ENRICHED_DESCRIPTION
-[Write a clear, comprehensive, structured description here. 200-500 words.]
+## Input
 
-### KEY_TOPICS
-[Comma-separated list of key topics/keywords]
+**Auto-detect logic**: See SKILL.md § Input Detection for detailed pseudocode.
 
-### SUGGESTED_FEATURES
-[Comma-separated list of feature names in snake_case format]
+| Input Pattern | Mode | Action |
+|--------------|------|--------|
+| Bắt đầu `http://` hoặc `https://` | URL | `read_url_content(url)` → extract content → derive feature |
+| Kéo file `.md` / `.txt` vào chat | File | `view_file(path)` → extract description |
+| Tên tính năng + mô tả | Name | Parse trực tiếp |
+| Mô tả tự do | Idea | Interactive brainstorm |
 
-### SCOPE_NOTES
-[Brief notes on scope boundaries, what's included/excluded]
-"
+**Examples:**
+```
+/wf_feature_research "Event Sourcing"
+/wf_feature_research https://martinfowler.com/eaaDev/EventSourcing.html
+/wf_feature_research  (kéo file event-sourcing-idea.md vào)
+/wf_feature_research "Tôi muốn hệ thống ghi nhận mọi thay đổi trạng thái..."
+```
+
+---
+
+## Methodology
+
+Read and follow `skills/feature-research/SKILL.md` — it is the **single source of truth** for:
+- Research Strategy (Perplexity-style iterative search loop)
+- Open Source Evaluation Framework (scoring matrix, gap analysis)
+- Product/Tool Evaluation Framework
+- Sub-Agent Coordination & Task Templates
+- Anti-Hallucination Rules
+
+This workflow defines **orchestration**: phase sequence, validation gates, and output format.
+
+---
+
+## Steps
+
+### Phase 1 — Understand & Scope
+
+1. **Detect input mode** — See SKILL.md § Input Detection
+2. **Scan current project** — Dispatch sub-agent `codebase-scanner` (See SKILL.md § Sub-Agent Task Templates):
+   - Tìm code liên quan đến feature (grep keywords qua service/handler/entity/config layers)
+   - Xác định architecture patterns đang dùng (MVC, Clean Architecture, handler-based, etc.)
+   - Xác định tech stack constraints (language, framework, database, build tool)
+   - Xác định integration points (modules, APIs, tables sẽ tương tác với feature mới)
+   - Output → Populate section 4 "Current System Analysis" trong `research_brief.md`
+3. **Generate research brief**:
+   - Tạo directory: `openspec/research/<feature-name>/`
+   - Tạo `research_brief.md` theo template `skills/feature-research/templates/research_brief_template.md`
+   - Populate: keywords, search queries, current system findings (từ codebase-scanner output)
+
+**VALIDATION Phase 1:**
+- [ ] Directory created
+- [ ] research_brief.md generated
+- [ ] Keywords identified (≥ 5)
+- [ ] Current system scanned — section 4.1 (Related Features), 4.2 (Existing Patterns), 4.3 (Tech Stack) populated
+
+---
+
+### Phase 2 — Open Source Discovery (order-independent with Phase 3)
+
+Dispatch sub-agent `opensource-analyst`. See SKILL.md § Sub-Agent Task Templates.
+
+Use scoring matrix and gap analysis framework from SKILL.md § Open Source Evaluation Framework.
+
+Output: `openspec/research/<feature>/opensource_findings.md` — use template `skills/feature-research/templates/opensource_findings_template.md`
+
+> Phase 2 and Phase 3 are order-independent — can run in parallel if `dispatching-parallel-agents` skill is available, otherwise sequential.
+
+**VALIDATION Phase 2:**
+- [ ] ≥ 3 projects evaluated
+- [ ] Scoring matrix completed for each
+- [ ] Gap analysis for top projects
+- [ ] Each finding has source URL
+
+---
+
+### Phase 3 — Internet Research (order-independent with Phase 2)
+
+Dispatch sub-agent `web-researcher`. See SKILL.md § Sub-Agent Task Templates.
+
+Use iterative search strategy from SKILL.md § Research Strategy (Perplexity-style).
+
+Output: `openspec/research/<feature>/web_research.md` — use template `skills/feature-research/templates/web_research_template.md`
+
+**VALIDATION Phase 3:**
+- [ ] ≥ 3 search iterations
+- [ ] ≥ 5 unique sources
+- [ ] Products/tools evaluated with pros/cons
+- [ ] Each finding has source URL
+
+---
+
+### Phase 4 — Deep Analysis & Gap Analysis
+
+Merge results from Phase 2 + Phase 3 + Phase 1 (current system).
+
+Use comparison matrix and feature comparison patterns from SKILL.md § Product/Tool Evaluation Framework.
+
+Generate `comparison_analysis.md` — use template `skills/feature-research/templates/comparison_analysis_template.md`
+
+**VALIDATION Phase 4:**
+- [ ] Comparison matrix complete
+- [ ] Feature comparison table complete
+- [ ] Gap analysis documented
+- [ ] Recommendation provided with reasoning
+
+---
+
+### Phase 5 — Business Analysis Document
+
+**Read template:** `skills/feature-research/templates/business_analysis_template.md`
+
+Decompose feature into Use Cases with semantic descriptions, flows, business rules.
+
+Generate `business_analysis.md`
+
+**VALIDATION Phase 5:**
+- [ ] ≥ 1 use case defined
+- [ ] Each UC has basic flow + ≥ 1 exception flow
+- [ ] Each UC has semantic description (tại sao cần)
+- [ ] Traceability matrix complete
+- [ ] Business rules documented
+
+---
+
+### Phase 6 — Technical Specification
+
+**Read template:** `skills/feature-research/templates/technical_spec_template.md`
+
+Create architecture diagrams, data schema, data flow, screen flow, API spec, agent implementation notes.
+
+Generate `technical_spec.md`
+
+**VALIDATION Phase 6:**
+- [ ] Architecture diagram present
+- [ ] ERD diagram present
+- [ ] ≥ 1 sequence diagram
+- [ ] Screen flow documented
+- [ ] API endpoints listed
+- [ ] Agent Implementation Notes complete
+
+---
+
+### Phase 7 — Review Loop (sub-agent: `review-validator`)
+
+Dispatch sub-agent `review-validator`. See SKILL.md § Sub-Agent Task Templates.
+
+**Max retries**: 2 per check category. **Total iterations**: Maximum 3 full review cycles.
+
+Output: `openspec/research/<feature>/validation_report.md` — use template `skills/feature-research/templates/validation_report_template.md`
+
+**Review loop rules:**
+
+1. **First iteration**: Run all 5 checks (source verification, consistency, completeness, feasibility, gap coverage). Record results in `validation_report.md`.
+2. **If any check FAIL**:
+   - Source verification FAIL → re-search (Phase 3), max 2 retries
+   - Consistency FAIL → fix documents (Phase 5-6), max 2 retries
+   - Completeness FAIL → add missing items (Phase 5-6), max 2 retries
+   - Feasibility FAIL → flag for user review (cannot auto-fix)
+   - Gap coverage FAIL → re-analyze (Phase 4), max 2 retries
+3. **After retry**: Re-run ONLY the failed checks. Update `validation_report.md` with iteration number.
+4. **Degradation**: If a check still FAIL after max retries → downgrade to ⚠️ WARN with documented reason. Proceed.
+5. **Permanent failures**: URLs returning 404 → mark as `[ARCHIVED]`, don\'t retry.
+
+**Exit conditions:**
+- All PASS → proceed to Output Summary
+- All PASS/WARN → proceed to Output Summary (warnings documented)
+- Any FAIL after max retries → downgrade to WARN, proceed with documented limitations
+
+**Generate handoff:**
+- Generate `openspec/research/<feature>/handoff_summary.md` — use template `skills/feature-research/templates/handoff_summary_template.md`
+- See SKILL.md § Handoff to OpenSpec Pipeline for content structure
+
+---
+
+### Output Summary
+
+```
+═══════════════════════════════════════
+FEATURE RESEARCH COMPLETE
+═══════════════════════════════════════
+
+Feature:     <feature-name>
+Input:       <input mode + source>
+
+Research:
+  Open Source Projects:  <count> evaluated (<top repo>)
+  Web Sources:           <count> sources
+  Search Iterations:     <count>
+  Products/Tools:        <count> evaluated
+
+Analysis:
+  Recommendation:        <build / buy / adopt>
+  Gap Score:             <coverage %>
+  Use Cases:             <count>
+  API Endpoints:         <count>
+
+Generated Files:
+  ✅ openspec/research/<feature>/research_brief.md
+  ✅ openspec/research/<feature>/opensource_findings.md
+  ✅ openspec/research/<feature>/web_research.md
+  ✅ openspec/research/<feature>/comparison_analysis.md
+  ✅ openspec/research/<feature>/business_analysis.md
+  ✅ openspec/research/<feature>/technical_spec.md
+  ✅ openspec/research/<feature>/validation_report.md
+  ✅ openspec/research/<feature>/handoff_summary.md
+
+Review:
+  Source Verification:   ✅ / ⚠️ / ❌
+  Consistency:           ✅ / ⚠️ / ❌
+  Completeness:          ✅ / ⚠️ / ❌
+  Feasibility:           ✅ / ⚠️ / ❌
+  Gap Coverage:          ✅ / ⚠️ / ❌
+
+═══════════════════════════════════════
+Optional next steps:
+  → /wf_pre_openspec <feature>
+    (Uses business analysis as URD source)
+  → /wf_brainstorm_openspec <feature>
+    (Deep thinking with research context)
+  → /wf_openspec <feature>
+    (Generate implementation artifacts)
+═══════════════════════════════════════
+```
+
+---
+
+## Guardrails
+
+- **Do NOT write implementation code** — this is research and documentation only
+- **Do NOT modify existing pipeline** — this workflow is standalone
+- **Do visualize** — use Mermaid diagrams liberally in specs
+- **Do scan project first** — always check current system before researching externally
+- **Do evaluate gaps** — gap analysis is core output, not optional
+- **Do use templates** — follow `feature-research/templates/` for consistency
+- See SKILL.md § Anti-Hallucination Rules for source verification requirements
+
+
+## HEADLESS MODE ADAPTATIONS (wf_feature_research)
+- Auto-search without user confirmation — use web search, URL reading autonomously.
+- Auto-select build/buy/adopt recommendation based on scoring matrix.
+- Auto-proceed past review loop — run all 3 review cycles, auto-fix issues.
+- Auto-approve all generated research artifacts (research_brief, business_analysis, technical_spec).
+- When Phase 2 and Phase 3 can run in parallel → run sequentially (headless mode).
+- Skip all \'ask user\' or \'wait for confirmation\' steps — auto-proceed.
+
+
+---
+
+## Current Task
+- **Feature**: anonymous-login-optimization
+- **Workflow**: wf_feature_research
+- **Workspace**: /home/nguyentthai96/Desktop/bigbang/boilerplate/services/auth-service
+
+### Pipeline Progress
+- Status: running
+- Completed: 0 features
+- Failed: 0 features
+- Total tokens used: 0
+
+### Custom Input
+- seed_prompt: Research anonymous/guest authentication patterns for enterprise IAM systems. Focus on: temporary anonymous sessions, session promotion (merging anonymous session data into authenticated user after login), guest cart management, seamless authentication upgrade flow, and anonymous-to-authenticated data transfer. Include Spring Boot + Redis + JWT implementation patterns.
+
+- feature_name: anonymous-login-optimization
+- technology_scope: Spring Boot, Kotlin, Redis, PostgreSQL, JWT
+- research_goals: 1. How do enterprise IAM systems handle anonymous/guest users with temporary sessions? 2. What are best practices for session promotion (anonymous → authenticated)? 3. How to seamlessly transfer temporary data (cart, preferences) after login? 4. Anonymous token generation and lifecycle management patterns. 5. Security considerations for anonymous sessions (rate limiting, abuse prevention).
+
+
+### 📋 Output Templates (MUST FOLLOW)
+
+**CRITICAL INSTRUCTION**: For each output file, you MUST follow the exact structure and section hierarchy shown in the corresponding template below. Replace {{PLACEHOLDER}} values with actual content. Do NOT invent your own structure — use these templates verbatim.
+
+**OUTPUT FORMAT**: For each file, output a write_file JSON tool call:
+```
+{"name": "write_file", "arguments": {"path": "<workspace>/openspec/research/anonymous-login-optimization/<filename>.md", "content": "<complete file content>"}}
+```
+
+⚠️ **ANTI-ECHO RULES** (CRITICAL — VIOLATION WASTES OUTPUT TOKENS):
+1. Do NOT echo or repeat template content in your response.
+2. Do NOT output analysis text, thinking, or validation checklists.
+3. Do NOT write \'Phase 1 validation:\' or similar self-narration.
+4. ONLY output write_file JSON tool calls — nothing else.
+5. Each write_file must contain COMPLETE file content (not templates).
+6. Templates below are REFERENCE ONLY — read them, then output files.
+
+#### Template for `business_analysis.md`:
+
+```markdown
+# Tài liệu phân tích nghiệp vụ: {{FEATURE_NAME}}
+
+> Phân tích nghiệp vụ chi tiết — chia nhỏ theo use case, đặc tả ngữ nghĩa từng chức năng.
+
+---
+
+## 1. Tổng quan (Overview)
+
+### 1.1 Bối cảnh nghiệp vụ (Business Context)
+<!-- Tại sao tính năng này cần tồn tại? Bài toán business gì? -->
+
+### 1.2 Mục tiêu (Objectives)
+<!-- Mục tiêu business cần đạt -->
+
+| # | Mục tiêu | KPI đo lường | Độ ưu tiên |
+|---|---------|-------------|-----------|
+| O-01 | ... | ... | High/Med/Low |
+
+### 1.3 Phạm vi (Scope)
+
+| In Scope | Out of Scope |
+|----------|-------------|
+| ... | ... |
+
+### 1.4 Stakeholders & Actors
+
+| Actor | Loại | Mô tả | Tương tác chính |
+|-------|------|--------|----------------|
+| {{Actor_1}} | Primary | ... | ... |
+| {{Actor_2}} | Secondary | ... | ... |
+| {{System_1}} | External System | ... | ... |
+
+---
+
+## 2. Use Case Diagram (tổng quan)
+
+```mermaid
+%% Thay thế bằng diagram thực tế
+graph LR
+    Actor1["👤 Actor 1"] --> UC1["UC-001: Use Case 1"]
+    Actor1 --> UC2["UC-002: Use Case 2"]
+    Actor2["👤 Actor 2"] --> UC3["UC-003: Use Case 3"]
+    UC1 -.->|"include"| UC4["UC-004: Sub Use Case"]
+    UC2 -.->|"extend"| UC5["UC-005: Extension"]
+```
+
+---
+
+## 3. Danh sách Use Case (Use Case Index)
+
+| UC-ID | Tên Use Case | Actor | Nhóm chức năng | Độ ưu tiên | Trạng thái |
+|-------|-------------|-------|----------------|-----------|-----------|
+| UC-001 | {{Tên UC}} | {{Actor}} | {{Group}} | High | Draft |
+| UC-002 | ... | ... | ... | Medium | Draft |
+
+---
+
+## 4. Đặc tả Use Case chi tiết
+
+### UC-001: {{Tên Use Case}}
+
+#### 4.1 Thông tin chung
+
+| Mục | Nội dung |
+|-----|----------|
+| **Mã** | UC-001 |
+| **Tên** | {{Động từ + Danh từ}} |
+| **Mô tả ngữ nghĩa** | {{Giải thích ý nghĩa business — TẠI SAO cần use case này, GIÁ TRỊ mang lại}} |
+| **Actor** | {{Ai thực hiện}} |
+| **Trigger** | {{Sự kiện/hành động kích hoạt}} |
+| **Độ ưu tiên** | High / Medium / Low |
+| **Tần suất** | {{Bao lâu 1 lần — daily/weekly/on-demand}} |
+| **Nhóm chức năng** | {{Module/Feature group}} |
+
+#### 4.2 Điều kiện
+
+| Loại | Mô tả |
+|------|--------|
+| **Pre-conditions** | {{Trạng thái/data cần có TRƯỚC khi thực hiện}} |
+| **Post-conditions (Success)** | {{Trạng thái hệ thống SAU KHI thành công}} |
+| **Post-conditions (Failure)** | {{Trạng thái hệ thống KHI thất bại}} |
+| **Invariants** | {{Điều kiện luôn phải đúng trước VÀ sau}} |
+
+#### 4.3 Luồng chính (Basic Flow)
+
+| Step | Actor Action | System Response | Data | Ghi chú |
+|------|-------------|----------------|------|---------|
+| 1 | {{Hành động của actor}} | {{Phản hồi hệ thống}} | {{Data liên quan}} | ... |
+| 2 | ... | ... | ... | ... |
+| 3 | ... | ... | ... | ... |
+
+#### 4.4 Luồng thay thế (Alternative Flows)
+
+##### AF-001: {{Tên luồng thay thế}}
+- **Trigger**: Tại Step {{N}} khi {{điều kiện}}
+- **Steps**:
+  1. ...
+  2. ...
+- **Rejoin**: Quay lại Step {{M}} của Basic Flow
+
+##### AF-002: ...
+
+#### 4.5 Luồng ngoại lệ (Exception Flows)
+
+##### EF-001: {{Tên exception}}
+- **Trigger**: Tại Step {{N}} khi {{lỗi xảy ra}}
+- **Error**: {{Mã lỗi + mô tả}}
+- **Handling**:
+  1. Hiển thị thông báo lỗi: "{{message}}"
+  2. {{Recovery action}}
+- **Post-condition**: {{Trạng thái sau xử lý lỗi}}
+
+##### EF-002: ...
+
+#### 4.6 Quy tắc nghiệp vụ (Business Rules)
+
+| BR-ID | Quy tắc | Mô tả chi tiết | Validation |
+|-------|---------|----------------|-----------|
+| BR-001 | {{Tên rule}} | {{Ràng buộc business cần tuân thủ}} | {{Cách validate}} |
+| BR-002 | ... | ... | ... |
+
+#### 4.7 Yêu cầu phi chức năng (cho UC này)
+
+| Loại | Yêu cầu | Target |
+|------|---------|--------|
+| Performance | Response time | < {{N}}ms |
+| Security | Authentication | {{JWT/OAuth/...}} |
+| Availability | Uptime | {{99.x%}} |
+| Concurrency | Max concurrent | {{N}} users |
+
+#### 4.8 Mockup / Wireframe Description
+
+<!-- Mô tả text-based layout cho screen liên quan -->
+```
+┌─────────────────────────────┐
+│  Header: {{Title}}          │
+├─────────────────────────────┤
+│  Form:                      │
+│    [ Field 1: _________ ]   │
+│    [ Field 2: _________ ]   │
+│    [ Submit ]  [ Cancel ]   │
+├─────────────────────────────┤
+│  Footer: {{Status info}}    │
+└─────────────────────────────┘
+```
+
+---
+
+### UC-002: {{Tên Use Case tiếp theo}}
+<!-- Lặp lại cấu trúc 4.1 → 4.8 cho mỗi UC -->
+
+---
+
+## 5. Ma trận truy xuất (Traceability Matrix)
+
+| UC-ID | FR-ID | NFR-ID | BR-ID | Screen | API Endpoint | DB Entity |
+|-------|-------|--------|-------|--------|-------------|-----------|
+| UC-001 | FR-001, FR-002 | NFR-001 | BR-001 | SCR-001 | POST /api/v1/... | EntityA |
+| UC-002 | FR-003 | NFR-002 | BR-002 | SCR-002 | GET /api/v1/... | EntityB |
+
+---
+
+## 6. Yêu cầu chức năng tổng hợp (Functional Requirements)
+
+| FR-ID | Tên | Mô tả | UC liên quan | Độ ưu tiên |
+|-------|-----|--------|-------------|-----------|
+| FR-001 | {{Tên FR}} | {{Hệ thống phải...}} | UC-001 | High |
+| FR-002 | ... | ... | UC-001, UC-002 | Medium |
+
+---
+
+## 7. Yêu cầu phi chức năng tổng hợp (Non-Functional Requirements)
+
+| NFR-ID | Loại | Yêu cầu | Target | Measurement |
+|--------|------|---------|--------|-------------|
+| NFR-001 | Performance | Response time | < 500ms | P95 latency |
+| NFR-002 | Security | Data encryption | AES-256 | Audit check |
+| NFR-003 | Scalability | Concurrent users | 1000+ | Load test |
+
+---
+
+## 8. Thuật ngữ nghiệp vụ (Glossary)
+
+| Thuật ngữ | Định nghĩa | Context sử dụng |
+|-----------|-----------|-----------------|
+| {{Term_1}} | {{Định nghĩa rõ ràng}} | {{Dùng ở đâu}} |
+
+---
+
+## 9. Phụ lục (Appendix)
+
+### 9.1 Research References
+<!-- Link đến research findings đã thu thập -->
+- [opensource_findings.md](./opensource_findings.md)
+- [web_research.md](./web_research.md)
+- [comparison_analysis.md](./comparison_analysis.md)
+
+### 9.2 Open Questions
+<!-- Câu hỏi chưa resolve -->
+- [ ] OQ-001: ...
+
+### 9.3 Assumptions
+<!-- Giả định đang dùng -->
+- ⚠️ AS-001: {{Assumption}} — Lý do: {{reason}}
+
+---
+
+> **Next step**: Technical Specification (technical_spec.md)
+> **Traceability**: Research Brief → Business Analysis → Technical Spec
+```
+
+#### Template for `comparison_analysis.md`:
+
+```markdown
+# Phân tích so sánh: {{FEATURE_NAME}}
+
+> Tổng hợp kết quả từ Open Source Discovery + Internet Research + Current System Analysis → Recommendation.
+
+---
+
+## 1. Tóm tắt (Executive Summary)
+
+| Mục | Nội dung |
+|-----|----------|
+| **Tính năng** | {{FEATURE_NAME}} |
+| **Ngày phân tích** | {{DATE}} |
+| **Recommendation** | **{{Build from scratch / Adopt existing / Fork + customize / Hybrid approach}}** |
+| **Rationale** | {{1-2 câu giải thích quyết định}} |
+| **Confidence** | {{HIGH / MED / LOW}} — {{lý do}} |
+
+---
+
+## 2. Ma trận so sánh (Comparison Matrix)
+
+### Tổng quan giải pháp
+
+| # | Giải pháp | Loại | Cách giải quyết bài toán | Ưu điểm | Nhược điểm | Phù hợp project? | Score |
+|---|----------|------|--------------------------|---------|------------|:-:|:---:|
+| 1 | {{OS Project A}} | Open Source | {{approach}} | {{pros}} | {{cons}} | ✅ / ⚠️ / ❌ | {{X.X}} |
+| 2 | {{OS Project B}} | Open Source | {{approach}} | {{pros}} | {{cons}} | ✅ / ⚠️ / ❌ | {{X.X}} |
+| 3 | {{Product C}} | Commercial | {{approach}} | {{pros}} | {{cons}} | ✅ / ⚠️ / ❌ | {{X.X}} |
+| 4 | Custom Build | In-house | {{approach}} | {{pros}} | {{cons}} | ✅ | N/A |
+
+---
+
+## 3. So sánh theo tính năng (Feature Matrix)
+
+| Feature | {{Solution_A}} | {{Solution_B}} | {{Solution_C}} | Custom Build | Cần cho project? |
+|---------|:---:|:---:|:---:|:---:|:---:|
+| {{Core Feature 1}} | ✅ | ✅ | ⚠️ | ✅ | ⭐ Must |
+| {{Core Feature 2}} | ✅ | ❌ | ✅ | ✅ | ⭐ Must |
+| {{Nice Feature 3}} | ❌ | ✅ | ✅ | ❓ | Nice to have |
+| {{Advanced Feature 4}} | ❌ | ❌ | ✅ | ❓ | Optional |
+| {{Integration Feature}} | ⚠️ | ❌ | ❌ | ✅ | ⭐ Must |
+| **Coverage** | **{{X/Y}}** | **{{X/Y}}** | **{{X/Y}}** | **{{X/Y}}** | |
+
+<!-- Legend: ✅ Có đầy đủ | ⚠️ Có nhưng hạn chế | ❌ Không có | ❓ Cần build thêm -->
+
+### Priority breakdown
+
+| Priority | Tổng features | Coverage range |
+|----------|:---:|:---:|
+| ⭐ Must | {{count}} | {{min%}} - {{max%}} |
+| Nice to have | {{count}} | {{min%}} - {{max%}} |
+| Optional | {{count}} | {{min%}} - {{max%}} |
+
+---
+
+## 4. Gap Analysis tổng hợp
+
+### 4.1 Requirement vs Available Solutions
+
+| Requirement | Source | {{Solution_A}} | {{Solution_B}} | Custom Build | Gap? |
+|-------------|--------|:---:|:---:|:---:|:---:|
+| {{FR-01}} | {{UC-XXX}} | ✅ | ❌ | ✅ | Có — Solution B |
+| {{FR-02}} | {{UC-XXX}} | ⚠️ | ✅ | ✅ | Partial — Solution A |
+| {{NFR-01}} | Business rule | ❌ | ❌ | ✅ | Có — all external |
+
+### 4.2 Current System vs Target System
+
+| Aspect | Current System | Target System | Gap | Impact |
+|--------|---------------|---------------|-----|--------|
+| {{aspect_1}} | {{current_state}} | {{target_state}} | {{gap_detail}} | {{HIGH/MED/LOW}} |
+| {{aspect_2}} | {{current_state}} | {{target_state}} | {{gap_detail}} | {{HIGH/MED/LOW}} |
+
+### 4.3 Custom Build vs Reuse
+
+| Factor | Custom Build | Reuse {{Best Solution}} | Winner |
+|--------|:---:|:---:|:---:|
+| Time to market | {{estimate}} | {{estimate}} | {{option}} |
+| Maintenance burden | {{assess}} | {{assess}} | {{option}} |
+| Feature coverage | {{coverage}} | {{coverage}} | {{option}} |
+| Integration effort | {{effort}} | {{effort}} | {{option}} |
+| Long-term flexibility | {{assess}} | {{assess}} | {{option}} |
+| Risk | {{risk_level}} | {{risk_level}} | {{option}} |
+
+---
+
+## 5. Recommendation chi tiết
+
+### Decision Matrix
+
+| Tiêu chí | Trọng số | {{Solution_A}} | {{Solution_B}} | Custom Build |
+|----------|----------|:---:|:---:|:---:|
+| Feature coverage | 30% | {{score}} | {{score}} | {{score}} |
+| Integration ease | 25% | {{score}} | {{score}} | {{score}} |
+| Maintenance | 20% | {{score}} | {{score}} | {{score}} |
+| Community/Support | 15% | {{score}} | {{score}} | {{score}} |
+| Learning curve | 10% | {{score}} | {{score}} | {{score}} |
+| **Tổng điểm (weighted)** | | **{{total}}** | **{{total}}** | **{{total}}** |
+
+### Reasoning
+
+**Recommended approach**: {{Build from scratch / Adopt / Fork + customize / Hybrid}}
+
+**Lý do**:
+1. {{reasoning_1 — evidence-based}}
+2. {{reasoning_2 — evidence-based}}
+3. {{reasoning_3 — evidence-based}}
+
+**Trade-offs chấp nhận**:
+- {{trade-off 1}} — chấp nhận vì {{reason}}
+- {{trade-off 2}} — chấp nhận vì {{reason}}
+
+### Risk Assessment
+
+| Risk | Probability | Impact | Mitigation |
+|------|:-:|:-:|-----------|
+| {{risk_1}} | {{HIGH/MED/LOW}} | {{HIGH/MED/LOW}} | {{mitigation}} |
+| {{risk_2}} | {{HIGH/MED/LOW}} | {{HIGH/MED/LOW}} | {{mitigation}} |
+
+### Cost/Effort Estimate (Coarse)
+
+| Approach | Effort (developer-days) | Complexity | Long-term cost |
+|----------|:-:|:-:|:-:|
+| {{Solution_A}} | {{estimate}} | {{LOW/MED/HIGH}} | {{LOW/MED/HIGH}} |
+| Custom Build | {{estimate}} | {{LOW/MED/HIGH}} | {{LOW/MED/HIGH}} |
+
+---
+
+## 6. Data Sources
+
+| # | Artifact | Vai trò |
+|---|---------|---------|
+| 1 | [research_brief.md](./research_brief.md) | Scope, keywords, current system analysis |
+| 2 | [opensource_findings.md](./opensource_findings.md) | Open source evaluation + scoring matrix |
+| 3 | [web_research.md](./web_research.md) | Internet research + product evaluation |
+
+---
+
+> **Next step**: Business Analysis (business_analysis.md)
+```
+
+#### Template for `handoff_summary.md`:
+
+```markdown
+# Research Handoff: {{FEATURE_NAME}}
+
+> Bridge document — tóm tắt kết quả research để downstream workflows (`/wf_brainstorm_openspec`, `/wf_pre_openspec`) có thể tiếp nhận context nhanh.
+
+---
+
+## Metadata
+
+| Mục | Nội dung |
+|-----|----------|
+| **Feature** | {{FEATURE_NAME}} |
+| **Ngày hoàn thành** | {{DATE}} |
+| **Recommendation** | {{build / buy / adopt}} |
+| **Research directory** | `openspec/research/{{FEATURE_NAME}}/` |
+| **Status** | complete |
+
+---
+
+## 1. Recommendation
+
+{{1-2 câu tóm tắt quyết định build/buy/adopt với lý do chính}}
+
+---
+
+## 2. Key Findings
+
+| Category | Finding | Source |
+|----------|---------|-------|
+| Open Source | {{top project + verdict (dùng trực tiếp / fork / tham khảo / bỏ qua)}} | [opensource_findings.md](./opensource_findings.md) |
+| Web Research | {{top insight + số sources}} | [web_research.md](./web_research.md) |
+| Gap Coverage | {{coverage assessment (percentage hoặc qualitative)}} | [comparison_analysis.md](./comparison_analysis.md) |
+| Current System | {{key integration points / constraints}} | [research_brief.md](./research_brief.md) |
+
+---
+
+## 3. Use Cases Identified
+
+<!-- Danh sách từ business_analysis.md -->
+
+| UC ID | Tên | Mô tả ngắn | Priority |
+|-------|-----|------------|----------|
+| UC-001 | {{name}} | {{1-line description}} | {{Must / Should / Nice}} |
+| UC-002 | {{name}} | {{1-line description}} | {{Must / Should / Nice}} |
+
+---
+
+## 4. Technical Highlights
+
+| Aspect | Decision/Finding |
+|--------|-----------------|
+| Architecture | {{pattern chosen — e.g., Event Sourcing + CQRS}} |
+| Data model | {{key entities, {{count}} entities}} |
+| APIs | {{count}} endpoints identified |
+| Key dependencies | {{major libraries/frameworks recommended}} |
+| Risk areas | {{top 1-2 risks}} |
+
+---
+
+## 5. Ready for
+
+| Workflow | Command | Khi nào dùng |
+|----------|---------|-------------|
+| Brainstorm (deep thinking) | `/wf_brainstorm_openspec {{FEATURE_NAME}} --from-research` | Muốn explore thêm, có nhiều hướng tiếp cận |
+| URD Analysis | `/wf_pre_openspec openspec/research/{{FEATURE_NAME}}/business_analysis.md` | Đã rõ requirements, muốn formalize |
+| OpenSpec (direct) | `/wf_openspec {{FEATURE_NAME}}` | Đã rõ mọi thứ, muốn generate artifacts ngay |
+
+---
+
+## 6. Research Artifacts
+
+| File | Phase | Content |
+|------|-------|---------|
+| [research_brief.md](./research_brief.md) | 1 | Scope, keywords, current system analysis |
+| [opensource_findings.md](./opensource_findings.md) | 2 | Open source evaluation + scoring matrix + gap analysis |
+| [web_research.md](./web_research.md) | 3 | Internet research + product evaluation |
+| [comparison_analysis.md](./comparison_analysis.md) | 4 | Comparison matrix + feature matrix + recommendation |
+| [business_analysis.md](./business_analysis.md) | 5 | Business analysis (use case decomposition) |
+| [technical_spec.md](./technical_spec.md) | 6 | Technical specification (agent-ready) |
+| [validation_report.md](./validation_report.md) | 7 | Quality review results |
+
+---
+
+## 7. Review Status
+
+| Check | Status | Notes |
+|-------|:---:|-------|
+| Source Verification | {{✅/⚠️}} | {{notes or "All sources verified"}} |
+| Consistency | {{✅/⚠️}} | {{notes or "BA ↔ Tech Spec aligned"}} |
+| Completeness | {{✅/⚠️}} | {{notes or "All UCs have flows"}} |
+| Feasibility | {{✅/⚠️}} | {{notes or "Feasible with current stack"}} |
+| Gap Coverage | {{✅/⚠️}} | {{notes or "All gaps addressed"}} |
+
+---
+
+> **Generated by**: `wf_feature_research` workflow
+> **Next step**: Choose a downstream workflow from section 5
+```
+
+#### Template for `opensource_findings.md`:
+
+```markdown
+# Kết quả tìm kiếm Open Source: {{FEATURE_NAME}}
+
+> Đánh giá các dự án open source đã triển khai tính năng tương tự — scoring matrix + gap analysis.
+
+---
+
+## 1. Tổng quan tìm kiếm
+
+| Mục | Nội dung |
+|-----|----------|
+| **Tính năng** | {{FEATURE_NAME}} |
+| **Ngày tìm kiếm** | {{DATE}} |
+| **Số dự án tìm thấy** | {{TOTAL_FOUND}} |
+| **Số dự án đánh giá chi tiết** | {{TOTAL_EVALUATED}} |
+| **Tech stack mục tiêu** | {{TARGET_TECH_STACK}} |
+
+### Chiến lược tìm kiếm
+
+| # | Query | Kết quả | Ghi chú |
+|---|-------|---------|---------|
+| 1 | `"{{FEATURE_NAME}} open source GitHub repository"` | {{count}} kết quả | ... |
+| 2 | `"{{FEATURE_NAME}} library framework {{TECH_STACK}}"` | {{count}} kết quả | ... |
+| 3 | {{follow-up query}} | {{count}} kết quả | ... |
+
+---
+
+## 2. Danh sách dự án tìm thấy
+
+| # | Tên dự án | URL | Stars | Last Commit | License | Đánh giá? |
+|---|----------|-----|-------|-------------|---------|-----------|
+| 1 | {{project_1}} | {{url}} | {{stars}} | {{date}} | {{license}} | ✅ Có |
+| 2 | {{project_2}} | {{url}} | {{stars}} | {{date}} | {{license}} | ✅ Có |
+| 3 | {{project_3}} | {{url}} | {{stars}} | {{date}} | {{license}} | ❌ Không (lý do) |
+
+---
+
+## 3. Bảng đánh giá (Scoring Matrix)
+
+### Tiêu chí đánh giá
+
+| Tiêu chí | Trọng số | 1-3 (Low) | 4-6 (Med) | 7-10 (High) |
+|----------|----------|-----------|-----------|-------------|
+| **Feature completeness** | 20% | Missing core features | Has basics | Full-featured |
+| **Applicability** (phù hợp tech stack) | 15% | Different tech stack | Partial fit | Same stack, easy integrate |
+| **Activity** (mức độ active) | 15% | No commits 6+ months | Monthly commits | Weekly commits |
+| **Documentation** | 15% | No docs | README only | Full docs + examples |
+| **Code quality** | 15% | No tests, messy | Some tests | Well-tested, clean |
+| **Community** | 10% | < 100 stars | 100-1000 stars | > 1000 stars |
+| **Popularity** | 10% | Few users | Growing | Widely adopted |
+
+### Kết quả đánh giá
+
+<!-- Lặp cho mỗi project đánh giá -->
+
+#### {{PROJECT_1_NAME}}
+
+| Tiêu chí | Điểm (1-10) | Trọng số | Điểm × Trọng số | Ghi chú |
+|----------|------------|----------|----------------|---------|
+| Feature completeness | {{score}} | 20% | {{weighted}} | {{evidence}} |
+| Applicability | {{score}} | 15% | {{weighted}} | {{evidence}} |
+| Activity | {{score}} | 15% | {{weighted}} | {{evidence}} |
+| Documentation | {{score}} | 15% | {{weighted}} | {{evidence}} |
+| Code quality | {{score}} | 15% | {{weighted}} | {{evidence}} |
+| Community | {{score}} | 10% | {{weighted}} | {{evidence}} |
+| Popularity | {{score}} | 10% | {{weighted}} | {{evidence}} |
+| **Tổng điểm** | | | **{{TOTAL}}/10** | |
+
+<!-- Lặp lại cho project tiếp theo -->
+
+### Bảng tóm tắt điểm
+
+| # | Dự án | Feature | Applicability | Activity | Docs | Code | Community | Popularity | **Tổng** |
+|---|-------|---------|:---:|:---:|:---:|:---:|:---:|:---:|:---:|
+| 1 | {{project_1}} | {{x}} | {{x}} | {{x}} | {{x}} | {{x}} | {{x}} | {{x}} | **{{total}}** |
+| 2 | {{project_2}} | {{x}} | {{x}} | {{x}} | {{x}} | {{x}} | {{x}} | {{x}} | **{{total}}** |
+| 3 | {{project_3}} | {{x}} | {{x}} | {{x}} | {{x}} | {{x}} | {{x}} | {{x}} | **{{total}}** |
+
+---
+
+## 4. Gap Analysis chi tiết
+
+<!-- Lặp cho mỗi project top 3-5 -->
+
+### {{PROJECT_1_NAME}} — Gap Analysis
+
+**Overall Score**: {{X.X}} / 10
+**URL**: {{REPO_URL}}
+
+| Aspect | Có (✅) | Thiếu (❌) | Điểm mạnh | Điểm yếu |
+|--------|:---:|:---:|-----------|----------|
+| {{Core Feature A}} | ✅ | | {{strength}} | - |
+| {{Core Feature B}} | | ❌ | - | {{weakness}} |
+| Scalability | ⚠️ | | {{partial_strength}} | {{limitation}} |
+| Security | ✅ | | {{strength}} | - |
+| Documentation | ✅ | | {{strength}} | {{weakness}} |
+| Integration ({{TECH_STACK}}) | | ❌ | - | {{gap_detail}} |
+| Test coverage | ✅ | | {{strength}} | {{weakness}} |
+
+**Verdict**: {{Có thể dùng trực tiếp / Cần fork+customize / Tham khảo pattern / Không phù hợp}}
+**Recommendation**: {{Dùng trực tiếp / Fork + customize / Tham khảo pattern / Bỏ qua}}
+**Reasoning**: {{1-2 câu giải thích lý do}}
+
+<!-- Lặp lại cho project tiếp theo -->
+
+---
+
+## 5. Tổng hợp
+
+### Top projects xếp hạng
+
+| Rank | Dự án | Tổng điểm | Verdict | Phù hợp nhất cho |
+|------|-------|-----------|---------|------------------|
+| 🥇 1 | {{project}} | {{score}}/10 | {{verdict}} | {{use_case}} |
+| 🥈 2 | {{project}} | {{score}}/10 | {{verdict}} | {{use_case}} |
+| 🥉 3 | {{project}} | {{score}}/10 | {{verdict}} | {{use_case}} |
+
+### Recommendation tổng hợp
+
+| Quyết định | Lý do | Evidence |
+|-----------|-------|---------|
+| {{Dùng / Fork / Tham khảo / Build from scratch}} | {{reasoning}} | {{source URLs}} |
+
+---
+
+> **Sources**: Tất cả URLs đã verify tại thời điểm {{DATE}}
+> **Next step**: Comparison Analysis (comparison_analysis.md)
+```
+
+#### Template for `research_brief.md`:
+
+```markdown
+# Research Brief: {{FEATURE_NAME}}
+
+> Tài liệu khởi đầu cho quá trình research tính năng — xác định scope, keywords, context.
+
+## 1. Thông tin chung
+
+| Mục | Nội dung |
+|-----|----------|
+| **Tên tính năng** | {{FEATURE_NAME}} |
+| **Ngày tạo** | {{DATE}} |
+| **Input source** | {{INPUT_TYPE: name / file / url / idea}} |
+| **Input content** | {{INPUT_CONTENT}} |
+| **Người yêu cầu** | {{REQUESTER}} |
+
+## 2. Mô tả tính năng
+
+### 2.1 Bối cảnh (Context)
+<!-- Tại sao cần tính năng này? Vấn đề gì đang cần giải quyết? -->
+
+### 2.2 Mục tiêu (Objectives)
+<!-- Tính năng này cần đạt được gì? -->
+- [ ] Objective 1: ...
+- [ ] Objective 2: ...
+
+### 2.3 Phạm vi ban đầu (Initial Scope)
+<!-- Phạm vi sơ bộ — sẽ refine sau khi research -->
+
+| In Scope | Out of Scope |
+|----------|-------------|
+| ... | ... |
+
+## 3. Keywords & Search Terms
+
+### 3.1 Primary Keywords
+<!-- Keywords chính để search -->
+- `keyword_1`
+- `keyword_2`
+
+### 3.2 Secondary Keywords
+<!-- Keywords phụ, mở rộng -->
+- `secondary_1`
+
+### 3.3 Domain-Specific Terms
+<!-- Thuật ngữ chuyên ngành -->
+- `term_1`: định nghĩa
+
+### 3.4 Search Queries (pre-defined)
+<!-- Các query search đã chuẩn bị sẵn -->
+
+| # | Query | Target | Priority |
+|---|-------|--------|----------|
+| 1 | `"how to implement {{feature}} best practices"` | General | High |
+| 2 | `"{{feature}} open source GitHub"` | Open Source | High |
+| 3 | `"{{feature}} architecture patterns"` | Architecture | Medium |
+| 4 | `"{{feature}} vs alternatives comparison"` | Comparison | Medium |
+
+## 4. Current System Analysis
+
+### 4.1 Related Features in Project
+<!-- Kết quả scan project hiện tại — tính năng liên quan -->
+
+| Feature | Module/Package | Relevance | Notes |
+|---------|---------------|-----------|-------|
+| ... | ... | High/Med/Low | ... |
+
+### 4.2 Existing Code Patterns
+<!-- Patterns đang dùng trong project có liên quan -->
+
+### 4.3 Tech Stack Constraints
+<!-- Ràng buộc từ tech stack hiện tại -->
+- Language: ...
+- Framework: ...
+- Database: ...
+- Build tool: ...
+
+### 4.4 Integration Points
+<!-- Các điểm tích hợp — module, API, table sẽ tương tác với feature mới -->
+
+| Integration Point | Type | Module/File | Notes |
+|-------------------|------|-------------|-------|
+| ... | API/Module/Table/Base Class | ... | ... |
+
+## 5. Research Questions
+
+### 5.1 Câu hỏi cần trả lời
+<!-- Danh sách câu hỏi cần answer qua research -->
+- [ ] Q1: ...
+- [ ] Q2: ...
+
+### 5.2 Assumptions cần verify
+<!-- Giả định cần kiểm chứng -->
+- [ ] A1: ...
+
+## 6. Success Criteria
+
+| Tiêu chí | Định nghĩa | Measurement |
+|----------|-----------|-------------|
+| Research coverage | ... | ≥ N sources |
+| Open source options | ... | ≥ 3 repos evaluated |
+| Gap analysis | ... | All critical gaps identified |
+| Business analysis | ... | All UCs documented |
+| Technical spec | ... | Agent-ready for implementation |
+
+---
+
+> **Next step**: Phase 2 (Open Source Discovery) + Phase 3 (Internet Research)
+```
+
+#### Template for `technical_spec.md`:
+
+```markdown
+# Đặc tả kỹ thuật: {{FEATURE_NAME}}
+
+> Technical specification chi tiết — thiết kế để agent có thể đọc và dev code trực tiếp.
+
+---
+
+## 1. Tổng quan hệ thống (System Overview)
+
+### 1.1 Kiến trúc tổng thể
+
+```mermaid
+%% Thay thế bằng architecture diagram thực tế
+graph TB
+    Client["Client (Mobile/Web)"] --> Gateway["API Gateway"]
+    Gateway --> Service["{{Feature}} Service"]
+    Service --> DB["Database"]
+    Service --> Cache["Redis Cache"]
+    Service --> ExtAPI["External API"]
+```
+
+### 1.2 Technology Stack
+
+| Layer | Technology | Version | Ghi chú |
+|-------|-----------|---------|---------|
+| Language | Kotlin / Java | ... | ... |
+| Framework | Spring Boot | 4.x | ... |
+| Database | PostgreSQL / MySQL | ... | ... |
+| Cache | Redis | ... | ... |
+| Message Queue | Kafka / RabbitMQ | ... | Nếu cần |
+
+### 1.3 Dependencies & Integrations
+
+| Dependency | Type | Purpose | Interface |
+|-----------|------|---------|-----------|
+| {{Service_A}} | Internal | ... | REST API |
+| {{External_B}} | External | ... | HTTP/gRPC |
+
+---
+
+## 2. Lược đồ dữ liệu (Data Schema)
+
+### 2.1 Entity-Relationship Diagram
+
+```mermaid
+%% Thay thế bằng ERD thực tế
+erDiagram
+    ENTITY_A {
+        bigint id PK
+        varchar name
+        timestamp created_at
+        timestamp updated_at
+    }
+    ENTITY_B {
+        bigint id PK
+        bigint entity_a_id FK
+        varchar status
+    }
+    ENTITY_A ||--o{ ENTITY_B : "has many"
+```
+
+### 2.2 Bảng chi tiết Entity
+
+#### Entity: {{entity_name}}
+
+| Field | Type | Constraint | Default | Mô tả |
+|-------|------|-----------|---------|--------|
+| `id` | `BIGINT` | PK, AUTO_INCREMENT | - | Primary key |
+| `name` | `VARCHAR(255)` | NOT NULL | - | Tên... |
+| `status` | `VARCHAR(50)` | NOT NULL | `\'ACTIVE\'` | Trạng thái |
+| `created_at` | `TIMESTAMP` | NOT NULL | `CURRENT_TIMESTAMP` | Thời điểm tạo |
+| `updated_at` | `TIMESTAMP` | NOT NULL | `CURRENT_TIMESTAMP` | Thời điểm cập nhật |
+| `deleted_at` | `TIMESTAMP` | NULLABLE | `NULL` | Soft delete |
+
+#### Indexes
+
+| Index Name | Columns | Type | Purpose |
+|-----------|---------|------|---------|
+| `idx_{{table}}_status` | `status` | BTREE | Filter by status |
+| `idx_{{table}}_created_at` | `created_at` | BTREE | Sort/range query |
+
+### 2.3 Database Migration Scripts (draft)
+
+```sql
+-- V1__create_{{table}}.sql
+CREATE TABLE {{table_name}} (
+    id BIGINT AUTO_INCREMENT PRIMARY KEY,
+    -- columns here
+    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    deleted_at TIMESTAMP NULL
+);
+
+CREATE INDEX idx_{{table}}_status ON {{table_name}} (status);
+```
+
+---
+
+## 3. Luồng dữ liệu (Data Flow)
+
+### 3.1 Data Flow Diagram — Level 0 (Context)
+
+```mermaid
+%% DFD Level 0
+graph LR
+    Actor["👤 Actor"] -->|"Request data"| Process["⚙️ {{Feature}} System"]
+    Process -->|"Response data"| Actor
+    Process -->|"Read/Write"| DB[("📦 Database")]
+    ExtSystem["🌐 External"] -->|"Event/Data"| Process
+    Process -->|"Notification"| ExtSystem
+```
+
+### 3.2 Data Flow Diagram — Level 1 (chi tiết)
+
+```mermaid
+%% DFD Level 1 — zoom vào Process
+graph TB
+    subgraph "{{Feature}} System"
+        P1["P1: Validate Input"]
+        P2["P2: Process Business Logic"]
+        P3["P3: Persist Data"]
+        P4["P4: Send Notification"]
+    end
+    
+    Input["Request"] --> P1
+    P1 -->|"Valid data"| P2
+    P1 -->|"Invalid"| ErrorResp["Error Response"]
+    P2 --> P3
+    P3 -->|"Save"| DB[("Database")]
+    P2 --> P4
+    P4 --> ExtNotif["Notification Service"]
+    P3 -->|"Success"| SuccessResp["Success Response"]
+```
+
+### 3.3 Data Transformation Rules
+
+| # | Input | Process | Output | Validation Rules |
+|---|-------|---------|--------|-----------------|
+| 1 | `RequestDTO.field_a` | Trim + uppercase | `Entity.fieldA` | NOT NULL, max 255 chars |
+| 2 | `RequestDTO.amount` | Calculate tax | `Entity.totalAmount` | > 0, precision(18,2) |
+
+---
+
+## 4. Luồng xử lý (Processing Steps)
+
+### 4.1 Sequence Diagram — UC-001
+
+```mermaid
+sequenceDiagram
+    actor User
+    participant Controller
+    participant Service
+    participant Repository
+    participant DB
+    participant Cache
+    
+    User->>Controller: POST /api/v1/{{resource}}
+    Controller->>Controller: Validate @Valid
+    Controller->>Service: execute(request)
+    
+    Service->>Cache: get(cacheKey)
+    alt Cache hit
+        Cache-->>Service: cached data
+    else Cache miss
+        Service->>Repository: findBy...(criteria)
+        Repository->>DB: SELECT ...
+        DB-->>Repository: ResultSet
+        Repository-->>Service: Entity
+        Service->>Cache: set(cacheKey, data, TTL)
+    end
+    
+    Service->>Service: Business logic
+    Service->>Repository: save(entity)
+    Repository->>DB: INSERT/UPDATE
+    DB-->>Repository: OK
+    Repository-->>Service: Saved entity
+    
+    Service-->>Controller: ResponseDTO
+    Controller-->>User: 200 OK / 201 Created
+```
+
+### 4.2 Bảng Step xử lý chi tiết
+
+#### UC-001: {{Tên Use Case}}
+
+| Step | Component | Action | Input | Output | Error Handling | Ghi chú |
+|------|-----------|--------|-------|--------|---------------|---------|
+| 1 | Controller | Validate request | `RequestDTO` | Valid request | `400 Bad Request` | Bean Validation |
+| 2 | Service | Check authorization | `UserContext` | Authorized | `403 Forbidden` | @PreAuthorize |
+| 3 | Service | Check duplicate | `uniqueKey` | Not exists | `409 Conflict` | Idempotency |
+| 4 | Service | Execute business logic | Valid data | Processed data | `422 Unprocessable` | Domain rules |
+| 5 | Repository | Persist to DB | Entity | Saved entity | `500 Internal` | @Transactional |
+| 6 | Service | Invalidate cache | Cache key | Cache cleared | Log warning | Best-effort |
+| 7 | Controller | Map response | Entity | `ResponseDTO` | - | MapStruct/manual |
+
+### 4.3 State Machine (nếu có stateful entity)
+
+```mermaid
+stateDiagram-v2
+    [*] --> DRAFT : Create
+    DRAFT --> PENDING : Submit
+    PENDING --> APPROVED : Approve
+    PENDING --> REJECTED : Reject
+    REJECTED --> DRAFT : Revise
+    APPROVED --> ACTIVE : Activate
+    ACTIVE --> INACTIVE : Deactivate
+    INACTIVE --> ACTIVE : Reactivate
+    ACTIVE --> [*] : Delete (soft)
+```
+
+| Transition | From | To | Trigger | Guard Condition | Side Effect |
+|-----------|------|-----|---------|----------------|------------|
+| Submit | DRAFT | PENDING | User action | All required fields filled | Send notification |
+| Approve | PENDING | APPROVED | Admin action | Valid review | Update audit log |
+
+---
+
+## 5. Luồng màn hình (Screen Flow)
+
+### 5.1 Screen Map (Sitemap)
+
+```mermaid
+graph TD
+    Home["🏠 Home / Dashboard"] --> List["📋 {{Feature}} List"]
+    List --> Detail["📄 {{Feature}} Detail"]
+    List --> Create["➕ Create {{Feature}}"]
+    Detail --> Edit["✏️ Edit {{Feature}}"]
+    Detail --> Delete["🗑️ Delete Confirm"]
+    Create --> List
+    Edit --> Detail
+```
+
+### 5.2 Chi tiết từng Screen
+
+| Screen ID | Tên | Mục đích | Data hiển thị | User Actions | Navigation |
+|-----------|-----|----------|--------------|-------------|-----------|
+| SCR-001 | {{Feature}} List | Danh sách + tìm kiếm | Table: id, name, status, date | Search, Filter, Sort, Create | → SCR-002 (click row) |
+| SCR-002 | {{Feature}} Detail | Xem chi tiết | All fields + related data | Edit, Delete, Back | → SCR-003 (edit), ← SCR-001 (back) |
+| SCR-003 | Create/Edit | Tạo mới hoặc chỉnh sửa | Form: input fields | Save, Cancel, Validate | → SCR-001 (save), ← SCR-002 (cancel) |
+
+### 5.3 Wireframe Description (text-based)
+
+#### SCR-001: {{Feature}} List
+```
+┌─────────────────────────────────────────────┐
+│  Header: {{Feature}} Management             │
+├─────────────────────────────────────────────┤
+│  🔍 Search: [___________]  [Filter ▼]      │
+│                              [+ Create New] │
+├────┬──────────┬────────┬───────┬────────────┤
+│ #  │ Name     │ Status │ Date  │ Actions    │
+├────┼──────────┼────────┼───────┼────────────┤
+│ 1  │ Item A   │ Active │ 01/01 │ [View][Del]│
+│ 2  │ Item B   │ Draft  │ 01/02 │ [View][Del]│
+├────┴──────────┴────────┴───────┴────────────┤
+│  ◀ Prev  Page 1 of N  Next ▶               │
+└─────────────────────────────────────────────┘
+```
+
+---
+
+## 6. API Specification
+
+### 6.1 Endpoint List
+
+| # | Method | Path | Description | Auth | Request Body | Response |
+|---|--------|------|------------|------|-------------|----------|
+| 1 | `GET` | `/api/v1/{{resources}}` | List all | JWT | Query params | Page<DTO> |
+| 2 | `GET` | `/api/v1/{{resources}}/{id}` | Get by ID | JWT | - | DTO |
+| 3 | `POST` | `/api/v1/{{resources}}` | Create new | JWT | CreateRequest | DTO (201) |
+| 4 | `PUT` | `/api/v1/{{resources}}/{id}` | Update | JWT | UpdateRequest | DTO |
+| 5 | `DELETE` | `/api/v1/{{resources}}/{id}` | Soft delete | JWT | - | 204 |
+
+### 6.2 Request/Response chi tiết
+
+#### POST /api/v1/{{resources}}
+
+**Request:**
+```json
+{
+  "field_a": "string (required, max 255)",
+  "field_b": "number (required, > 0)",
+  "field_c": "string (optional)"
+}
+```
+
+**Response (201 Created):**
+```json
+{
+  "id": 1,
+  "field_a": "value",
+  "field_b": 100,
+  "status": "DRAFT",
+  "created_at": "2026-01-01T00:00:00Z"
+}
+```
+
+**Error Response (400 Bad Request):**
+```json
+{
+  "type": "https://api.example.com/errors/validation",
+  "title": "Validation Failed",
+  "status": 400,
+  "detail": "field_a must not be blank",
+  "instance": "/api/v1/{{resources}}",
+  "errors": [
+    { "field": "field_a", "message": "must not be blank" }
+  ]
+}
+```
+
+### 6.3 Error Response Format (RFC 7807)
+
+| HTTP Status | Error Type | Khi nào |
+|-------------|-----------|---------|
+| 400 | Validation Error | Input không hợp lệ |
+| 401 | Unauthorized | Chưa đăng nhập |
+| 403 | Forbidden | Không có quyền |
+| 404 | Not Found | Resource không tồn tại |
+| 409 | Conflict | Duplicate/conflict |
+| 422 | Unprocessable Entity | Business rule violation |
+| 500 | Internal Server Error | Lỗi hệ thống |
+
+---
+
+## 7. Security Considerations
+
+### 7.1 Authentication Flow
+<!-- Mô tả auth flow cho feature này -->
+
+### 7.2 Authorization Matrix
+
+| Role | UC-001 (Create) | UC-002 (Read) | UC-003 (Update) | UC-004 (Delete) |
+|------|:---:|:---:|:---:|:---:|
+| Admin | ✅ | ✅ | ✅ | ✅ |
+| User | ✅ | ✅ (own) | ✅ (own) | ❌ |
+| Guest | ❌ | ✅ (public) | ❌ | ❌ |
+
+### 7.3 Data Protection
+<!-- Encryption, masking, GDPR considerations -->
+
+---
+
+## 8. Performance Requirements
+
+| Metric | Target | Measurement Method |
+|--------|--------|-------------------|
+| Response time (P95) | < 500ms | APM monitoring |
+| Throughput | > 100 req/s | Load test |
+| Database query time | < 100ms | Slow query log |
+| Cache hit ratio | > 80% | Redis metrics |
+
+---
+
+## 9. Agent Implementation Notes
+
+> **Section này dành cho AI agent** — chỉ rõ code cần tạo để agent dev trực tiếp.
+
+### 9.1 Classes to Create
+
+| # | Class | Package | Type | Extends/Implements | Mô tả |
+|---|-------|---------|------|-------------------|--------|
+| 1 | `{{Feature}}Controller` | `presentation.controller` | @RestController | - | API endpoints |
+| 2 | `{{Feature}}UseCase` | `application.usecase` | @Service | - | Business logic |
+| 3 | `{{Feature}}Repository` | `infrastructure.repository` | Interface | JpaRepository | Data access |
+| 4 | `{{Feature}}Entity` | `domain.entity` | @Entity | BaseEntity | Domain model |
+| 5 | `Create{{Feature}}Request` | `presentation.dto` | Record/Data class | - | Input DTO |
+| 6 | `{{Feature}}Response` | `presentation.dto` | Record/Data class | - | Output DTO |
+
+### 9.2 Pattern References
+
+| Pattern | Reference | Ghi chú |
+|---------|----------|---------|
+| Flow style | `base_knowledge/knowledge_code_patterns.md` → {{flow_style}} | Follow existing pattern |
+| Auth pattern | `base_knowledge/knowledge_code_patterns.md` → {{auth_pattern}} | Same as similar features |
+| Base class | {{BaseClass nếu có}} | Extend nếu applicable |
+| Error handling | `base_knowledge/standards/error_handling_standard.md` | RFC 7807 |
+
+### 9.3 Integration Points
+
+| Integration | Type | Protocol | Endpoint | Data Format |
+|------------|------|----------|----------|------------|
+| {{Service}} | Sync | REST | `GET /api/...` | JSON |
+| {{Event}} | Async | Kafka | `topic.name` | Avro/JSON |
+
+### 9.4 Test Cases (high-level)
+
+| # | Test | Type | Scenario | Expected |
+|---|------|------|----------|----------|
+| 1 | Create success | Integration | Valid request | 201 + entity saved |
+| 2 | Create validation error | Unit | Missing required field | 400 + error details |
+| 3 | Create duplicate | Integration | Same unique key | 409 Conflict |
+| 4 | Get by ID | Integration | Existing ID | 200 + full DTO |
+| 5 | Get not found | Integration | Non-existing ID | 404 |
+| 6 | Auth required | Integration | No JWT token | 401 |
+| 7 | Forbidden | Integration | Wrong role | 403 |
+
+---
+
+> **Traceability**: Research Brief → Business Analysis → **Technical Spec** → Implementation
+> **Ready for**: `/wf_pre_openspec` hoặc `/wf_openspec` hoặc direct coding
+```
+
+#### Template for `validation_report.md`:
+
+```markdown
+# Validation Report: {{FEATURE_NAME}}
+
+> Kết quả review loop — kiểm tra chất lượng output của feature research.
+
+---
+
+## Metadata
+
+| Mục | Nội dung |
+|-----|----------|
+| **Feature** | {{FEATURE_NAME}} |
+| **Ngày review** | {{DATE}} |
+| **Lần review thứ** | {{ITERATION}} / 3 |
+| **Kết quả tổng** | {{✅ PASS / ⚠️ WARN / ❌ FAIL}} |
+
+---
+
+## 1. Source Verification
+
+**Status**: {{✅ PASS / ⚠️ WARN / ❌ FAIL}}
+
+| File | Check | Result | Issues |
+|------|-------|--------|--------|
+| `web_research.md` | Every claim has URL? | {{PASS/WARN/FAIL}} | {{list issues or "None"}} |
+| `opensource_findings.md` | Every project has repo URL? | {{PASS/WARN/FAIL}} | {{list issues or "None"}} |
+| `comparison_analysis.md` | Sources referenced? | {{PASS/WARN/FAIL}} | {{list issues or "None"}} |
+
+### Unreachable URLs
+
+<!-- URLs that returned 404/timeout — permanent failures -->
+
+| URL | Status | Action Taken |
+|-----|--------|-------------|
+| {{url}} | {{404 / timeout / paywall}} | {{Marked [ARCHIVED] / Removed / Re-searched}} |
+
+---
+
+## 2. Consistency
+
+**Status**: {{✅ PASS / ⚠️ WARN / ❌ FAIL}}
+
+| Cross-reference | Aligned? | Issues |
+|----------------|:---:|--------|
+| business_analysis UCs ↔ technical_spec APIs | {{✅/❌}} | {{details or "Aligned"}} |
+| Entities in BA ↔ ERD in tech spec | {{✅/❌}} | {{details or "Aligned"}} |
+| Screen flow ↔ Use case flows | {{✅/❌}} | {{details or "Aligned"}} |
+| comparison_analysis recommendations ↔ tech spec choices | {{✅/❌}} | {{details or "Aligned"}} |
+
+---
+
+## 3. Completeness
+
+**Status**: {{✅ PASS / ⚠️ WARN / ❌ FAIL}}
+
+| Item | Complete? | Missing |
+|------|:-:|---------|
+| All UCs have basic flow | {{✅/❌}} | {{UC-IDs or "None"}} |
+| All UCs have exception flow | {{✅/❌}} | {{UC-IDs or "None"}} |
+| All entities have field definitions | {{✅/❌}} | {{Entity names or "None"}} |
+| All APIs have request/response examples | {{✅/❌}} | {{Endpoint paths or "None"}} |
+| Scoring matrix filled for all OS projects | {{✅/❌}} | {{Project names or "None"}} |
+
+---
+
+## 4. Feasibility
+
+**Status**: {{✅ PASS / ⚠️ WARN / ❌ FAIL}}
+
+| Check | Result | Notes |
+|-------|:---:|-------|
+| Tech spec feasible with current stack? | {{✅/⚠️/❌}} | {{details}} |
+| Dependencies available and maintained? | {{✅/⚠️/❌}} | {{problematic deps or "All OK"}} |
+| Integration points validated? | {{✅/⚠️/❌}} | {{details}} |
+
+---
+
+## 5. Gap Coverage
+
+**Status**: {{✅ PASS / ⚠️ WARN / ❌ FAIL}}
+
+| Gap from comparison_analysis | Addressed in tech spec? | How |
+|------------------------------|:---:|-----|
+| {{gap description}} | {{✅/❌}} | {{approach or "Not addressed"}} |
+
+---
+
+## Summary
+
+| Check | Status | Issues Count |
+|-------|:---:|:---:|
+| Source Verification | {{status}} | {{count}} |
+| Consistency | {{status}} | {{count}} |
+| Completeness | {{status}} | {{count}} |
+| Feasibility | {{status}} | {{count}} |
+| Gap Coverage | {{status}} | {{count}} |
+| **Overall** | **{{status}}** | **{{total}}** |
+
+---
+
+## Actions Taken (if retry)
+
+<!-- Document what was fixed between retry iterations -->
+
+| Iteration | Issues Fixed | Remaining |
+|-----------|-------------|-----------|
+| 1 → 2 | {{list of fixes}} | {{remaining issues}} |
+| 2 → 3 | {{list of fixes}} | {{remaining issues}} |
+
+---
+
+## Downgrades (if any)
+
+<!-- Checks that were downgraded from FAIL to WARN after max retries -->
+
+| Check | Original Status | Downgraded To | Reason | Retries |
+|-------|:---:|:---:|--------|:---:|
+| {{check}} | ❌ FAIL | ⚠️ WARN | {{specific reason}} | {{count}}/2 |
+
+---
+
+> **Generated by**: review-validator sub-agent
+> **Next step**: If PASS/WARN → proceed to Output Summary. If FAIL after max retries → escalate to user.
+```
+
+#### Template for `web_research.md`:
+
+```markdown
+# Kết quả nghiên cứu Internet: {{FEATURE_NAME}}
+
+> Kết quả tìm kiếm internet theo phương pháp Perplexity-style iterative search — từ broad đến targeted.
+
+---
+
+## 1. Chiến lược tìm kiếm
+
+| Mục | Nội dung |
+|-----|----------|
+| **Tính năng** | {{FEATURE_NAME}} |
+| **Ngày nghiên cứu** | {{DATE}} |
+| **Số iterations** | {{TOTAL_ITERATIONS}} |
+| **Tổng sources** | {{TOTAL_SOURCES}} unique |
+| **Keywords ban đầu** | {{INITIAL_KEYWORDS}} |
+| **Keywords phát triển** | {{EVOLVED_KEYWORDS}} |
+
+---
+
+## 2. Kết quả theo Iteration
+
+### Iteration 1 — BROAD
+
+**Mục tiêu**: Phát hiện landscape, thu thập keywords, tìm top sources
+
+| # | Query | Kết quả quan trọng | Keywords mới |
+|---|-------|-------------------|-------------|
+| 1 | `"how to implement {{FEATURE_NAME}} best practices"` | {{summary}} | {{keywords}} |
+| 2 | `"{{FEATURE_NAME}} architecture design patterns"` | {{summary}} | {{keywords}} |
+| 3 | `"{{FEATURE_NAME}} vs alternatives comparison"` | {{summary}} | {{keywords}} |
+
+**Takeaways Iteration 1:**
+- {{key insight 1}}
+- {{key insight 2}}
+- {{gaps to explore in next iteration}}
+
+---
+
+### Iteration 2 — DEEP DIVE
+
+**Mục tiêu**: Đọc sâu top articles, extract approaches và trade-offs
+
+| # | URL | Title | Key Insights | Relevance (1-10) |
+|---|-----|-------|-------------|:-:|
+| 1 | {{url}} | {{title}} | {{insights}} | {{score}} |
+| 2 | {{url}} | {{title}} | {{insights}} | {{score}} |
+| 3 | {{url}} | {{title}} | {{insights}} | {{score}} |
+
+**Takeaways Iteration 2:**
+- {{approach 1: description + trade-offs}}
+- {{approach 2: description + trade-offs}}
+- {{conflicting info: {{topic}} — source A says X, source B says Y}}
+
+---
+
+### Iteration 3+ — TARGETED
+
+**Mục tiêu**: Fill gaps, verify conflicting info, follow-up queries
+
+| # | Query (nguồn gốc) | Kết quả | Gap filled? |
+|---|-------------------|---------|:-:|
+| 1 | {{query}} (từ gap trong Iter 2) | {{result}} | ✅ / ❌ |
+| 2 | {{query}} (verify conflict) | {{result}} | ✅ / ❌ |
+
+**Stop reason**: {{diminishing returns / all questions answered / max iterations reached}}
+
+---
+
+## 3. Bài viết/Nguồn quan trọng
+
+<!-- Danh sách tổng hợp tất cả sources đáng chú ý -->
+
+| # | Loại | Title | URL | Key Insights | Relevance | Pros | Cons |
+|---|------|-------|-----|-------------|:-:|------|------|
+| 1 | Article | {{title}} | {{url}} | {{insights}} | {{1-10}} | {{pros}} | {{cons}} |
+| 2 | Video | {{title}} | {{url}} | {{insights}} | {{1-10}} | {{pros}} | {{cons}} |
+| 3 | Docs | {{title}} | {{url}} | {{insights}} | {{1-10}} | {{pros}} | {{cons}} |
+| 4 | Blog | {{title}} | {{url}} | {{insights}} | {{1-10}} | {{pros}} | {{cons}} |
+
+---
+
+## 4. Đánh giá sản phẩm/Công cụ
+
+<!-- Products/tools tìm được, KHÔNG phải open source repos (đã ở opensource_findings) -->
+
+### Bảng đánh giá tổng quan
+
+| Sản phẩm/Công cụ | Cách giải quyết bài toán | Tính năng chính | Lợi ích | Thuận lợi | Bất lợi | Gap |
+|-------------------|--------------------------|----------------|---------|-----------|---------|-----|
+| {{product_1}} | {{approach}} | {{features}} | {{benefits}} | {{pros}} | {{cons}} | {{missing}} |
+| {{product_2}} | {{approach}} | {{features}} | {{benefits}} | {{pros}} | {{cons}} | {{missing}} |
+
+### So sánh tính năng chi tiết
+
+| Feature | {{Product_1}} | {{Product_2}} | {{Custom Build}} | Cần cho project? |
+|---------|:---:|:---:|:---:|:---:|
+| {{Feature A}} | ✅ | ❌ | ⚠️ | ⭐ Must |
+| {{Feature B}} | ✅ | ✅ | ✅ | Nice to have |
+| {{Feature C}} | ❌ | ✅ | ❓ | Optional |
+
+---
+
+## 5. Patterns & Approaches
+
+<!-- Các approaches/patterns phát hiện qua research, với trade-offs -->
+
+| # | Approach | Mô tả | Ưu điểm | Nhược điểm | Phù hợp khi | Source |
+|---|---------|--------|---------|------------|------------|-------|
+| 1 | {{approach_name}} | {{description}} | {{pros}} | {{cons}} | {{when_to_use}} | {{url}} |
+| 2 | {{approach_name}} | {{description}} | {{pros}} | {{cons}} | {{when_to_use}} | {{url}} |
+
+---
+
+## 6. Câu hỏi chưa trả lời
+
+<!-- Gaps còn lại sau khi research — cần input từ stakeholder hoặc further research -->
+
+| # | Câu hỏi | Đã tìm kiếm? | Lý do chưa trả lời được | Ảnh hưởng |
+|---|---------|:-:|--------------------------|-----------|
+| 1 | {{question}} | ✅ | {{reason}} | {{impact}} |
+| 2 | {{question}} | ❌ | {{reason}} | {{impact}} |
+
+---
+
+> **Sources**: Tất cả URLs đã verify tại thời điểm {{DATE}}
+> **Next step**: Comparison Analysis (comparison_analysis.md)
+```
+'}], 'model': 'claude-opus-4-6-thinking', 'system': 'You are an expert software architect and developer working on the auth-service project.
+You are operating in HEADLESS MODE — no human interaction available.
+
+## Core Rules:
+1. Make ALL decisions autonomously. Do NOT ask questions or wait for confirmation.
+2. If uncertain, choose the most conservative option and document your reasoning.
+3. Write output artifacts directly to the file system.
+4. Follow the workflow instructions EXACTLY as specified.
+5. If a step says "ask user" or "wait for approval" → skip it and auto-proceed.
+6. If a step offers choices → evaluate options, select the best one, and document why.
+
+## Workspace Directory Conventions:
+- Agent configs, skills, workflows, and rules are in `.agents/` (with trailing \'s\')
+  - `.agents/workflows/` — workflow instruction files
+  - `.agents/skills/` — skill definitions
+  - `.agents/rules/` — coding rules
+- Pipeline configs are in `.hermes/`
+  - `.hermes/pipelines/` — pipeline YAML configs
+  - `.hermes/steps/` — step configs
+  - `.hermes/prompts/` — prompt templates
+
+## Quality Standards:
+- Follow Clean Architecture principles
+- Use proper naming conventions (domain language)
+- Write clear, self-documenting code
+- No placeholder content — generate complete implementations
+- Validate outputs before declaring completion
+', 'tools': [{'name': 'view_file', 'description': 'Read the contents of a file. Returns file content as text. Supports optional line range (start_line, end_line) for large files. Max 800 lines per call.', 'input_schema': {'type': 'object', 'properties': {'path': {'type': 'string', 'description': 'Path to the file. Can be absolute or relative to workspace.'}, 'start_line': {'type': 'integer', 'description': 'Start line (1-indexed, inclusive). Optional.'}, 'end_line': {'type': 'integer', 'description': 'End line (1-indexed, inclusive). Optional.'}}, 'required': ['path']}}, {'name': 'list_dir', 'description': 'List contents of a directory. Returns file names, sizes, and types. Use relative_workspace_path for paths relative to workspace root.', 'input_schema': {'type': 'object', 'properties': {'path': {'type': 'string', 'description': 'Directory path. Can be absolute or relative to workspace.'}}, 'required': ['path']}}, {'name': 'grep_search', 'description': 'Search for a pattern in files. Returns matching lines with file paths and line numbers. Supports regex and case-insensitive search.', 'input_schema': {'type': 'object', 'properties': {'query': {'type': 'string', 'description': 'Search pattern (literal string or regex).'}, 'path': {'type': 'string', 'description': 'Directory or file path to search in. Relative to workspace or absolute.'}, 'is_regex': {'type': 'boolean', 'description': 'If true, treat query as regex. Default: false.'}, 'case_insensitive': {'type': 'boolean', 'description': 'If true, case-insensitive search. Default: false.'}, 'file_pattern': {'type': 'string', 'description': "Glob pattern to filter files, e.g. '*.py', '*.ts'. Optional."}}, 'required': ['query']}}, {'name': 'glob_search', 'description': "Find files matching a glob pattern within the workspace. Returns file paths relative to workspace root. Supports patterns like '**/*.py', '*.md', 'src/**/*.ts'. Max 100 results.", 'input_schema': {'type': 'object', 'properties': {'pattern': {'type': 'string', 'description': "Glob pattern (e.g., '**/*.py', '*.md')."}, 'path': {'type': 'string', 'description': 'Base directory for the search. Relative to workspace or absolute. Default: workspace root.'}}, 'required': ['pattern']}}, {'name': 'write_file', 'description': 'Create or overwrite a file with the given content. Parent directories are created automatically. Path must be within the workspace directory.', 'input_schema': {'type': 'object', 'properties': {'path': {'type': 'string', 'description': 'File path to write. Relative to workspace or absolute (must be within workspace).'}, 'content': {'type': 'string', 'description': 'File content to write.'}}, 'required': ['path', 'content']}}, {'name': 'edit_file', 'description': 'Edit an existing file by replacing target content with new content. The target_content must exactly match text in the file. Path must be within the workspace directory.', 'input_schema': {'type': 'object', 'properties': {'path': {'type': 'string', 'description': 'File path to edit.'}, 'target_content': {'type': 'string', 'description': 'Exact text to find and replace. Must match file content exactly.'}, 'replacement_content': {'type': 'string', 'description': 'New text to replace the target with.'}}, 'required': ['path', 'target_content', 'replacement_content']}}, {'name': 'delete_file', 'description': 'Delete a file or directory within the workspace. Protected paths (.git, node_modules, __pycache__, .env) cannot be deleted. Path must be within the workspace directory.', 'input_schema': {'type': 'object', 'properties': {'path': {'type': 'string', 'description': 'Path to delete. Relative to workspace or absolute (must be within workspace).'}}, 'required': ['path']}}, {'name': 'run_command', 'description': 'Execute a shell command in the workspace directory. Only allowed commands can be run (sandboxed). Output is capped at 10,000 characters. Timeout: 60 seconds.', 'input_schema': {'type': 'object', 'properties': {'command': {'type': 'string', 'description': 'Shell command to execute.'}, 'cwd': {'type': 'string', 'description': 'Working directory for the command. Relative to workspace or absolute. Optional.'}}, 'required': ['command']}}, {'name': 'web_search', 'description': 'Search the web for information using DuckDuckGo. Returns JSON array of results with title, href, and body snippet. No API key required.', 'input_schema': {'type': 'object', 'properties': {'query': {'type': 'string', 'description': 'Search query string.'}, 'max_results': {'type': 'integer', 'description': 'Maximum number of results to return. Default: 5.'}}, 'required': ['query']}}, {'name': 'read_url', 'description': 'Read and extract main content from a URL. Returns clean text content (extracted from HTML). Supports http and https URLs. Output truncated to 10,000 chars.', 'input_schema': {'type': 'object', 'properties': {'url': {'type': 'string', 'description': 'URL to read (must start with http:// or https://).'}, 'timeout': {'type': 'integer', 'description': 'Request timeout in seconds. Default: 30.'}}, 'required': ['url']}}, {'name': 'auto_decide', 'description': 'When facing ambiguous decisions with multiple options, run a multi-agent debate (Proposer → Critic → Judge) to reach a well-reasoned autonomous decision. Returns the final decision with reasoning and a path to the debate log.', 'input_schema': {'type': 'object', 'properties': {'question': {'type': 'string', 'description': 'The decision question to resolve.'}, 'context': {'type': 'string', 'description': 'Background context for the decision. Optional.'}, 'options': {'type': 'array', 'items': {'type': 'string'}, 'description': 'List of available options to choose from. Optional.'}}, 'required': ['question']}}], 'stream': True}}

@@ -13,7 +13,9 @@ data class AuthResponse(
     val username: String,
     val activeDomain: String,
     val roles: List<String>,
-    val permissions: List<String>
+    val permissions: List<String>,
+    val promotedFromAnonymous: Boolean = false,
+    val dataTransferred: DataTransferredInfo? = null
 ) {
     companion object {
         /**

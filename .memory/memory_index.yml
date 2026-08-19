@@ -1,6 +1,6 @@
 features:
-  anonymous-login-optimization: failed
+  anonymous-login-optimization: completed
 lessons: []
 total_failures: 1
-total_records: 1
-total_successes: 0
+total_records: 9
+total_successes: 8

@@ -12,5 +12,6 @@ data class RegisterCommand(
     val password: String,
     val fullName: String,
     val phone: String? = null,
-    val domainCode: String
+    val domainCode: String,
+    val anonymousSessionId: String? = null
 ) : Command<AuthToken>

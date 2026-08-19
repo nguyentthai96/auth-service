@@ -1,0 +1,137 @@
+package com.ntt.authservice.auth.application
+
+import com.ntt.authservice.rbac.adapter.out.persistence.entity.TokenBlacklistEntity
+import com.ntt.authservice.rbac.adapter.out.persistence.repository.TokenBlacklistRepository
+import com.ntt.authservice.shared.config.SecurityProperties
+import org.slf4j.LoggerFactory
+import org.springframework.data.redis.core.StringRedisTemplate
+import org.springframework.stereotype.Service
+import java.time.Duration
+import java.time.Instant
+
+/**
+ * Orchestrates anonymous session promotion during login/register.
+ * Flow: acquireLock → verifySession → transferData → blacklistToken → deleteSession → releaseLock.
+ *
+ * Promotion is best-effort: login/register succeeds even if promotion fails (DD-007).
+ * Uses distributed lock to prevent concurrent promotion of the same session (FR-010).
+ */
+@Service
+class SessionPromotionService(
+    private val redisTemplate: StringRedisTemplate,
+    private val anonymousSessionDataService: AnonymousSessionDataService,
+    private val tokenBlacklistRepository: TokenBlacklistRepository,
+    private val securityProperties: SecurityProperties
+) {
+
+    private val log = LoggerFactory.getLogger(SessionPromotionService::class.java)
+
+    companion object {
+        private const val SESSION_PREFIX = "anon:session:"
+        private const val LOCK_PREFIX = "anon:lock:"
+        private const val LOCK_VALUE = "locked"
+        private const val LOCK_TTL_SECONDS = 30L
+    }
+
+    /**
+     * Promote an anonymous session to an authenticated user.
+     * Returns PromotionResult indicating the outcome.
+     *
+     * @param sessionId the anonymous session ID
+     * @param userId the authenticated user's ID
+     * @param anonymousJti the JTI of the anonymous token to blacklist
+     */
+    fun promoteSession(sessionId: String, userId: Long, anonymousJti: String): PromotionResult {
+        // Step 1: Acquire distributed lock
+        if (!acquireLock(sessionId)) {
+            log.warn("Promotion lock acquisition failed for session={} — concurrent promotion detected", sessionId)
+            return PromotionResult(status = PromotionResult.Status.CONFLICT)
+        }
+
+        try {
+            // Step 2: Verify session exists
+            if (!anonymousSessionDataService.verifySessionExists(sessionId)) {
+                log.warn("Anonymous session not found during promotion: session={}", sessionId)
+                return PromotionResult(status = PromotionResult.Status.FAILED)
+            }
+
+            // Step 3: Transfer data
+            val transferResult = try {
+                anonymousSessionDataService.transferData(sessionId, userId)
+            } catch (ex: Exception) {
+                log.warn("Data transfer failed during promotion session={}: {}", sessionId, ex.message)
+                null
+            }
+
+            // Step 4: Blacklist anonymous token
+            try {
+                val blacklistEntry = TokenBlacklistEntity().apply {
+                    tokenJti = anonymousJti
+                    this.userId = userId
+                    reason = "PROMOTION"
+                    expiresAt = Instant.now().plusSeconds(securityProperties.anonymous.tokenTtlSeconds)
+                    revokedAt = Instant.now()
+                }
+                tokenBlacklistRepository.save(blacklistEntry)
+            } catch (ex: Exception) {
+                log.warn("Failed to blacklist anonymous token jti={} during promotion: {}", anonymousJti, ex.message)
+            }
+
+            // Step 5: Delete session and all data
+            try {
+                redisTemplate.delete("$SESSION_PREFIX$sessionId")
+                anonymousSessionDataService.deleteAllSessionData(sessionId)
+            } catch (ex: Exception) {
+                log.warn("Failed to cleanup anonymous session={} during promotion: {}", sessionId, ex.message)
+            }
+
+            // Determine result status
+            val status = when {
+                transferResult == null -> PromotionResult.Status.PARTIAL
+                transferResult.partial -> PromotionResult.Status.PARTIAL
+                else -> PromotionResult.Status.SUCCESS
+            }
+
+            log.info(
+                "Anonymous session promotion completed: session={} userId={} status={} items={}",
+                sessionId, userId, status, transferResult?.itemCount ?: 0
+            )
+
+            return PromotionResult(
+                status = status,
+                itemCount = transferResult?.itemCount ?: 0,
+                namespaces = transferResult?.namespaces ?: emptyList()
+            )
+        } finally {
+            // Step 6: Release lock
+            releaseLock(sessionId)
+        }
+    }
+
+    /**
+     * Acquire a distributed lock for session promotion using SETNX with TTL.
+     */
+    private fun acquireLock(sessionId: String): Boolean {
+        val lockKey = "$LOCK_PREFIX$sessionId"
+        return try {
+            redisTemplate.opsForValue().setIfAbsent(
+                lockKey, LOCK_VALUE, Duration.ofSeconds(LOCK_TTL_SECONDS)
+            ) == true
+        } catch (ex: Exception) {
+            log.error("Failed to acquire promotion lock for session={}: {}", sessionId, ex.message)
+            false
+        }
+    }
+
+    /**
+     * Release the distributed lock for session promotion.
+     */
+    private fun releaseLock(sessionId: String) {
+        val lockKey = "$LOCK_PREFIX$sessionId"
+        try {
+            redisTemplate.delete(lockKey)
+        } catch (ex: Exception) {
+            log.warn("Failed to release promotion lock for session={} — will auto-expire in {}s", sessionId, LOCK_TTL_SECONDS)
+        }
+    }
+}

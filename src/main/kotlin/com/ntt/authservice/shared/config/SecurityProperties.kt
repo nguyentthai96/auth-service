@@ -15,7 +15,8 @@ data class SecurityProperties(
     val captcha: CaptchaProperties = CaptchaProperties(),
     val sso: SsoProperties = SsoProperties(),
     val loginRateLimit: LoginRateLimitProperties = LoginRateLimitProperties(),
-    val session: SessionProperties = SessionProperties()
+    val session: SessionProperties = SessionProperties(),
+    val anonymous: AnonymousProperties = AnonymousProperties()
 ) {
     data class JwtProperties(
         val secretKey: String = "",
@@ -115,5 +116,21 @@ data class SecurityProperties(
             val onExceed: SessionExceedStrategy? = null
         )
     }
-}
 
+    /**
+     * Anonymous/guest session configuration.
+     * Supports ephemeral sessions stored in Redis with configurable TTL and rate limiting.
+     */
+    data class AnonymousProperties(
+        val tokenTtlSeconds: Long = 3600,             // 1 hour
+        val sessionTtlSeconds: Long = 86400,           // 24 hours
+        val maxDataSizeBytes: Long = 65536,            // 64KB
+        val maxRenewals: Int = 24,
+        val promotedDataTtlSeconds: Long = 604800,     // 7 days
+        val rateLimit: MfaProperties.LimitConfig = MfaProperties.LimitConfig(
+            maxAttempts = 5,
+            windowSeconds = 3600,
+            lockSeconds = 0
+        )
+    )
+}

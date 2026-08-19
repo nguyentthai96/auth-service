@@ -15,6 +15,8 @@ import org.springframework.web.filter.OncePerRequestFilter
 /**
  * JWT Authentication Filter — Stage 1 PEP (Policy Enforcement Point).
  * Validates JWT, checks blacklist, and sets SecurityContext with roles/permissions.
+ *
+ * FR-011: Recognizes anonymous tokens (type=anonymous) and sets ROLE_ANONYMOUS authority.
  */
 @Component
 class JwtAuthFilter(
@@ -49,23 +51,38 @@ class JwtAuthFilter(
                 return
             }
 
-            val userId = claims.subject
-            val roles = (claims["roles"] as? List<*>)?.map { "ROLE_$it" } ?: emptyList()
-            val permissions = (claims["permissions"] as? List<*>)?.map { it.toString() } ?: emptyList()
+            // Extract token type for anonymous vs authenticated branching (FR-011)
+            val tokenType = claims["type"] as? String
 
-            val authorities = roles.map { SimpleGrantedAuthority(it) } +
-                    permissions.map { SimpleGrantedAuthority("PERM_$it") }
+            val authorities: List<SimpleGrantedAuthority>
+            val authDetails: Map<String, Any>
+
+            if (tokenType == "anonymous") {
+                // Anonymous token — set ROLE_ANONYMOUS with limited privileges
+                authorities = listOf(SimpleGrantedAuthority("ROLE_ANONYMOUS"))
+                authDetails = mapOf(
+                    "type" to "anonymous",
+                    "sessionId" to (claims.subject ?: "")
+                )
+            } else {
+                // Authenticated token — extract roles and permissions
+                val userId = claims.subject
+                val roles = (claims["roles"] as? List<*>)?.map { "ROLE_$it" } ?: emptyList()
+                val permissions = (claims["permissions"] as? List<*>)?.map { it.toString() } ?: emptyList()
+
+                authorities = roles.map { SimpleGrantedAuthority(it) } +
+                        permissions.map { SimpleGrantedAuthority("PERM_$it") }
+                authDetails = mapOf(
+                    "activeDomain" to (claims["active_domain"] ?: ""),
+                    "domains" to (claims["domains"] ?: emptyList<String>()),
+                    "username" to (claims["username"] ?: "")
+                )
+            }
 
             val authentication = UsernamePasswordAuthenticationToken(
-                userId, null, authorities
+                claims.subject, null, authorities
             )
-
-            // Store additional claims for downstream use
-            authentication.details = mapOf(
-                "activeDomain" to (claims["active_domain"] ?: ""),
-                "domains" to (claims["domains"] ?: emptyList<String>()),
-                "username" to (claims["username"] ?: "")
-            )
+            authentication.details = authDetails
 
             SecurityContextHolder.getContext().authentication = authentication
 

@@ -1,0 +1,15 @@
+{
+  "feature": "anonymous-login-optimization",
+  "workflow": "wf_brainstorm_openspec",
+  "outcome": "success",
+  "timestamp": "2026-08-19T07:10:41.663448+00:00",
+  "duration_seconds": 285,
+  "tokens_used": 0,
+  "prompt_layer_tokens": {},
+  "output_artifacts": [
+    "/home/nguyentthai96/Desktop/bigbang/boilerplate/services/auth-service/openspec/changes/anonymous-login-optimization/brainstorm_notes.md"
+  ],
+  "errors": [],
+  "lesson_extracted": null,
+  "recovery_pattern": null
+}

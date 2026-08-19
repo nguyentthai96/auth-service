@@ -15,6 +15,7 @@ data class LoginCommand(
     val trustedDeviceHash: String? = null,
     val ipAddress: String? = null,
     val userAgent: String? = null,
-    val deviceFingerprint: String? = null
+    val deviceFingerprint: String? = null,
+    val anonymousSessionId: String? = null
 ) : Command<LoginResult>
 

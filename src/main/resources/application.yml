@@ -153,6 +153,17 @@ app:
         SUPER_ADMIN:
           max-sessions: 1
           on-exceed: REVOKE_ALL
+    # Anonymous/Guest Session Configuration
+    anonymous:
+      token-ttl-seconds: ${ANON_TOKEN_TTL:3600}           # 1 hour
+      session-ttl-seconds: ${ANON_SESSION_TTL:86400}       # 24 hours
+      max-data-size-bytes: ${ANON_MAX_DATA_SIZE:65536}     # 64KB
+      max-renewals: ${ANON_MAX_RENEWALS:24}
+      promoted-data-ttl-seconds: ${ANON_PROMOTED_TTL:604800} # 7 days
+      rate-limit:
+        max-attempts: 5            # Max anonymous token creations per IP per window
+        window-seconds: 3600       # 1 hour window
+        lock-seconds: 0            # No lock — just reject until window expires
     # CQRS Feature Flag — when enabled, handlers replace AuthService/RbacEngine
     cqrs:
       enabled: ${CQRS_ENABLED:true}

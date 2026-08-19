@@ -12,6 +12,8 @@ workflow_dependencies:
     - wf_brainstorm_openspec
   wf_openspec_apply:
     - wf_openspec
+  wf_archive:
+    - wf_openspec_apply
 
 workflows:
   - wf_feature_research
@@ -19,3 +21,4 @@ workflows:
   - wf_brainstorm_openspec
   - wf_openspec
   - wf_openspec_apply
+  - wf_archive

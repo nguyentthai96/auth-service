@@ -1,37 +1,93 @@
-# Base config inherited by all pipeline configs
-# Proxy settings for Google Cloud Code gateway
+# ═══════════════════════════════════════════════════════════
+# Hermes Pipeline — Shared Defaults
+# ═══════════════════════════════════════════════════════════
+#
+# Base config inherited by ALL pipeline configs in pipelines/*.yml.
+# Pipeline configs only need: features, workflows, and overrides.
+#
+# Merge rules:
+#   - Scalars: pipeline overrides defaults
+#   - Lists:   pipeline REPLACES defaults (no list merging)
+#   - Dicts:   recursive deep merge
+#   - features & workflows: REQUIRED in pipeline config (not inherited)
+# ═══════════════════════════════════════════════════════════
+
+model: "claude-opus-4-6-thinking"
+api_key_env: "ANTHROPIC_API_KEY"
+sdk_mode: "claude"
+workspace: "."
+
+# ─── Runtime Settings ────────────────────────────────────
+settings:
+  max_retries: 2
+  retry_backoff_base: 15
+  retry_jitter: true
+  context_max_tokens: 8000
+  memory_max_items: 20
+  output_dir: "openspec"
+  memory_dir: ".memory"
+
+# ─── MCP Servers (empty by default) ─────────────────────
+mcp_servers: {}
+
+# ─── Proxy Routing ──────────────────────────────────────
 proxy:
   enabled: true
   base_url: "http://127.0.0.1:8045"
   api_key: "sk-fbfab2cd5b69496c829964f35980e4ce"
+  fallback_to_direct: false
+  timeout_seconds: 180
+  health_check_cache_seconds: 60
+  model_routing:
+    wf_feature_research: "claude"
+    wf_pre_openspec: "claude"
+    wf_brainstorm_openspec: "claude"
+    wf_openspec: "claude"
+    wf_openspec_apply: "claude"
+    wf_archive: "claude"
 
-# SDK mode: claude (with raw stream parsing for Google proxy format)
-sdk_mode: claude
+# ─── Hooks (disabled by default) ────────────────────────
+hooks:
+  enabled: false
 
-# Default model for all workflows
-model: "claude-opus-4-6-thinking"
+# ─── Sub-Agents (disabled by default) ───────────────────
+sub_agents:
+  enabled: false
 
-# Max tokens per request (research output is large, needs more than default 16384)
-max_tokens: 32768
+# ─── Reflection (disabled by default) ───────────────────
+reflection:
+  enabled: false
 
-# System prompt path
-system_prompt: "prompts/system_identity.md"
-
-# MCP servers
-mcp_servers:
-  socraticode:
-    enabled: true
-  gitnexus:
-    enabled: true
-  postgres:
-    enabled: true
-
-# Retry settings
-retry:
-  max_strikes: 2
-  backoff_base: 16
-
-# Agentic loop settings
-agentic:
+# ─── Agentic Tool Execution ────────────────────────────
+tools:
+  enabled: true
+  include_write: true
+  include_exec: true
+  command_timeout: 60
   max_turns: 30
-  tool_timeout: 120
+  max_output_tokens: 16384
+  allowed_commands:
+    - "npm"
+    - "npx"
+    - "node"
+  extra_patterns:
+    - "^cd\\s"
+
+# ─── Guardrail Policies ────────────────────────────────
+# Pre-execution safety checks loaded from .hermes/policies.yml.
+# Supports: command blocklist, URL allowlist, rate limiting.
+guardrail:
+  enabled: true
+  policies_path: ".hermes/policies.yml"
+
+# ─── MCP Tools Integration ─────────────────────────────
+# Bridge MCP server tools into the agentic loop.
+# Agent can call SocratiCode (semantic search, graph),
+# GitNexus (knowledge graph, impact analysis), and
+# PostgreSQL (schema inspection, query execution, DB health) during execution.
+mcp_tools:
+  enabled: true
+  servers:
+    - socraticode
+    - gitnexus
+    - postgres

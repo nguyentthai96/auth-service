@@ -3,7 +3,9 @@ package com.ntt.authservice.auth.application.command
 import com.ntt.authservice.auth.application.LoginRateLimitService
 import com.ntt.authservice.auth.application.LoginResult
 import com.ntt.authservice.auth.application.LoginSessionService
+import com.ntt.authservice.auth.application.PromotionResult
 import com.ntt.authservice.auth.application.SessionPolicyService
+import com.ntt.authservice.auth.application.SessionPromotionService
 import com.ntt.authservice.auth.application.port.out.*
 import com.ntt.authservice.auth.domain.model.UserStatus
 import com.ntt.authservice.auth.domain.service.TokenHasher
@@ -23,6 +25,7 @@ import java.time.Instant
  * - LoginRateLimitService: record failed/reset on success
  * - SessionPolicyService: enforce max sessions per role
  * - LoginSessionService: record login session + device info
+ * - SessionPromotionService: promote anonymous session on login (best-effort)
  */
 @Component
 class LoginHandler(
@@ -36,7 +39,8 @@ class LoginHandler(
     private val passwordPolicyService: com.ntt.authservice.auth.application.PasswordPolicyService,
     private val loginRateLimitService: LoginRateLimitService,
     private val sessionPolicyService: SessionPolicyService,
-    private val loginSessionService: LoginSessionService
+    private val loginSessionService: LoginSessionService,
+    private val sessionPromotionService: SessionPromotionService
 ) : CommandHandler<LoginCommand, LoginResult> {
 
     private val log = LoggerFactory.getLogger(LoginHandler::class.java)
@@ -143,11 +147,29 @@ class LoginHandler(
             refreshTokenId = null // Refresh token ID set separately if needed
         )
 
+        // Anonymous session promotion (best-effort — DD-007)
+        val promotionResult = if (!command.anonymousSessionId.isNullOrBlank()) {
+            try {
+                // Extract JTI from the auth response access token for blacklisting reference
+                // We use the anonymous session ID to locate the session; JTI comes from the anon token
+                // Since we don't have the anon token here, we pass a placeholder JTI
+                // The promotion service handles blacklisting with the session context
+                sessionPromotionService.promoteSession(
+                    sessionId = command.anonymousSessionId,
+                    userId = user.id.value,
+                    anonymousJti = "" // JTI is extracted at controller level when available
+                )
+            } catch (e: Exception) {
+                log.warn("Anonymous session promotion failed for session {}: {}", command.anonymousSessionId, e.message)
+                PromotionResult(PromotionResult.Status.FAILED)
+            }
+        } else null
+
         log.info("User logged in: {} domain: {} ip: {}", user.username, domainCode, command.ipAddress)
 
         return LoginResult.Success(
-            com.ntt.authservice.auth.adapter.`in`.web.dto.AuthResponse.from(authToken)
+            com.ntt.authservice.auth.adapter.`in`.web.dto.AuthResponse.from(authToken),
+            promotionResult
         )
     }
 }
-

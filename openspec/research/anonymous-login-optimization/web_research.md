@@ -8,12 +8,12 @@
 
 | Mục | Nội dung |
 |-----|----------|
-| **Tính năng** | Anonymous Login / Guest Session Promotion |
+| **Tính năng** | Anonymous Login Optimization |
 | **Ngày nghiên cứu** | 2025-01-20 |
 | **Số iterations** | 3 |
 | **Tổng sources** | 8 unique |
-| **Keywords ban đầu** | anonymous authentication, guest session, session promotion, anonymous JWT |
-| **Keywords phát triển** | progressive authentication, lazy registration, anonymous-to-authenticated merge, account linking, ephemeral session, session upgrade |
+| **Keywords ban đầu** | `anonymous authentication`, `guest session`, `session promotion`, `anonymous JWT`, `lazy registration` |
+| **Keywords phát triển** | `progressive authentication`, `ephemeral session Redis`, `anonymous token lifecycle`, `session merge strategy`, `identity linking`, `anonymous abuse prevention` |
 
 ---
 
@@ -25,15 +25,15 @@
 
 | # | Query | Kết quả quan trọng | Keywords mới |
 |---|-------|-------------------|-------------|
-| 1 | `"anonymous authentication best practices enterprise IAM"` | Firebase Auth anonymous pattern is the most well-known reference; Spring Security has `AnonymousAuthenticationFilter`; OWASP guidelines on session management | `progressive authentication`, `account linking`, `ephemeral identity` |
-| 2 | `"guest session promotion architecture design patterns"` | E-commerce cart merge is the canonical use case; Pattern: "session handoff" or "session upgrade"; Event-driven approach recommended for data transfer | `session handoff`, `cart merge`, `event-driven promotion` |
-| 3 | `"anonymous JWT token lifecycle management"` | Short-lived anonymous tokens (24h TTL recommended); Opaque vs JWT debate — JWT preferred for stateless validation; Token should carry `anonymous=true` claim or special role | `anonymous claim`, `token upgrade`, `stateless anonymous validation` |
+| 1 | `"anonymous authentication session promotion Spring Boot best practices"` | Spring Security provides `AnonymousAuthenticationFilter` for in-memory anonymous principals; no JWT-based anonymous token or session promotion support out-of-the-box | `AnonymousAuthenticationFilter`, `AnonymousAuthenticationToken` |
+| 2 | `"guest session to authenticated user migration JWT Redis patterns"` | Common pattern in e-commerce: generate short-lived anonymous JWT → store temp data in Redis keyed by anonymous session ID → on login, transfer Redis keys to user ID namespace → delete anonymous keys | `session handoff`, `key migration`, `Redis namespace` |
+| 3 | `"anonymous user session promotion enterprise IAM patterns"` | Firebase Auth's `signInAnonymously()` + `linkWithCredential()` is the industry gold standard; Supabase GoTrue uses `is_anonymous` flag on user record + identity linking | `identity linking`, `linkWithCredential`, `is_anonymous claim` |
 
 **Takeaways Iteration 1:**
-- Firebase Anonymous Auth is the gold standard reference implementation — supports anonymous sign-in, session persistence, and account linking (promotion to email/password or social)
-- Spring Security's `AnonymousAuthenticationFilter` is server-side only — useful for authorization but doesn't generate client-facing tokens
-- The "session promotion" pattern is common in e-commerce but lacks standardized implementation in IAM frameworks
-- Key architectural decision: whether anonymous sessions are purely Redis-based (ephemeral) or have PostgreSQL backing
+- No standalone library exists for anonymous session promotion in Spring Boot — must build custom
+- Firebase's API design (`signInAnonymously` → `linkWithCredential`) is the most mature pattern
+- Supabase's `is_anonymous` JWT claim approach is practical and directly applicable
+- Redis is the universally recommended store for ephemeral anonymous session data
 
 ---
 
@@ -43,32 +43,31 @@
 
 | # | URL | Title | Key Insights | Relevance (1-10) |
 |---|-----|-------|-------------|:-:|
-| 1 | https://firebase.google.com/docs/auth/web/anonymous-auth | Firebase Anonymous Auth | Anonymous sign-in creates temporary account; user can later link to email/password or social provider; temporary UID persists across sessions; data associated with UID transfers on link | 9 |
-| 2 | https://docs.spring.io/spring-security/reference/servlet/authentication/anonymous.html | Spring Security Anonymous Auth | `AnonymousAuthenticationFilter` populates SecurityContext with anonymous token when no auth present; configurable anonymous principal and authorities; mainly for authorization decisions, not client-facing | 7 |
-| 3 | https://www.keycloak.org/docs/latest/server_admin/ | Keycloak Server Admin | Service accounts can act as "anonymous" clients; no built-in anonymous user type; token exchange flow could support session upgrade; custom user storage SPI could implement anonymous users | 6 |
-| 4 | https://auth0.com/docs/authenticate/login/auth0-universal-login | Auth0 Universal Login | Auth0 doesn't have explicit anonymous auth; recommends "silent authentication" for returning users; session management with rotating refresh tokens; custom database connections for guest users | 5 |
-| 5 | https://martinfowler.com/articles/patterns-of-distributed-systems/idempotent-receiver.html | Idempotent Receiver Pattern | Relevant for session promotion — ensuring promotion is idempotent (same anonymous session promoted twice returns same result); use unique session ID as idempotency key | 7 |
+| 1 | https://firebase.google.com/docs/auth/web/anonymous-auth | Authenticate with Firebase Anonymously | Firebase creates a temporary anonymous user account with a unique UID; `linkWithCredential()` converts anonymous to permanent; auto-cleanup of old anonymous accounts is configurable; anonymous users get same Firebase ID tokens as authenticated users | 9 |
+| 2 | https://supabase.com/docs/guides/auth/auth-anonymous | Anonymous Sign-Ins (Supabase) | `signInAnonymously()` creates a user record with `is_anonymous=true`; JWT includes `is_anonymous` claim; promotion via `updateUser()` with email/password; supports captcha for abuse prevention; RLS policies can differentiate anonymous vs authenticated | 9 |
+| 3 | https://docs.spring.io/spring-security/reference/servlet/authentication/anonymous.html | Anonymous Authentication (Spring Security) | `AnonymousAuthenticationFilter` injects `AnonymousAuthenticationToken` when no other auth present; in-memory only; useful for Spring Security ACL/SpEL expressions; does NOT persist anonymous identity or support session promotion | 7 |
+| 4 | https://www.keycloak.org/docs/latest/server_admin/#_anonymous_access | Keycloak Anonymous Access | Keycloak supports "anonymous" via unauthenticated client tokens (client credentials grant with limited scope); no true anonymous user concept; requires running Keycloak server | 6 |
+| 5 | https://auth0.com/docs/manage-users/user-accounts/user-account-linking | Auth0 Account Linking | Auth0's account linking feature allows merging identities; similar concept to session promotion but focused on linking multiple OAuth providers to one user; provides `Link Accounts` API | 7 |
 
 **Takeaways Iteration 2:**
-- **Firebase approach**: Create anonymous UID → store data under UID → user links account → UID persists, data stays. Simplest model but Firebase-specific.
-- **Custom approach for microservices**: Generate anonymous JWT with embedded `anonSessionId` claim → store session data in Redis keyed by `anonSessionId` → on login/register, transfer data from Redis to user's persistent store → invalidate anonymous token → issue authenticated token.
-- **Conflicting info**: Some sources recommend opaque tokens for anonymous (simpler, no sensitive claims), others recommend JWT (stateless validation). For microservice architecture, JWT is preferred for stateless downstream validation.
-- **Key insight**: Session promotion must be atomic — either all data transfers or none. Use transactional outbox pattern or event-driven approach.
+- **Approach 1 (Firebase model)**: Create anonymous user record in DB → issue JWT with anonymous UID → on login, link credentials to existing anonymous record → all data automatically associated. Pros: simple data model. Cons: creates "garbage" user records that need cleanup.
+- **Approach 2 (Supabase model)**: Add `is_anonymous` flag to existing user table → issue standard JWT with `is_anonymous=true` claim → promotion updates the flag and adds credentials. Pros: clean, uses existing user model. Cons: anonymous users pollute user table.
+- **Approach 3 (Ephemeral/Redis-only model)**: Do NOT create user record for anonymous sessions → store all anonymous data in Redis with TTL → on login, transfer Redis data to authenticated user → anonymous session auto-expires. Pros: no DB pollution, self-cleaning. Cons: more complex transfer logic, data loss if Redis evicts.
+- **Conflicting info**: Firebase creates user records for anonymous users (persisted), while Redis-only approach avoids DB writes. Trade-off: DB persistence gives durability but creates cleanup burden.
 
 ---
 
-### Iteration 3 — TARGETED
+### Iteration 3+ — TARGETED
 
 **Mục tiêu**: Fill gaps, verify conflicting info, follow-up queries
 
 | # | Query (nguồn gốc) | Kết quả | Gap filled? |
 |---|-------------------|---------|:-:|
-| 1 | `"anonymous session TTL best practices"` (gap: optimal TTL) | Industry consensus: 24-72 hours for anonymous sessions; activity-based sliding window preferred; Firebase uses 1 hour with persistence; most e-commerce: 30 days for cart | ✅ |
-| 2 | `"anonymous session abuse prevention rate limiting"` (security gap) | Rate limit by IP (5-10 sessions/hour); device fingerprinting to link sessions; honeypot detection; CAPTCHA after threshold; max anonymous sessions per IP | ✅ |
-| 3 | `"session merge conflict resolution anonymous authenticated"` (data conflict gap) | Three strategies: (1) Anonymous wins (overwrite), (2) Authenticated wins (keep existing), (3) Merge (combine both) — e-commerce typically uses merge; configurable per data type | ✅ |
-| 4 | `"Spring Boot Redis anonymous session data storage pattern"` (implementation gap) | Use Redis Hash for structured session data; key pattern: `anon:{sessionId}:{dataType}`; TTL on key matches session TTL; Spring Data Redis `RedisTemplate` for operations | ✅ |
+| 1 | `"anonymous session abuse prevention rate limiting"` (security gap) | Best practices: IP-based rate limiting for anonymous token creation (e.g., max 5 anonymous sessions per IP per hour); CAPTCHA on suspicious patterns; short TTL (15-60 min for anonymous tokens, 24h for session data in Redis); resource quotas per anonymous session | ✅ |
+| 2 | `"anonymous to authenticated session merge conflict resolution"` (data merge gap) | Three strategies: (1) Last-write-wins — authenticated user data takes precedence, (2) Merge — combine anonymous + existing data, (3) Prompt user — ask user to choose when conflict detected. E-commerce typically uses Merge for cart items and Last-write-wins for preferences | ✅ |
+| 3 | `"JWT anonymous token claims structure best practices"` (JWT structure gap) | Recommended claims for anonymous tokens: `sub` = anonymous session ID (UUID), `type` = "anonymous", `iat`, `exp` (short TTL), `jti` for idempotency; do NOT include user roles/permissions; include `session_id` for Redis data lookup | ✅ |
 
-**Stop reason**: All critical questions answered, sufficient architectural direction established.
+**Stop reason**: All critical questions answered; remaining gaps are implementation-specific details
 
 ---
 
@@ -76,14 +75,14 @@
 
 | # | Loại | Title | URL | Key Insights | Relevance | Pros | Cons |
 |---|------|-------|-----|-------------|:-:|------|------|
-| 1 | Docs | Firebase Anonymous Auth | https://firebase.google.com/docs/auth/web/anonymous-auth | Gold standard for anonymous → authenticated promotion; account linking pattern | 9 | Clear API, well-documented lifecycle | Firebase-specific, not directly portable |
-| 2 | Docs | Spring Security Anonymous Authentication | https://docs.spring.io/spring-security/reference/servlet/authentication/anonymous.html | Server-side anonymous principal; configurable authorities; SecurityContext population | 7 | Already in project, native integration | No client-facing tokens, no promotion |
-| 3 | Docs | Keycloak Server Admin | https://www.keycloak.org/docs/latest/server_admin/ | Token exchange concepts; service accounts; session management at scale | 6 | Enterprise-proven patterns | Heavy external dependency |
-| 4 | Article | OWASP Session Management Cheat Sheet | https://cheatsheetseries.owasp.org/cheatsheets/Session_Management_Cheat_Sheet.html | Session ID generation, fixation prevention, timeout management | 8 | Security best practices, authoritative | General-purpose, not anonymous-specific |
-| 5 | Article | Idempotent Receiver Pattern (Martin Fowler) | https://martinfowler.com/articles/patterns-of-distributed-systems/idempotent-receiver.html | Idempotent session promotion; deduplication keys | 7 | Architectural pattern, well-explained | Not auth-specific |
-| 6 | Docs | Spring Data Redis Reference | https://docs.spring.io/spring-data/redis/reference/redis.html | RedisTemplate, Hash operations, TTL management, pub/sub | 8 | Already in stack, well-documented | Need to design data model ourselves |
-| 7 | Docs | JWT RFC 7519 | https://tools.ietf.org/html/rfc7519 | Token claims specification; custom claims for anonymous flag; nbf/exp for lifecycle | 7 | Standard, authoritative | Low-level spec |
-| 8 | Article | OWASP Authentication Cheat Sheet | https://cheatsheetseries.owasp.org/cheatsheets/Authentication_Cheat_Sheet.html | Progressive authentication, credential management, session binding | 7 | Security best practices | General-purpose |
+| 1 | Docs | Firebase Anonymous Auth | https://firebase.google.com/docs/auth/web/anonymous-auth | Gold standard for anonymous → authenticated flow; `signInAnonymously()` + `linkWithCredential()` pattern | 9 | Complete implementation, battle-tested at Google scale | Proprietary, not embeddable |
+| 2 | Docs | Supabase Anonymous Sign-Ins | https://supabase.com/docs/guides/auth/auth-anonymous | `is_anonymous` JWT claim, identity linking for promotion, RLS policy differentiation | 9 | Open source (GoTrue), PostgreSQL-based, clean design | Go implementation, REST API only |
+| 3 | Docs | Spring Security Anonymous Auth | https://docs.spring.io/spring-security/reference/servlet/authentication/anonymous.html | `AnonymousAuthenticationFilter`, `AnonymousAuthenticationToken`, SpEL integration | 7 | Native Spring integration, familiar pattern | No JWT support, no persistence, no promotion |
+| 4 | Docs | Auth0 Account Linking | https://auth0.com/docs/manage-users/user-accounts/user-account-linking | Identity linking API, merging multiple auth providers | 7 | Enterprise-grade, well-documented | SaaS-only, different use case (multi-provider vs anonymous) |
+| 5 | Docs | Keycloak Anonymous Access | https://www.keycloak.org/docs/latest/server_admin/ | Client credentials approach for anonymous access, session management | 6 | Production-proven at enterprise scale | Heavyweight, requires dedicated server |
+| 6 | Article | Redis Session Management Patterns | https://redis.io/docs/latest/develop/use/patterns/ | Redis key patterns for session data, TTL management, key expiration notifications | 8 | Directly applicable to ephemeral session storage | General Redis patterns, not auth-specific |
+| 7 | Docs | Spring Data Redis | https://docs.spring.io/spring-data/redis/reference/redis.html | RedisTemplate, @RedisHash, TTL configuration, key serialization | 8 | Already in tech stack, native Spring Boot support | Requires careful key design |
+| 8 | Docs | JJWT Library | https://github.com/jwtk/jjwt | Custom claims support, RS256 signing, token parsing | 8 | Already used in project, supports custom claims | No anonymous-specific features |
 
 ---
 
@@ -93,24 +92,25 @@
 
 | Sản phẩm/Công cụ | Cách giải quyết bài toán | Tính năng chính | Lợi ích | Thuận lợi | Bất lợi | Gap |
 |-------------------|--------------------------|----------------|---------|-----------|---------|-----|
-| Firebase Auth | Anonymous sign-in creates temp UID; account linking merges to permanent | Anonymous auth, account linking, session persistence, multi-provider | Turnkey solution, well-documented | Simple API, handles edge cases | Vendor lock-in, not self-hosted, limited customization | Not embeddable, proprietary |
-| AWS Cognito | Unauthenticated identity pool; guest access with limited IAM role | Identity pools, guest access, developer-authenticated identities | AWS-native, scalable | Integrates with AWS services | Complex IAM policies, AWS lock-in, limited anonymous data storage | No session promotion, no data transfer hooks |
-| Supabase Auth | GoTrue-based auth server; no explicit anonymous but can create temp users | Email/password, social, magic link | Open source (GoTrue), self-hostable | PostgreSQL-based, RLS | No anonymous auth built-in, would need custom implementation | Missing anonymous auth entirely |
+| Firebase Auth | Creates temporary anonymous user → issues Firebase ID token → `linkWithCredential()` upgrades to permanent account | Anonymous sign-in, identity linking, auto-cleanup, cross-platform SDKs | Battle-tested at Google scale, seamless UX | Complete solution, excellent documentation | Vendor lock-in, proprietary, requires Firebase project | Cannot embed in Spring Boot, different JWT format |
+| Supabase Auth (GoTrue) | Creates user record with `is_anonymous=true` → standard JWT with anonymous claim → `updateUser()` for promotion | Anonymous sign-in, `is_anonymous` JWT claim, RLS integration, captcha support | Open source, PostgreSQL-based, clean API design | Self-hostable, standard JWT, DB-backed | Go implementation, separate deployment needed | REST API only, no native Spring integration |
+| Auth0 | Account linking API → merge multiple identities to one user profile | Identity linking, profile merging, management API | Enterprise-grade, SSO support | Well-documented APIs, extensive integrations | SaaS pricing, vendor lock-in | No native anonymous concept, different problem domain |
+| Spring Security | `AnonymousAuthenticationFilter` injects anonymous principal for unauthenticated requests | Anonymous filter, SpEL expressions, security context population | Native Spring Boot integration, already in stack | Zero additional dependencies, familiar API | In-memory only, no JWT, no persistence | No session promotion, no data merge, no lifecycle management |
 
 ### So sánh tính năng chi tiết
 
-| Feature | Firebase Auth | AWS Cognito | Supabase Auth | Custom Build |
-|---------|:---:|:---:|:---:|:---:|
-| Anonymous token generation | ✅ | ⚠️ | ❌ | ✅ |
-| Session promotion (anon→auth) | ✅ | ❌ | ❌ | ✅ |
-| Data transfer on promotion | ⚠️ | ❌ | ❌ | ✅ |
-| Redis session storage | ❌ | ❌ | ❌ | ✅ |
-| JWT-based tokens | ✅ | ✅ | ✅ | ✅ |
-| Rate limiting (anon creation) | ✅ | ✅ | ❌ | ✅ |
-| Self-hosted | ❌ | ❌ | ✅ | ✅ |
-| Spring Boot integration | ❌ | ⚠️ | ❌ | ✅ |
-| Customizable merge strategy | ❌ | ❌ | ❌ | ✅ |
-| **Coverage** | **4/9** | **2/9** | **1/9** | **9/9** |
+| Feature | Firebase Auth | Supabase Auth | Auth0 | Spring Security | Custom Build | Cần cho project? |
+|---------|:---:|:---:|:---:|:---:|:---:|:---:|
+| Anonymous token generation (JWT) | ✅ | ✅ | ❌ | ❌ | ✅ | ⭐ Must |
+| Session promotion (anon→auth) | ✅ | ✅ | ⚠️ | ❌ | ✅ | ⭐ Must |
+| Temporary data storage (Redis) | ❌ | ⚠️ | ❌ | ❌ | ✅ | ⭐ Must |
+| Data merge on promotion | ✅ | ⚠️ | ⚠️ | ❌ | ✅ | ⭐ Must |
+| Rate limiting for anonymous | ✅ | ⚠️ | ✅ | ❌ | ✅ | ⭐ Must |
+| Anonymous session TTL | ✅ | ✅ | N/A | ❌ | ✅ | ⭐ Must |
+| Auto-cleanup expired sessions | ✅ | ✅ | N/A | ❌ | ✅ | Should |
+| Spring Boot native integration | ❌ | ❌ | ⚠️ | ✅ | ✅ | ⭐ Must |
+| Existing CQRS handler compatinclude_webibility | ❌ | ❌ | ❌ | ⚠️ | ✅ | ⭐ Must |
+| Custom JWT claims (`type=anonymous`) | ❌ | ✅ | ❌ | ❌ | ✅ | ⭐ Must |
 
 ---
 
@@ -118,11 +118,10 @@
 
 | # | Approach | Mô tả | Ưu điểm | Nhược điểm | Phù hợp khi | Source |
 |---|---------|--------|---------|------------|------------|-------|
-| 1 | **Firebase-style Account Linking** | Create anonymous user record in DB → assign UID → on auth, link UID to real account → data persists under same UID | Simple model, UID continuity | Requires DB record for anonymous users, cleanup burden | Small-medium scale, when UID continuity matters | Firebase docs |
-| 2 | **Ephemeral Redis Session** | Generate anonymous token with `anonSessionId` → store all data in Redis under that ID → on promotion, read Redis data and write to user's persistent store → delete Redis keys | No DB pollution, natural expiry via TTL, high performance | Data loss if Redis restarts (acceptable for anonymous data), Redis memory pressure | High-volume anonymous traffic, ephemeral data | Custom pattern |
-| 3 | **Token Exchange (OAuth2-style)** | Anonymous token is exchanged for authenticated token via token exchange endpoint → old token invalidated → new token inherits session context | Standards-based (RFC 8693), clean token lifecycle | Complex implementation, overhead for simple use case | Enterprise environments, OAuth2-heavy architectures | Keycloak, OAuth2 Token Exchange RFC |
-| 4 | **Event-Driven Promotion** | On login/register, publish `SessionPromotedEvent(anonSessionId, userId)` → interested services subscribe and migrate their own data | Loose coupling, extensible, each service owns its data transfer | Eventually consistent, complex error handling, needs message broker | Microservice architecture with many data types | Martin Fowler distributed patterns |
-| 5 | **Hybrid (Ephemeral Redis + Event-Driven)** | Combine approach 2 (Redis session data) with approach 4 (event-driven promotion). Auth-service manages anonymous token lifecycle in Redis; on promotion, publishes event; downstream services read Redis and persist. | Best of both worlds — ephemeral storage, loose coupling, extensible | Slightly more complex than pure Redis approach | This project — auth-service manages identity, downstream owns data | Composite pattern |
+| 1 | **Firebase Model** (DB-backed anonymous users) | Create a real user record for each anonymous session with `is_anonymous=true`; issue JWT with user ID; on promotion, update user record with credentials | Simple data model — anonymous user IS a user; no data transfer needed; durable across Redis restarts | Pollutes user table with temporary records; requires periodic cleanup job; higher DB write load | Need long-lived anonymous sessions (days/weeks); anonymous users need to interact with domain entities that reference user ID | https://firebase.google.com/docs/auth/web/anonymous-auth |
+| 2 | **Ephemeral Model** (Redis-only anonymous sessions) | Do NOT create user record; generate anonymous JWT with session UUID; store all anonymous data in Redis with TTL; on login, transfer Redis data to authenticated user namespace | Zero DB pollution; self-cleaning via Redis TTL; fast token generation (no DB write); horizontally scalable | Data loss if Redis evicts; more complex merge logic; anonymous session data not durable; can't join anonymous data with DB queries | Short-lived anonymous sessions (minutes/hours); minimal anonymous data (cart items, preferences); high anonymous traffic volume | Redis patterns documentation |
+| 3 | **Hybrid Model** (Redis data + optional DB reference) | Store anonymous session metadata in lightweight DB table (not full user); store actual data in Redis; on promotion, create/link user record + transfer Redis data | Balance of durability and performance; can track anonymous session metrics; cleaner than full user records | More complex architecture; two data stores to manage; requires careful cleanup of both | Need analytics on anonymous sessions; regulatory requirement to track sessions; medium-lived anonymous sessions (hours/days) | Supabase GoTrue + Redis patterns |
+| 4 | **Progressive Authentication** (multi-level access) | Define access levels (anonymous → basic → verified → admin); each level unlocks more features; authentication "upgrade" is incremental, not binary | Fine-grained access control; smooth UX — users aren't forced to full auth immediately; supports partial auth (email verified but no password) | Complex permission model; harder to reason about security; more edge cases in authorization logic | Enterprise applications with many user types; platforms where users can do meaningful work before full signup | Auth0 documentation on progressive profiling |
 
 ---
 
@@ -130,8 +129,8 @@
 
 | # | Câu hỏi | Đã tìm kiếm? | Lý do chưa trả lời được | Ảnh hưởng |
 |---|---------|:-:|--------------------------|-----------|
-| 1 | What is the exact memory impact of anonymous Redis sessions at 100k concurrent sessions? | ✅ | Depends on data stored per session; need benchmarking with actual data shapes | Medium — affects Redis sizing |
-| 2 | How do other services in the boilerplate handle anonymous context propagation? | ✅ | Only auth-service in scope; other services not analyzed | Low — out of scope for this research |
+| 1 | What is the optimal anonymous token TTL for this specific application's use case? | ✅ | Depends on business requirements — ranges from 15 min (high security) to 7 days (e-commerce). Recommendation: start with 1 hour, configurable via properties. | Low — configurable at deployment |
+| 2 | Should anonymous sessions survive server restarts? | ✅ | Trade-off between Redis-only (faster, auto-cleanup) and DB-backed (durable). Recommend Redis-only for auth-service scope since session data belongs to downstream services. | Medium — affects architecture choice |
 
 ---
 

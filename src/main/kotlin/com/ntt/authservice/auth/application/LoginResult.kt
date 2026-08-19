@@ -8,7 +8,10 @@ import com.ntt.authservice.auth.adapter.`in`.web.dto.AuthResponse
  */
 sealed class LoginResult {
 
-    data class Success(val response: AuthResponse) : LoginResult()
+    data class Success(
+        val response: AuthResponse,
+        val promotionResult: PromotionResult? = null
+    ) : LoginResult()
 
     data class MfaRequired(
         val mfaToken: String,

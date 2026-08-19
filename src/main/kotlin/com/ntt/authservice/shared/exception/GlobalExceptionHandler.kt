@@ -73,6 +73,16 @@ class AuthControllerAdvice(
             problem.setProperty("retryAfterSeconds", ex.retryAfterSeconds)
             problem.setProperty("dimension", ex.dimension)
         }
+        if (ex is AnonymousRateLimitedException) {
+            problem.setProperty("retryAfterSeconds", ex.retryAfterSeconds)
+        }
+        if (ex is AnonymousMaxRenewalsException) {
+            problem.setProperty("maxRenewals", ex.maxRenewals)
+        }
+        if (ex is AnonymousDataLimitExceededException) {
+            problem.setProperty("currentSize", ex.currentSize)
+            problem.setProperty("maxSize", ex.maxSize)
+        }
         if (ex is SessionLimitExceededException) {
             problem.setProperty("maxSessions", ex.maxSessions)
             problem.setProperty("activeCount", ex.activeCount)
@@ -89,6 +99,9 @@ class AuthControllerAdvice(
         if (ex is RateLimitExceededException) {
             builder.header("Retry-After", ex.retryAfterSeconds.toString())
         }
+        if (ex is AnonymousRateLimitedException) {
+            builder.header("Retry-After", ex.retryAfterSeconds.toString())
+        }
         return builder.body(problem)
     }
 
@@ -101,6 +114,9 @@ class AuthControllerAdvice(
             is RateLimitExceededException -> arrayOf(ex.retryAfterSeconds, ex.dimension)
             is SessionLimitExceededException -> arrayOf(ex.maxSessions)
             is MfaAccountLockedException -> arrayOf(ex.retryAfterSeconds)
+            is AnonymousRateLimitedException -> arrayOf(ex.retryAfterSeconds)
+            is AnonymousMaxRenewalsException -> arrayOf(ex.maxRenewals)
+            is AnonymousDataLimitExceededException -> arrayOf(ex.currentSize, ex.maxSize)
             else -> null
         }
     }

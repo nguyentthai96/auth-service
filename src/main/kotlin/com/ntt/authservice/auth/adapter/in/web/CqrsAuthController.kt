@@ -1,9 +1,11 @@
 package com.ntt.authservice.auth.adapter.`in`.web
 
 import com.ntt.authservice.auth.adapter.`in`.web.dto.AuthResponse
+import com.ntt.authservice.auth.adapter.`in`.web.dto.DataTransferredInfo
 import com.ntt.authservice.auth.application.LoginResult
 import com.ntt.authservice.auth.application.LoginSessionService
 import com.ntt.authservice.auth.application.PasswordPolicyService
+import com.ntt.authservice.auth.application.PromotionResult
 import com.ntt.authservice.auth.application.command.*
 import com.ntt.authservice.auth.application.query.BuildAuthResponseQuery
 import com.ntt.authservice.auth.application.query.BuildAuthResponseHandler
@@ -13,9 +15,6 @@ import jakarta.servlet.http.Cookie
 import jakarta.servlet.http.HttpServletRequest
 import jakarta.servlet.http.HttpServletResponse
 import jakarta.validation.Valid
-import jakarta.validation.constraints.Email
-import jakarta.validation.constraints.NotBlank
-import jakarta.validation.constraints.Size
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty
 import org.springframework.context.MessageSource
 import org.springframework.context.i18n.LocaleContextHolder
@@ -28,6 +27,7 @@ import org.springframework.web.bind.annotation.*
  * Active when app.security.cqrs.enabled = true.
  *
  * FR-009: Controller rewire to CQRS pattern.
+ * FR-003, FR-013: Anonymous session promotion support in login/register.
  */
 @RestController
 @RequestMapping("/api/auth")
@@ -46,22 +46,52 @@ class CqrsAuthController(
 ) {
 
     @PostMapping("/register")
-    fun register(@Valid @RequestBody request: RegisterRequestDto): ResponseEntity<AuthResponse> {
+    fun register(
+        @Valid @RequestBody request: com.ntt.authservice.auth.adapter.`in`.web.dto.RegisterRequestDto
+    ): ResponseEntity<AuthResponse> {
         val command = RegisterCommand(
             username = request.username,
             email = request.email,
             password = request.password,
             fullName = request.fullName,
             phone = request.phone,
-            domainCode = request.domainCode
+            domainCode = request.domainCode,
+            anonymousSessionId = request.anonymousSessionId
         )
         val authToken = registerHandler.handle(command)
-        return ResponseEntity.status(HttpStatus.CREATED).body(AuthResponse.from(authToken))
+
+        // Build response with promotion metadata if applicable
+        val promotionResult = registerHandler.lastPromotionResult
+        val response = AuthResponse.from(authToken).let { resp ->
+            if (promotionResult != null && promotionResult.status == PromotionResult.Status.SUCCESS) {
+                resp.copy(
+                    promotedFromAnonymous = true,
+                    dataTransferred = DataTransferredInfo(
+                        itemCount = promotionResult.itemCount,
+                        namespaces = promotionResult.namespaces,
+                        status = promotionResult.status.name
+                    )
+                )
+            } else if (promotionResult != null) {
+                resp.copy(
+                    promotedFromAnonymous = false,
+                    dataTransferred = DataTransferredInfo(
+                        itemCount = promotionResult.itemCount,
+                        namespaces = promotionResult.namespaces,
+                        status = promotionResult.status.name
+                    )
+                )
+            } else {
+                resp
+            }
+        }
+
+        return ResponseEntity.status(HttpStatus.CREATED).body(response)
     }
 
     @PostMapping("/login")
     fun login(
-        @Valid @RequestBody request: LoginRequestDto,
+        @Valid @RequestBody request: com.ntt.authservice.auth.adapter.`in`.web.dto.LoginRequestDto,
         httpRequest: HttpServletRequest,
         httpResponse: HttpServletResponse
     ): ResponseEntity<Any> {
@@ -73,7 +103,8 @@ class CqrsAuthController(
             trustedDeviceHash = request.trustedDeviceHash,
             ipAddress = extractClientIp(httpRequest),
             userAgent = httpRequest.getHeader("User-Agent"),
-            deviceFingerprint = httpRequest.getHeader("X-Device-Fingerprint")
+            deviceFingerprint = httpRequest.getHeader("X-Device-Fingerprint"),
+            anonymousSessionId = request.anonymousSessionId
         )
         val result = loginHandler.handle(command)
         return when (result) {
@@ -81,9 +112,23 @@ class CqrsAuthController(
                 // Set refresh token as HttpOnly cookie
                 setRefreshTokenCookie(httpResponse, result.response.refreshToken)
 
-                // Remove refresh token from response body (cookie-only)
-                val sanitizedResponse = result.response.copy(refreshToken = null)
-                ResponseEntity.ok(sanitizedResponse)
+                // Build response with promotion metadata
+                val promotionResult = result.promotionResult
+                val responseWithPromotion = if (promotionResult != null) {
+                    result.response.copy(
+                        refreshToken = null,
+                        promotedFromAnonymous = promotionResult.status == PromotionResult.Status.SUCCESS,
+                        dataTransferred = DataTransferredInfo(
+                            itemCount = promotionResult.itemCount,
+                            namespaces = promotionResult.namespaces,
+                            status = promotionResult.status.name
+                        )
+                    )
+                } else {
+                    result.response.copy(refreshToken = null)
+                }
+
+                ResponseEntity.ok(responseWithPromotion)
             }
             is LoginResult.MfaRequired -> ResponseEntity.ok(
                 mapOf(
@@ -156,7 +201,7 @@ class CqrsAuthController(
 
     @PostMapping("/switch-domain")
     fun switchDomain(
-        @RequestBody request: SwitchDomainRequestDto,
+        @RequestBody request: com.ntt.authservice.auth.adapter.`in`.web.dto.SwitchDomainRequestDto,
         @RequestHeader("Authorization") authHeader: String
     ): ResponseEntity<AuthResponse> {
         val userId = getCurrentUserId()

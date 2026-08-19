@@ -53,6 +53,10 @@ class SecurityConfig(
                     .requestMatchers("/api/auth/forgot-password").permitAll()
                     .requestMatchers("/api/captcha/challenge").permitAll()
                     .requestMatchers("/.well-known/jwks.json").permitAll()
+                    // Anonymous session — public endpoint (create session, no auth)
+                    .requestMatchers("/api/v1/auth/anonymous").permitAll()
+                    // Anonymous session — authenticated with ROLE_ANONYMOUS
+                    .requestMatchers("/api/v1/auth/anonymous/**").hasRole("ANONYMOUS")
                     .requestMatchers("/actuator/**").permitAll()
                     .requestMatchers(HttpMethod.OPTIONS, "/**").permitAll()
                     // Authenticated endpoints

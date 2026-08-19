@@ -147,6 +147,38 @@ class JwtService(
         return claims
     }
 
+    /**
+     * Generate anonymous session token with type=anonymous claim.
+     * Follows generateMfaToken() pattern — custom claims, configurable TTL.
+     */
+    fun generateAnonymousToken(sessionId: String): String {
+        val now = Date()
+        val expiry = Date(now.time + securityProperties.anonymous.tokenTtlSeconds * 1000)
+
+        val builder = Jwts.builder()
+            .subject(sessionId)
+            .issuer(securityProperties.jwt.issuer)
+            .issuedAt(now)
+            .expiration(expiry)
+            .id(UUID.randomUUID().toString())
+            .claim("type", "anonymous")
+
+        return signToken(builder)
+    }
+
+    /**
+     * Parse anonymous token and validate type=anonymous claim.
+     * Follows parseMfaToken() pattern.
+     */
+    fun parseAnonymousToken(token: String): Claims {
+        val claims = parseToken(token)
+        val type = claims["type"] as? String
+        if (type != "anonymous") {
+            throw TokenExpiredException()
+        }
+        return claims
+    }
+
     private fun signToken(builder: JwtBuilder): String {
         val kp = keyPair
         return if (kp != null) {

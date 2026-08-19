@@ -45,7 +45,14 @@ enum class AuthErrorCode(
     E2EE_KMS_UNAVAILABLE("AUTH_036", "auth.e2ee_kms_unavailable", "KMS unavailable and no cached DEK", HttpStatus.SERVICE_UNAVAILABLE),
     E2EE_KEY_EXPIRED("AUTH_037", "auth.e2ee_key_expired", "Key session expired — re-exchange required", HttpStatus.UNAUTHORIZED),
     E2EE_DEVICE_UNREGISTERED("AUTH_038", "auth.e2ee_device_unregistered", "Device not registered for E2EE", HttpStatus.FORBIDDEN),
-    E2EE_MAX_DEVICES("AUTH_039", "auth.e2ee_max_devices", "Maximum devices per user exceeded", HttpStatus.TOO_MANY_REQUESTS);
+    E2EE_MAX_DEVICES("AUTH_039", "auth.e2ee_max_devices", "Maximum devices per user exceeded", HttpStatus.TOO_MANY_REQUESTS),
+
+    // --- Anonymous Session Error Codes — AUTH_040~044 ---
+    ANONYMOUS_SESSION_EXPIRED("AUTH_040", "auth.anonymous_session_expired", "Anonymous session expired or not found", HttpStatus.NOT_FOUND),
+    ANONYMOUS_DATA_LIMIT_EXCEEDED("AUTH_041", "auth.anonymous_data_limit_exceeded", "Anonymous session data limit exceeded", HttpStatus.PAYLOAD_TOO_LARGE),
+    ANONYMOUS_PROMOTION_CONFLICT("AUTH_042", "auth.anonymous_promotion_conflict", "Anonymous session promotion conflict", HttpStatus.CONFLICT),
+    ANONYMOUS_RATE_LIMITED("AUTH_043", "auth.anonymous_rate_limited", "Anonymous token creation rate limited", HttpStatus.TOO_MANY_REQUESTS),
+    ANONYMOUS_MAX_RENEWALS("AUTH_044", "auth.anonymous_max_renewals", "Anonymous token maximum renewals exceeded", HttpStatus.TOO_MANY_REQUESTS);
 
     /**
      * Bridge to base-core ErrorCodeBase via delegation.
