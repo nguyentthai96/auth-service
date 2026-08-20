@@ -51,3 +51,13 @@ data class MfaSettingsResponse(
     val mfaEnabled: Boolean,
     val mfaMethod: String
 )
+
+/**
+ * Recovery codes response — returned on MFA setup and regeneration (FR-001).
+ */
+data class RecoveryCodesResponse(
+    val codes: List<String>,
+    val generatedAt: String,
+    val totalCodes: Int = codes.size,
+    val message: String = "Store these codes securely. Each code can only be used once."
+)

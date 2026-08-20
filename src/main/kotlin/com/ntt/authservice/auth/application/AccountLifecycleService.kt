@@ -9,6 +9,9 @@ import com.ntt.authservice.auth.adapter.out.persistence.repository.LoginSessionR
 import com.ntt.authservice.rbac.adapter.out.persistence.repository.UserDomainRepository
 import com.ntt.authservice.rbac.adapter.out.persistence.repository.UserRepository
 import com.ntt.authservice.rbac.application.RbacEngine
+import com.ntt.authservice.auth.application.port.out.AccountDeactivatedEvent
+import com.ntt.authservice.auth.application.port.out.AccountDeletedEvent
+import com.ntt.authservice.auth.application.port.out.EventPublisher
 import com.ntt.authservice.shared.audit.AuditAction
 import com.ntt.authservice.shared.audit.AuditLogService
 import com.ntt.authservice.shared.exception.ResourceNotFoundException
@@ -39,7 +42,8 @@ class AccountLifecycleService(
     private val loginSessionService: LoginSessionService,
     private val rbacEngine: RbacEngine,
     private val auditLogService: AuditLogService,
-    private val objectMapper: ObjectMapper
+    private val objectMapper: ObjectMapper,
+    private val eventPublisher: EventPublisher
 ) {
 
     private val log = LoggerFactory.getLogger(AccountLifecycleService::class.java)
@@ -66,6 +70,9 @@ class AccountLifecycleService(
 
         // Revoke all active sessions
         loginSessionService.revokeAllSessions(userId, "ACCOUNT_DEACTIVATED")
+
+        // Publish cross-service deactivation event (FR-009 GDPR enhancement)
+        eventPublisher.publish(AccountDeactivatedEvent(userId = userId, reason = "USER_INITIATED"))
 
         auditLogService.logEvent(
             userId, AuditAction.ACCOUNT_DEACTIVATED, "User", userId.toString(),
@@ -252,6 +259,9 @@ class AccountLifecycleService(
 
         // Revoke all sessions
         loginSessionService.revokeAllSessions(userId, "GDPR_DELETION")
+
+        // Publish cross-service deletion event (FR-009 GDPR) — account-service purges PII
+        eventPublisher.publish(AccountDeletedEvent(userId = userId))
 
         // Update request status
         request.status = AccountDeletionRequestEntity.STATUS_COMPLETED

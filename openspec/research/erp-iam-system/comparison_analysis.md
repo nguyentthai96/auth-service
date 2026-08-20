@@ -1,131 +1,166 @@
-# Comparison Analysis — ERP IAM System
+# Phân tích so sánh: ERP IAM System
 
-> Created: 2026-08-05
-
----
-
-## 1. Build vs Buy vs Adopt Decision
-
-### Comparison Matrix
-
-| Requirement | Keycloak (Adopt) | Full Custom (Build) | Hybrid (Recommended) |
-|-------------|-----------------|--------------------|--------------------|
-| **Authentication** | ✅ Full (OIDC, SAML, MFA) | ✅ Custom (đã có basic) | ✅ Keycloak optional + local JWT |
-| **RBAC** | ✅ Built-in | ✅ Custom (đã có RbacEngine) | ✅ Custom (đã có) |
-| **PBAC/ABAC** | ⚠️ UMA 2.0 (limited) | ✅ Custom (đã có PolicyEvaluator) | ✅ Custom (đã có) |
-| **Menu Permission** | ❌ Không có | ✅ Custom (cần build) | ✅ Custom (cần build) |
-| **Button-level Permission** | ❌ Không có | ✅ Custom (cần build) | ✅ Custom (cần build) |
-| **API Key Management** | ❌ Không có | ✅ Custom (cần build) | ✅ Custom + Bucket4j |
-| **Rate Limiting** | ❌ Không có | ✅ Custom + Bucket4j | ✅ Bucket4j + Redis |
-| **Organization/Department** | ❌ Không có | ✅ Custom (cần build) | ✅ Custom (cần build) |
-| **Approval Workflow** | ❌ Không có | ✅ Custom (cần build) | ✅ Custom (cần build) |
-| **2FA/MFA** | ✅ Built-in (OTP, TOTP) | ✅ Custom (cần build) | ✅ Spring Security 7 native |
-| **OAuth2 SSO** | ✅ Full IdP | ⚠️ Custom OAuth2 server complex | ✅ Keycloak IdP + local validation |
-| **Audit Trail** | ✅ Admin events | ✅ Custom (cần build) | ✅ Custom (business-specific) |
-| **Integration Effort** | HIGH | MEDIUM | LOW |
-| **Maintenance** | LOW (Keycloak managed) | HIGH (all custom) | MEDIUM |
-| **Flexibility** | LOW (Keycloak constraints) | HIGH (full control) | HIGH |
-| **Time to Market** | 2 weeks setup | 8-10 weeks | 8-10 weeks |
+> Tổng hợp kết quả từ Open Source Discovery + Internet Research + Current System Analysis → Recommendation.
 
 ---
 
-## 2. Recommendation: HYBRID approach
+## 1. Tóm tắt (Executive Summary)
 
-```mermaid
-graph TD
-    A["Decision: HYBRID BUILD"] --> B["Custom Build (Primary)"]
-    A --> C["Adopt Libraries"]
-    A --> D["Optional Integration"]
-
-    B --> B1["Menu Permission System<br/>(system-admin-service)"]
-    B --> B2["Organization Management<br/>(system-admin-service)"]
-    B --> B3["API Partner + Rate Limit<br/>(system-admin-service)"]
-    B --> B4["Approval Workflow Engine<br/>(system-admin-service)"]
-    B --> B5["User Profile Management<br/>(account-service)"]
-    B --> B6["MFA/2FA Engine<br/>(auth-service)"]
-    B --> B7["Password Policy<br/>(auth-service)"]
-
-    C --> C1["Bucket4j → Rate Limiting"]
-    C --> C2["java-otp → TOTP"]
-    C --> C3["Spring Security 7 → MFA framework"]
-    C --> C4["Resilience4j → Circuit breaker<br/>(already in base-core)"]
-
-    D --> D1["Keycloak → Optional IdP<br/>(adapter pattern)"]
-    D --> D2["reCAPTCHA/hCaptcha → CAPTCHA"]
-
-    style A fill:#6d5dfc,color:#fff
-    style B fill:#2d333b,stroke:#3fb950,color:#e6edf3
-    style C fill:#2d333b,stroke:#f0883e,color:#e6edf3
-    style D fill:#2d333b,stroke:#6d5dfc,color:#e6edf3
-```
-
-### Rationale:
-1. **Custom Build** cho business-specific features (menu, org, workflow) — không có open source nào cover
-2. **Adopt Libraries** cho proven algorithms (rate limiting, TOTP) — không reinvent the wheel
-3. **Optional Integration** cho Keycloak — adapter pattern cho phép switch on/off mà không break core
+| Mục | Nội dung |
+|-----|----------|
+| **Tính năng** | Enterprise IAM System (3 Modules: auth-service, account-service, system-admin-service) |
+| **Ngày phân tích** | 2026-08-05 |
+| **Recommendation** | **Hybrid approach — Custom build + Adopt libraries + Optional Keycloak** |
+| **Rationale** | Không có open source nào cover business-specific features (menu permission, org management, approval workflow). Custom build trên nền tảng base-core đã có, adopt Bucket4j cho rate limiting, optional Keycloak cho SSO delegation. |
+| **Confidence** | HIGH — Gap analysis rõ ràng, tech stack constraints đã xác định, foundation code đã có |
 
 ---
 
-## 3. Feature Comparison Table
+## 2. Ma trận so sánh (Comparison Matrix)
 
-| Feature Area | Current Status | Gap | Solution | Effort |
-|-------------|---------------|-----|----------|--------|
-| User Authentication | ✅ Basic login/register | MFA, SSO, CAPTCHA | Spring Security 7 MFA + Keycloak adapter | M |
-| RBAC | ✅ Full chain | - | No change needed | - |
-| PBAC | ✅ Policy evaluator | - | No change needed | - |
-| Menu Permissions | ❌ None | Full system | Custom build (entities + API + cache) | L |
-| Button Permissions | ❌ None | Full system | Part of menu system | M |
-| Organization | ❌ None | Full system | Custom build (tree entities + API) | M |
-| API Partner | ❌ None | Full system | Custom build + Bucket4j | L |
-| Approval Workflow | ❌ None | Full engine | Custom build (state machine) | XL |
-| User Profile | ❌ None | Full CRUD | Custom build (separate service) | M |
-| Device Management | ❌ None | Full system | Custom build | S |
-| Session Management | ❌ Stub only | Full implementation | Redis-backed sessions | M |
-| Audit Trail | ⚠️ Logging only | Persistent audit | AOP + Entity + Elasticsearch | M |
-| System Config | ❌ None | Key-value config | Custom build + Redis cache | S |
-| Feature Flags | ❌ None | Toggle system | Custom build + Redis cache | S |
-| Password Policy | ❌ None | Configurable rules | Custom build | S |
+### Tổng quan giải pháp
 
-**Effort Legend:** S = Small (1-2 days), M = Medium (3-5 days), L = Large (1-2 weeks), XL = Extra Large (2+ weeks)
+| # | Giải pháp | Loại | Cách giải quyết bài toán | Ưu điểm | Nhược điểm | Phù hợp project? | Score |
+|---|----------|------|--------------------------|---------|------------|:-:|:---:|
+| 1 | Keycloak | Open Source IdP | Full identity provider — delegate auth | Enterprise-grade, proven, MFA built-in | External service, no menu/org/workflow, SPI complexity | ⚠️ Optional | 9.25 |
+| 2 | Bucket4j | Open Source Library | Embeddable rate limiting — token bucket + Redis | Spring Boot native, lightweight, distributed | Application-level only, no admin dashboard | ✅ Adopt | 8.35 |
+| 3 | Cerbos | Open Source Policy Engine | External policy-as-code engine — YAML policies | Powerful ABAC, playground | Separate Go service, overkill for current scale | ❌ Skip | 7.35 |
+| 4 | Casbin | Open Source Library | Embeddable authorization — model DSL | Multi-model support, embeddable | Would replace working RbacEngine, not native Spring | ❌ Skip | 7.20 |
+| 5 | Custom Build | In-house | Full IAM on base-core foundation | Full control, tight integration, no vendor lock-in | Development effort, maintenance burden | ✅ Primary | N/A |
 
 ---
 
-## 4. Gap Coverage Assessment
+## 3. So sánh theo tính năng (Feature Matrix)
 
-| Domain | Total Features | Existing | New | Coverage |
-|--------|---------------|----------|-----|----------|
-| Authentication | 8 | 4 | 4 | 50% |
-| Authorization (RBAC/PBAC) | 6 | 4 | 2 | 67% |
-| Menu Permission | 5 | 0 | 5 | 0% |
-| Organization | 4 | 0 | 4 | 0% |
-| API Partner | 5 | 0 | 5 | 0% |
-| Approval Workflow | 6 | 0 | 6 | 0% |
-| User Profile | 6 | 0 | 6 | 0% |
-| Session/Device | 4 | 0 | 4 | 0% |
-| System Config | 3 | 0 | 3 | 0% |
-| Audit | 2 | 1 | 1 | 50% |
-| **Overall** | **49** | **9** | **40** | **18%** |
+| Feature | Keycloak | Bucket4j | Cerbos | Casbin | Custom Build | Cần cho project? |
+|---------|:---:|:---:|:---:|:---:|:---:|:---:|
+| Authentication (login/register) | ✅ | ❌ | ❌ | ❌ | ✅ | ⭐ Must (đã có) |
+| MFA/2FA | ✅ | ❌ | ❌ | ❌ | ✅ | ⭐ Must |
+| OAuth2/SSO | ✅ | ❌ | ❌ | ❌ | ✅ | ⭐ Must |
+| RBAC | ✅ | ❌ | ❌ | ✅ | ✅ | ⭐ Must (đã có) |
+| PBAC/ABAC | ⚠️ | ❌ | ✅ | ✅ | ✅ | ⭐ Must (đã có) |
+| Menu Permission (tree) | ❌ | ❌ | ❌ | ❌ | ✅ | ⭐ Must |
+| Button-level Permission | ❌ | ❌ | ❌ | ❌ | ✅ | ⭐ Must |
+| Organization Hierarchy | ❌ | ❌ | ❌ | ❌ | ✅ | ⭐ Must |
+| API Key Management | ❌ | ❌ | ❌ | ❌ | ✅ | ⭐ Must |
+| Rate Limiting | ❌ | ✅ | ❌ | ❌ | ⚠️ | ⭐ Must |
+| Approval Workflow | ❌ | ❌ | ❌ | ❌ | ✅ | Should |
+| Audit Trail | ✅ | ❌ | ⚠️ | ❌ | ✅ | ⭐ Must |
+| User Profile Management | ❌ | ❌ | ❌ | ❌ | ✅ | ⭐ Must |
+| Device Management | ❌ | ❌ | ❌ | ❌ | ✅ | Should |
+| System Configuration | ❌ | ❌ | ❌ | ❌ | ✅ | Nice to have |
+| **Coverage** | **5/15** | **1/15** | **1/15** | **2/15** | **15/15** | |
 
-> **Gap Score: 18% covered** → Significant development effort required, but strong foundation exists.
+### Priority breakdown
 
----
-
-## 5. Risk Assessment
-
-| Risk | Severity | Mitigation |
-|------|----------|------------|
-| Scope creep (too many features) | HIGH | Phased rollout (4 phases) |
-| Cross-service data consistency | MEDIUM | Kafka events + eventual consistency |
-| Performance (permission check per request) | MEDIUM | Redis caching (5 min TTL) |
-| Keycloak lock-in | LOW | Adapter pattern, optional integration |
-| Menu permission complexity | MEDIUM | Start simple (role-based), add overrides later |
-| Approval workflow state management | HIGH | Immutable workflow versions, clear state machine |
+| Priority | Tổng features | Coverage range |
+|----------|:---:|:---:|
+| ⭐ Must | 12 | 0% (Cerbos) - 42% (Keycloak) |
+| Should | 2 | 0% across all external |
+| Nice to have | 1 | 0% across all external |
 
 ---
 
-## 6. Validation Checklist (Phase 4)
+## 4. Gap Analysis tổng hợp
 
-- [x] Comparison matrix complete
-- [x] Feature comparison table complete
-- [x] Gap analysis documented (18% current coverage)
-- [x] Recommendation provided with reasoning (HYBRID BUILD)
+### 4.1 Requirement vs Available Solutions
+
+| Requirement | Source | Keycloak | Bucket4j | Custom Build | Gap? |
+|-------------|--------|:---:|:---:|:---:|:---:|
+| Authentication + MFA | UC-MFA-01..05 | ✅ | ❌ | ✅ | Không — covered by both |
+| OAuth2/SSO | UC-SSO-01..04 | ✅ | ❌ | ✅ | Không — covered by both |
+| Menu Permission Tree | UC-MENU-01..05 | ❌ | ❌ | ✅ | Có — chỉ Custom Build |
+| Button-level Permission | UC-MENU-04 | ❌ | ❌ | ✅ | Có — chỉ Custom Build |
+| Organization Management | UC-ORG-01..06 | ❌ | ❌ | ✅ | Có — chỉ Custom Build |
+| API Key + Rate Limiting | UC-API-01..07 | ❌ | ✅ (rate only) | ✅ | Partial — Bucket4j + Custom |
+| Approval Workflow | UC-WF-01..08 | ❌ | ❌ | ✅ | Có — chỉ Custom Build |
+| Audit Trail | BR-AUDIT-01..04 | ✅ | ❌ | ✅ | Không — covered |
+| User Profile CRUD | UC-PROF-01..06 | ❌ | ❌ | ✅ | Có — chỉ Custom Build |
+| Session Management | BR-SES-01..03 | ⚠️ | ❌ | ✅ | Partial |
+
+### 4.2 Current System vs Target System
+
+| Aspect | Current System | Target System | Gap | Impact |
+|--------|---------------|---------------|-----|--------|
+| Authentication | Basic login/register, JWT | MFA, SSO, CAPTCHA, password policy | MFA + SSO + policy engine | HIGH |
+| Authorization | RBAC + PBAC (working) | Same + menu/button permission | Menu permission layer | HIGH |
+| User Management | UserEntity in auth-service | Separate profile in account-service | Profile service separation | MEDIUM |
+| Organization | None | Department/Position/Hierarchy | Full new module | HIGH |
+| API Partner | None | API key, rate limiting, quota | Full new module | MEDIUM |
+| Workflow | None | Dynamic multi-step approval | Full new engine | HIGH |
+| Audit | Basic AOP logging | Immutable audit trail, export | Enhanced audit service | MEDIUM |
+| Caching | Caffeine L1 + Redis L2 (basic) | Comprehensive permission/menu caching | 10+ cache patterns | MEDIUM |
+| Inter-service | Kafka (compileOnly) | REST sync + Kafka async events | Event integration | MEDIUM |
+
+### 4.3 Custom Build vs Reuse
+
+| Factor | Custom Build | Reuse Keycloak (Best External) | Winner |
+|--------|:---:|:---:|:---:|
+| Time to market | 10-13 weeks | 2 weeks setup + 8-10 weeks custom | Draw |
+| Maintenance burden | HIGH (all custom code) | MEDIUM (Keycloak managed + custom) | Keycloak |
+| Feature coverage | 100% (all features) | 46% (auth only, gaps remain) | Custom Build |
+| Integration effort | LOW (same tech stack, base-core) | MEDIUM (external service, adapter) | Custom Build |
+| Long-term flexibility | HIGH (full control) | LOW (Keycloak upgrade cycles, SPI) | Custom Build |
+| Risk | MEDIUM (development effort) | MEDIUM (proven + custom gaps) | Draw |
+
+---
+
+## 5. Recommendation chi tiết
+
+### Decision Matrix
+
+| Tiêu chí | Trọng số | Keycloak Only | Full Custom | Hybrid (Recommended) |
+|----------|----------|:---:|:---:|:---:|
+| Feature coverage | 30% | 4 | 10 | 10 |
+| Integration ease | 25% | 5 | 9 | 8 |
+| Maintenance | 20% | 8 | 5 | 6 |
+| Community/Support | 15% | 9 | 3 | 6 |
+| Learning curve | 10% | 6 | 8 | 7 |
+| **Tổng điểm (weighted)** | | **5.85** | **7.40** | **7.65** |
+
+### Reasoning
+
+**Recommended approach**: Hybrid — Custom build + Adopt Bucket4j + Optional Keycloak adapter
+
+**Lý do**:
+1. **Business-specific features (menu, org, workflow) = 60%+ effort** — không có open source nào cover. Custom build là bắt buộc.
+2. **Foundation đã có** — auth-service đã có RbacEngine, PolicyEvaluator, JWT, MFA, SSO adapter, session management. Mở rộng, không build from scratch.
+3. **Bucket4j adoption** — proven rate limiting library, Spring Boot native, Redis-backed. Không reinvent token bucket algorithm.
+4. **Keycloak as optional IdP** — adapter pattern cho phép switch on/off. Enable Keycloak khi cần enterprise SAML/OIDC federation.
+
+**Trade-offs chấp nhận**:
+- Custom maintenance effort — chấp nhận vì full control và tight integration với base-core
+- No external policy engine — chấp nhận vì PolicyEvaluator hiện tại đủ cho current scale
+
+### Risk Assessment
+
+| Risk | Probability | Impact | Mitigation |
+|------|:-:|:-:|-----------|
+| Scope creep (quá nhiều features) | HIGH | HIGH | Phased rollout (4 phases), strict prioritization |
+| Cross-service data consistency | MEDIUM | MEDIUM | Kafka events + eventual consistency |
+| Permission check performance | MEDIUM | MEDIUM | Redis caching (5 min TTL), Caffeine L1 |
+| Keycloak lock-in | LOW | LOW | Adapter pattern, Keycloak is optional |
+| Menu permission complexity | MEDIUM | MEDIUM | Start simple (role-based), add user overrides later |
+| Approval workflow state management | HIGH | HIGH | Immutable workflow versions, clear state machine |
+
+### Cost/Effort Estimate (Coarse)
+
+| Approach | Effort (developer-weeks) | Complexity | Long-term cost |
+|----------|:-:|:-:|:-:|
+| Keycloak Only + Custom gaps | 10-12 weeks | HIGH | MEDIUM |
+| Full Custom Build | 10-13 weeks | MEDIUM | HIGH |
+| Hybrid (Recommended) | 10-13 weeks | MEDIUM | MEDIUM |
+
+---
+
+## 6. Data Sources
+
+| # | Artifact | Vai trò |
+|---|---------|---------|
+| 1 | [research_brief.md](./research_brief.md) | Scope, keywords, current system analysis (17 existing features scanned) |
+| 2 | [opensource_findings.md](./opensource_findings.md) | 5 open source projects evaluated + scoring matrix |
+| 3 | [web_research.md](./web_research.md) | 4 search iterations, 14 unique sources, 5 products evaluated |
+
+---
+
+> **Next step**: Business Analysis (business_analysis.md)

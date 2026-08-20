@@ -276,16 +276,26 @@ class AuthService(
 
     /**
      * Revoke all sessions for a user (force logout).
+     * Revokes all active refresh tokens and ends all login sessions.
+     * Access tokens expire naturally (max 15min) — industry standard for stateless JWT.
      */
     @Transactional
     fun revokeAllSessions(userId: Long): Int {
-        // In a real implementation, this would blacklist all active JTIs
-        // For now, revoke all refresh tokens
         val user = userRepository.findById(userId).orElseThrow {
             ResourceNotFoundException("User", userId)
         }
-        log.info("All sessions revoked for userId={}", userId)
-        return 0 // TODO: count revoked tokens
+
+        // 1. Revoke all active refresh tokens
+        val revokedCount = refreshTokenRepository.revokeAllByUserId(userId)
+
+        // 2. Access tokens expire naturally (max 15min) — industry standard for JWT
+        // No per-token JTI blacklisting for bulk revoke
+
+        auditLogService.logEvent(userId, AuditAction.SESSION_REVOKED,
+            entityType = "User", entityId = userId.toString(),
+            details = "revokedTokens=$revokedCount")
+        log.info("All sessions revoked for userId={}: {} tokens revoked", userId, revokedCount)
+        return revokedCount
     }
 
     private fun hashToken(token: String): String {

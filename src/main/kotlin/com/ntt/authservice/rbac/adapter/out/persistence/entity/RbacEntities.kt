@@ -6,6 +6,7 @@ import jakarta.persistence.*
 /**
  * Business domain entity (e.g., booking, rental, loyalty).
  * Inherits: id, audit fields, active from base-core.
+ * Extended with branding & login page config (FR-016).
  */
 @Entity
 @Table(name = "domains")
@@ -24,6 +25,24 @@ class DomainEntity : SnowflakePersistentAuditableEntity() {
 
     @Column(nullable = false, length = 20)
     var status: String = "ACTIVE"
+
+    // --- FR-016: Domain Config Extension (Branding, Login Page) ---
+
+    /** Domain logo URL for branding. */
+    @Column(name = "logo_url", length = 1000)
+    var logoUrl: String? = null
+
+    /** Primary brand color (hex, e.g., #1A73E8). */
+    @Column(name = "primary_color", length = 10)
+    var primaryColor: String? = null
+
+    /** Login page configuration JSON (background image, welcome text, etc.). */
+    @Column(name = "login_page_config", columnDefinition = "jsonb")
+    var loginPageConfig: String? = null
+
+    /** Favicon URL for the domain. */
+    @Column(name = "favicon_url", length = 1000)
+    var faviconUrl: String? = null
 }
 
 /**

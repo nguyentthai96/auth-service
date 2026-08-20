@@ -1,0 +1,20 @@
+# Step config for wf_archive
+id: wf_archive
+name: "Archive Change"
+description: "Archive completed change after apply"
+required: false
+skip: false
+depends_on:
+  - wf_openspec_apply
+
+# Custom input passed to prompt Layer 4
+input: {}
+
+# Override headless rules (leave empty for default)
+headless_rules: ""
+
+# Override validation rules (leave empty for default)
+# validation:
+#   required_files: []
+#   content_checks: []
+#   min_size_bytes: 0

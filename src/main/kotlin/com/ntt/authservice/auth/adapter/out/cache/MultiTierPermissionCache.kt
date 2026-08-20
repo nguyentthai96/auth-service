@@ -1,26 +1,31 @@
 package com.ntt.authservice.auth.adapter.out.cache
 
 import com.ntt.authservice.auth.application.port.out.PermissionCache
+import com.ntt.authservice.shared.cache.AbstractTwoTierCache
+import com.fasterxml.jackson.core.type.TypeReference
+import com.fasterxml.jackson.databind.ObjectMapper
 import org.slf4j.LoggerFactory
 import org.springframework.beans.factory.annotation.Value
-import org.springframework.data.redis.core.RedisTemplate
+import org.springframework.data.redis.core.StringRedisTemplate
 import org.springframework.stereotype.Component
-import java.util.concurrent.TimeUnit
 
 /**
  * Multi-tier permission cache: L1 (Caffeine) → L2 (Redis).
  *
- * Read path: Check L1 → miss? → Check L2 → miss? → return null (caller loads from DB + puts back).
- * Write path: Put in L1 + L2 simultaneously.
- * Invalidate path: Evict from L1 + L2.
+ * Refactored (Layer R — R02): Delegates L1+L2 orchestration to [AbstractTwoTierCache].
+ * Provides permission-specific serialization and composite key logic.
  *
- * Note: @Primary is on CaffeinePermissionCache. This class is used when L2 is explicitly needed.
- * To make this the primary cache, swap @Primary annotation.
+ * This class manages TWO logical caches (permissions + roles) by using
+ * two internal [AbstractTwoTierCache] instances with different key prefixes.
  */
 @Component("multiTierPermissionCache")
 class MultiTierPermissionCache(
-    private val caffeineCache: CaffeinePermissionCache,
-    private val redisTemplate: RedisTemplate<String, Any>,
+    private val redisTemplate: StringRedisTemplate,
+    private val objectMapper: ObjectMapper,
+    @Value("\${app.security.cache.permission.l1-max-size:10000}")
+    private val l1MaxSize: Long,
+    @Value("\${app.security.cache.permission.l1-ttl-seconds:30}")
+    private val l1TtlSeconds: Long,
     @Value("\${app.security.cache.permission.l2-ttl-seconds:1800}")
     private val l2TtlSeconds: Long,
     @Value("\${app.security.cache.permission.l2-key-prefix:auth:perm:}")
@@ -29,91 +34,77 @@ class MultiTierPermissionCache(
 
     private val log = LoggerFactory.getLogger(MultiTierPermissionCache::class.java)
 
-    private fun redisKey(userId: Long, domainId: Long, type: String) =
-        "$keyPrefix$type:$userId:$domainId"
+    /** Composite key for permission/role cache lookups. */
+    private data class CacheKey(val userId: Long, val domainId: Long)
 
-    @Suppress("UNCHECKED_CAST")
-    override fun getPermissions(userId: Long, domainId: Long): List<String>? {
-        // L1 check
-        caffeineCache.getPermissions(userId, domainId)?.let { return it }
+    /** Internal cache for permissions (List<String>). */
+    private val permissionsCache = object : AbstractTwoTierCache<CacheKey, List<String>>(
+        redisTemplate = redisTemplate,
+        objectMapper = objectMapper,
+        keyPrefix = "${keyPrefix}perms:",
+        l1MaxSize = l1MaxSize,
+        l1TtlSeconds = l1TtlSeconds,
+        l2TtlSeconds = l2TtlSeconds
+    ) {
+        override fun toKeyString(key: CacheKey): String = "${key.userId}:${key.domainId}"
 
-        // L2 check
-        return try {
-            val key = redisKey(userId, domainId, "perms")
-            val cached = redisTemplate.opsForValue().get(key) as? List<String>
-            if (cached != null) {
-                caffeineCache.putPermissions(userId, domainId, cached) // backfill L1
+        override fun deserializeFromRedis(json: String): List<String>? {
+            return try {
+                objectMapper.readValue(json, object : TypeReference<List<String>>() {})
+            } catch (ex: Exception) {
+                log.warn("Failed to deserialize permissions from Redis: {}", ex.message)
+                null
             }
-            cached
-        } catch (ex: Exception) {
-            log.warn("Redis L2 getPermissions failed, falling back to DB: {}", ex.message)
-            null
         }
+    }
+
+    /** Internal cache for roles (List<String>). */
+    private val rolesCache = object : AbstractTwoTierCache<CacheKey, List<String>>(
+        redisTemplate = redisTemplate,
+        objectMapper = objectMapper,
+        keyPrefix = "${keyPrefix}roles:",
+        l1MaxSize = l1MaxSize,
+        l1TtlSeconds = l1TtlSeconds,
+        l2TtlSeconds = l2TtlSeconds
+    ) {
+        override fun toKeyString(key: CacheKey): String = "${key.userId}:${key.domainId}"
+
+        override fun deserializeFromRedis(json: String): List<String>? {
+            return try {
+                objectMapper.readValue(json, object : TypeReference<List<String>>() {})
+            } catch (ex: Exception) {
+                log.warn("Failed to deserialize roles from Redis: {}", ex.message)
+                null
+            }
+        }
+    }
+
+    // --- PermissionCache interface implementation ---
+
+    override fun getPermissions(userId: Long, domainId: Long): List<String>? {
+        return permissionsCache.get(CacheKey(userId, domainId))
     }
 
     override fun putPermissions(userId: Long, domainId: Long, permissions: List<String>) {
-        caffeineCache.putPermissions(userId, domainId, permissions)
-        try {
-            redisTemplate.opsForValue().set(
-                redisKey(userId, domainId, "perms"),
-                permissions,
-                l2TtlSeconds,
-                TimeUnit.SECONDS
-            )
-        } catch (ex: Exception) {
-            log.warn("Redis L2 putPermissions failed: {}", ex.message)
-        }
+        permissionsCache.put(CacheKey(userId, domainId), permissions)
     }
 
-    @Suppress("UNCHECKED_CAST")
     override fun getRoles(userId: Long, domainId: Long): List<String>? {
-        caffeineCache.getRoles(userId, domainId)?.let { return it }
-        return try {
-            val key = redisKey(userId, domainId, "roles")
-            val cached = redisTemplate.opsForValue().get(key) as? List<String>
-            if (cached != null) {
-                caffeineCache.putRoles(userId, domainId, cached) // backfill L1
-            }
-            cached
-        } catch (ex: Exception) {
-            log.warn("Redis L2 getRoles failed: {}", ex.message)
-            null
-        }
+        return rolesCache.get(CacheKey(userId, domainId))
     }
 
     override fun putRoles(userId: Long, domainId: Long, roles: List<String>) {
-        caffeineCache.putRoles(userId, domainId, roles)
-        try {
-            redisTemplate.opsForValue().set(
-                redisKey(userId, domainId, "roles"),
-                roles,
-                l2TtlSeconds,
-                TimeUnit.SECONDS
-            )
-        } catch (ex: Exception) {
-            log.warn("Redis L2 putRoles failed: {}", ex.message)
-        }
+        rolesCache.put(CacheKey(userId, domainId), roles)
     }
 
     override fun invalidate(userId: Long, domainId: Long) {
-        caffeineCache.invalidate(userId, domainId)
-        try {
-            redisTemplate.delete(redisKey(userId, domainId, "perms"))
-            redisTemplate.delete(redisKey(userId, domainId, "roles"))
-        } catch (ex: Exception) {
-            log.warn("Redis L2 invalidate failed: {}", ex.message)
-        }
+        val key = CacheKey(userId, domainId)
+        permissionsCache.invalidate(key)
+        rolesCache.invalidate(key)
     }
 
     override fun invalidateAll() {
-        caffeineCache.invalidateAll()
-        try {
-            val keys = redisTemplate.keys("${keyPrefix}*")
-            if (!keys.isNullOrEmpty()) {
-                redisTemplate.delete(keys)
-            }
-        } catch (ex: Exception) {
-            log.warn("Redis L2 invalidateAll failed: {}", ex.message)
-        }
+        permissionsCache.invalidateAll()
+        rolesCache.invalidateAll()
     }
 }

@@ -16,7 +16,8 @@ import org.springframework.web.bind.annotation.*
 @ConditionalOnProperty(name = ["app.security.cqrs.enabled"], havingValue = "false")
 class AuthController(
     private val authService: AuthService,
-    private val passwordPolicyService: PasswordPolicyService
+    private val passwordPolicyService: PasswordPolicyService,
+    private val domainLookupService: DomainLookupService
 ) {
 
     @PostMapping("/register")
@@ -64,8 +65,8 @@ class AuthController(
         @RequestHeader("Authorization") authHeader: String
     ): ResponseEntity<Map<String, String>> {
         val userId = getCurrentUserId()
-        // TODO: resolve domainId from user's active domain
-        passwordPolicyService.changePassword(userId, request.oldPassword, request.newPassword, 0L)
+        val domainId = domainLookupService.getPrimaryDomainId(userId)
+        passwordPolicyService.changePassword(userId, request.oldPassword, request.newPassword, domainId)
         return ResponseEntity.ok(mapOf("message" to "Password changed successfully"))
     }
 

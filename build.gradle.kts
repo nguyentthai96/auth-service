@@ -35,7 +35,7 @@ dependencies {
     implementation("com.google.crypto.tink:tink-awskms:1.15.0")
     // - AUTH CORE FEATURES (MFA, SSO, RS256, Password Policy)
     implementation("org.springframework.boot:spring-boot-starter-data-redis")
-    compileOnly("org.springframework.kafka:spring-kafka")
+    implementation("org.springframework.kafka:spring-kafka") // FR-020: Upgraded from compileOnly to runtime
     implementation("org.springframework.boot:spring-boot-starter-oauth2-client")
     implementation("org.springframework.boot:spring-boot-starter-oauth2-resource-server")
     implementation("dev.samstevens.totp:totp:1.7.1")

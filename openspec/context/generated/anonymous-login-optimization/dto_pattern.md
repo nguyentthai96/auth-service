@@ -1,203 +1,87 @@
-# DTO Pattern: anonymous-login-optimization
+# DTO Pattern
 
-> _Generated: 2025-01-20_
-> Candidate Service: auth-service (`src/main/kotlin/com/ntt/authservice/`)
+_Generated: 2025-01-20_
 
----
+## Request DTO
 
-## 1. Request DTOs
+### Anonymous Feature DTOs
 
-### Location: `src/main/kotlin/com/ntt/authservice/auth/adapter/in/web/dto/RequestDtos.kt`
+- `CreateAnonymousSessionRequest` — `src/main/kotlin/com/ntt/authservice/auth/adapter/in/web/dto/AnonymousDtos.kt`
+  - Fields: `deviceFingerprint: String? = null`
+  - Annotations: none (all fields optional)
+  - Pattern: Kotlin data class with default values
 
-```kotlin
-// Pattern: data class with Jakarta validation annotations
-data class LoginRequestDto(
-    @field:NotBlank val username: String,
-    @field:NotBlank val password: String,
-    val domainCode: String? = null,          // Optional fields use nullable + default null
-    val captchaToken: String? = null,
-    val trustedDeviceHash: String? = null,
-    val deviceFingerprint: String? = null,
-    val captchaPayload: String? = null
-)
+- `StoreSessionDataRequest` — `src/main/kotlin/com/ntt/authservice/auth/adapter/in/web/dto/AnonymousDtos.kt`
+  - Fields: `namespace: String`, `key: String`, `value: Any`
+  - Annotations: `@field:NotBlank` (namespace, key), `@field:NotNull` (value)
+  - Pattern: Kotlin data class with Jakarta validation
 
-data class RegisterRequestDto(
-    @field:NotBlank val username: String,
-    @field:NotBlank @field:Email val email: String,
-    @field:NotBlank @field:Size(min = 8, max = 100) val password: String,
-    @field:NotBlank val fullName: String,
-    val phone: String? = null,
-    val domainCode: String = "default"       // Optional with non-null default
-)
+- `RenewAnonymousTokenCommand` — `src/main/kotlin/com/ntt/authservice/auth/application/command/RenewAnonymousTokenCommand.kt`
+  - Fields: `currentToken: String`
+  - Pattern: CQRS Command (implements `Command<AnonymousSessionResult>`)
 
-data class RefreshTokenRequestDto(
-    @field:NotBlank val refreshToken: String
-)
+- `CreateAnonymousSessionCommand` — `src/main/kotlin/com/ntt/authservice/auth/application/command/CreateAnonymousSessionCommand.kt`
+  - Fields: `ipAddress: String`, `deviceFingerprint: String? = null`
+  - Pattern: CQRS Command (implements `Command<AnonymousSessionResult>`)
 
-data class SwitchDomainRequestDto(
-    @field:NotBlank val domainCode: String
-)
-```
+### Auth DTOs (modified for anonymous)
 
-### Key Conventions
+- `LoginRequestDto` — `src/main/kotlin/com/ntt/authservice/auth/adapter/in/web/dto/RequestDtos.kt`
+  - Anonymous fields: `anonymousSessionId: String? = null`, `anonymousToken: String? = null`
+  - Other fields: `username`, `password`, `domainCode?`, `captchaToken?`, `trustedDeviceHash?`, `deviceFingerprint?`, `captchaPayload?`
+  - Annotations: `@field:NotBlank` (username, password)
 
-| Convention | Pattern | Example |
-|-----------|---------|---------|
-| Required field | `@field:NotBlank` | `val username: String` |
-| Optional nullable | `val x: String? = null` | `val captchaToken: String? = null` |
-| Optional with default | `val x: String = "default"` | `val domainCode: String = "default"` |
-| Email validation | `@field:Email` | `val email: String` |
-| Size constraint | `@field:Size(min, max)` | `val password: String` |
-| Naming | `{Action}RequestDto` | `LoginRequestDto`, `RegisterRequestDto` |
-| Suffix | `Dto` or `RequestDto` | Consistent in project |
+- `RegisterRequestDto` — `src/main/kotlin/com/ntt/authservice/auth/adapter/in/web/dto/RequestDtos.kt`
+  - Anonymous fields: `anonymousSessionId: String? = null`, `anonymousToken: String? = null`
+  - Other fields: `username`, `email`, `password`, `fullName`, `phone?`, `domainCode`
+  - Annotations: `@field:NotBlank`, `@field:Email`, `@field:Size(min=8, max=100)`
 
----
+## Response DTO
 
-## 2. Response DTOs
+### Anonymous Feature DTOs
 
-### Location: `src/main/kotlin/com/ntt/authservice/auth/adapter/in/web/dto/AuthResponse.kt`
+- `AnonymousTokenResponse` — `src/main/kotlin/com/ntt/authservice/auth/adapter/in/web/dto/AnonymousDtos.kt`
+  - Fields: `token: String`, `sessionId: String`, `expiresIn: Long`, `tokenType: String = "Bearer"`
+  - Pattern: Kotlin data class
 
-```kotlin
-// Pattern: data class with companion object factory method
-data class AuthResponse(
-    val accessToken: String,
-    val refreshToken: String? = null,
-    val tokenType: String = "Bearer",
-    val expiresIn: Long,
-    val userId: Long,
-    val username: String,
-    val activeDomain: String,
-    val roles: List<String>,
-    val permissions: List<String>
-) {
-    companion object {
-        fun from(token: AuthToken): AuthResponse = AuthResponse(
-            accessToken = token.accessToken,
-            refreshToken = token.refreshToken,
-            tokenType = token.tokenType,
-            expiresIn = token.expiresIn,
-            userId = token.userId,
-            username = token.username,
-            activeDomain = token.activeDomain,
-            roles = token.roles,
-            permissions = token.permissions
-        )
-    }
-}
-```
+- `SessionDataResponse` — `src/main/kotlin/com/ntt/authservice/auth/adapter/in/web/dto/AnonymousDtos.kt`
+  - Fields: `namespace: String`, `key: String`, `value: Any?`
+  - Pattern: Kotlin data class
 
-### Key Conventions
+- `DataTransferredInfo` — `src/main/kotlin/com/ntt/authservice/auth/adapter/in/web/dto/AnonymousDtos.kt`
+  - Fields: `itemCount: Int`, `namespaces: List<String>`, `status: String`
+  - Pattern: Kotlin data class, included in AuthResponse when promotion occurs
 
-| Convention | Pattern | Example |
-|-----------|---------|---------|
-| Factory method | `companion object { fun from(domain): Dto }` | `AuthResponse.from(authToken)` |
-| Token type | `val tokenType: String = "Bearer"` | Always "Bearer" |
-| Optional fields | `val x: String? = null` | `refreshToken` (null when cookie-only) |
-| Naming | `{Domain}Response` or `{Action}Response` | `AuthResponse` |
+### Auth DTOs (extended for anonymous)
 
----
+- `AuthResponse` — `src/main/kotlin/com/ntt/authservice/auth/adapter/in/web/dto/AuthResponse.kt`
+  - Anonymous fields: `promotedFromAnonymous: Boolean = false`, `dataTransferred: DataTransferredInfo? = null`
+  - Companion: `from(AuthToken)` factory method
+  - JsonInclude: `@JsonInclude(Include.NON_NULL)` on `message` field
 
-## 3. Domain Result Types (Sealed Classes)
+## Domain Result Types
 
-### Location: `src/main/kotlin/com/ntt/authservice/auth/application/LoginResult.kt`
+- `AnonymousSessionResult` — `src/main/kotlin/com/ntt/authservice/auth/application/AnonymousSessionResult.kt`
+  - Fields: `token: String`, `sessionId: String`, `expiresIn: Long`
 
-```kotlin
-// Pattern: sealed class for multi-outcome operations
-sealed class LoginResult {
-    data class Success(val response: AuthResponse) : LoginResult()
-    data class MfaRequired(
-        val mfaToken: String,
-        val method: String,
-        val expiresIn: Long
-    ) : LoginResult()
-}
-```
+- `PromotionResult` — `src/main/kotlin/com/ntt/authservice/auth/application/PromotionResult.kt`
+  - Fields: `status: Status`, `itemCount: Int = 0`, `namespaces: List<String> = emptyList()`
+  - Status enum: `SUCCESS`, `PARTIAL`, `FAILED`, `CONFLICT`, `SKIPPED`
 
-### Key Conventions
+- `LoginResult` (sealed class) — `src/main/kotlin/com/ntt/authservice/auth/application/LoginResult.kt`
+  - `Success(response: AuthResponse, promotionResult: PromotionResult? = null)`
+  - `MfaRequired(mfaToken: String, method: String, expiresIn: Long)`
 
-| Convention | Pattern |
-|-----------|---------|
-| Sealed class | `sealed class {Action}Result` |
-| Success case | `data class Success(val response: ...)` |
-| Alternative case | Named after reason (e.g., `MfaRequired`) |
-| Used by handlers | `CommandHandler<Command, LoginResult>` |
+## Validation Annotations Used
 
----
+- `@field:NotBlank` — Required non-empty string fields
+- `@field:NotNull` — Required non-null fields
+- `@field:Email` — Email format validation
+- `@field:Size(min, max)` — Length constraints
+- `@Valid` — Controller-level validation trigger
 
-## 4. Command DTOs (CQRS)
+## NOT DETECTED
 
-### Location: `src/main/kotlin/com/ntt/authservice/auth/application/command/LoginCommand.kt`
-
-```kotlin
-// Pattern: data class implementing Command<R>
-data class LoginCommand(
-    val username: String,
-    val password: String,
-    val domainCode: String? = null,
-    val captchaToken: String? = null,
-    val trustedDeviceHash: String? = null,
-    val ipAddress: String? = null,
-    val userAgent: String? = null,
-    val deviceFingerprint: String? = null
-) : Command<LoginResult>
-```
-
-### Key Conventions
-
-| Convention | Pattern | Example |
-|-----------|---------|---------|
-| Interface | `Command<R>` from `eventsourcing-utils` | `Command<LoginResult>` |
-| Naming | `{Action}Command` | `LoginCommand`, `RegisterCommand` |
-| HTTP context fields | `val ipAddress: String? = null` | Added by controller, not by user |
-| Immutable | Kotlin `data class` | All fields `val` |
-
----
-
-## 5. Additional DTO Files
-
-| File | Location | Contents |
-|------|----------|----------|
-| `MfaDtos.kt` | `src/main/kotlin/com/ntt/authservice/auth/adapter/in/web/dto/MfaDtos.kt` | MFA verification request/response DTOs |
-| `SsoDtos.kt` | `src/main/kotlin/com/ntt/authservice/auth/adapter/in/web/dto/SsoDtos.kt` | SSO callback/provider DTOs |
-| `TokenDtos.kt` | `src/main/kotlin/com/ntt/authservice/auth/adapter/in/web/dto/TokenDtos.kt` | Token introspection DTOs |
-
----
-
-## 6. Controller → Command Mapping Pattern
-
-```kotlin
-// Pattern in CqrsAuthController:
-@PostMapping("/login")
-fun login(@Valid @RequestBody request: LoginRequestDto, ...): ResponseEntity<Any> {
-    // 1. Map DTO → Command (add HTTP context)
-    val command = LoginCommand(
-        username = request.username,
-        password = request.password,
-        domainCode = request.domainCode,
-        captchaToken = request.captchaToken,
-        ipAddress = extractClientIp(httpRequest),  // Added by controller
-        userAgent = httpRequest.getHeader("User-Agent"),
-        deviceFingerprint = httpRequest.getHeader("X-Device-Fingerprint")
-    )
-    // 2. Dispatch to handler
-    val result = loginHandler.handle(command)
-    // 3. Map result → ResponseEntity
-    return when (result) {
-        is LoginResult.Success -> ResponseEntity.ok(result.response)
-        is LoginResult.MfaRequired -> ResponseEntity.ok(mapOf(...))
-    }
-}
-```
-
----
-
-## 7. Annotations Used
-
-| Annotation | Package | Purpose |
-|-----------|---------|---------|
-| `@field:NotBlank` | `jakarta.validation.constraints` | Non-empty string validation |
-| `@field:Email` | `jakarta.validation.constraints` | Email format validation |
-| `@field:Size(min, max)` | `jakarta.validation.constraints` | Length constraints |
-| `@Valid` | `jakarta.validation` | Enable validation on request body |
-| `@RequestBody` | `org.springframework.web.bind.annotation` | JSON body binding |
-| `@RequestHeader` | `org.springframework.web.bind.annotation` | Header extraction |
+- No `extends Base*Request` pattern (Kotlin data classes, no base request DTO)
+- No `@Getter`, `@Builder`, `@SuperBuilder` (Lombok not used — pure Kotlin data classes)
+- No `Filter` DTOs for anonymous feature

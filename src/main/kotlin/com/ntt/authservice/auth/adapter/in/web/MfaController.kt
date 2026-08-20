@@ -74,6 +74,32 @@ class MfaController(
         )
     }
 
+    /**
+     * Get recovery codes for the authenticated user (FR-001).
+     * Returns remaining count only (codes are shown once on generation).
+     */
+    @GetMapping("/recovery-codes")
+    fun getRecoveryCodeCount(): ResponseEntity<Map<String, Long>> {
+        val userId = getCurrentUserId()
+        val remaining = mfaService.getRemainingRecoveryCodeCount(userId)
+        return ResponseEntity.ok(mapOf("remainingCodes" to remaining))
+    }
+
+    /**
+     * Regenerate recovery codes — generates 10 new single-use codes (FR-001).
+     * Previous codes are invalidated.
+     */
+    @PostMapping("/recovery-codes/regenerate")
+    fun regenerateRecoveryCodes(): ResponseEntity<Map<String, Any>> {
+        val userId = getCurrentUserId()
+        val codes = mfaService.generateRecoveryCodes(userId)
+        return ResponseEntity.ok(mapOf(
+            "codes" to codes,
+            "count" to codes.size,
+            "warning" to "Save these codes — they will not be shown again."
+        ))
+    }
+
     private fun getCurrentUserId(): Long {
         return (SecurityContextHolder.getContext().authentication?.principal as? String)?.toLong()
             ?: throw com.ntt.authservice.shared.exception.InvalidCredentialsException()

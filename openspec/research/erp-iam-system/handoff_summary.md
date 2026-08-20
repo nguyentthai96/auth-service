@@ -1,180 +1,117 @@
-# Handoff Summary — ERP IAM System
+# Research Handoff: ERP IAM System
 
-> Feature: Enterprise Identity & Access Management (3 Modules)
-> Status: Research Complete ✅
-> Created: 2026-08-05
+> Bridge document — tóm tắt kết quả research để downstream workflows (`/wf_brainstorm_openspec`, `/wf_pre_openspec`) có thể tiếp nhận context nhanh.
 
 ---
 
-## 1. Executive Summary
+## Metadata
 
-### Mục tiêu
-Thiết kế và triển khai hệ thống IAM hoàn chỉnh cho ERP enterprise, chia thành 3 microservice:
-- **auth-service**: Authentication, JWT, MFA, OAuth2/SSO, RBAC, PBAC
-- **account-service**: User profile, preferences, device, session management
-- **system-admin-service**: Menu permission, organization, API partner, approval workflow, audit
-
-### Kết quả nghiên cứu
-- **Gap Coverage hiện tại**: 18% (9/49 features đã có)
-- **Recommendation**: HYBRID BUILD — custom build + adopt libraries (Bucket4j) + optional Keycloak
-- **Estimated effort**: ~10-13 weeks (4 phases)
-- **Open source adopted**: Bucket4j (rate limiting)
-- **Open source as optional**: Keycloak (IdP)
+| Mục | Nội dung |
+|-----|----------|
+| **Feature** | ERP IAM System (3 Modules: auth-service, account-service, system-admin-service) |
+| **Ngày hoàn thành** | 2026-08-05 |
+| **Recommendation** | Hybrid build (custom + Bucket4j + optional Keycloak) |
+| **Research directory** | `openspec/research/erp-iam-system/` |
+| **Status** | complete |
 
 ---
 
-## 2. Module Feature Summary
+## 1. Recommendation
 
-### AUTH-SERVICE (Xác thực & Phân quyền)
-
-| Feature | Đã có | Cần thêm |
-|---------|-------|----------|
-| Login/Register | ✅ | - |
-| JWT Token Management | ✅ | RS256 support, introspection |
-| RBAC Engine | ✅ | - |
-| PBAC Policy Engine | ✅ | - |
-| Account Lock/Unlock | ✅ | - |
-| **MFA/2FA** | ❌ | OTP SMS/Email, TOTP, CAPTCHA, Recovery codes |
-| **OAuth2/SSO** | ❌ | Keycloak adapter, Google/MS SSO, auto-provision |
-| **Password Policy** | ❌ | Configurable rules, history, expiry |
-| **Logout/Revoke** | ⚠️ Partial | Force logout, logout all sessions |
-
-### ACCOUNT-SERVICE (Quản lý tài khoản)
-
-| Feature | Đã có | Cần thêm |
-|---------|-------|----------|
-| **User Profile** | ❌ | Full CRUD, avatar, contacts |
-| **Preferences** | ❌ | UI/notification/privacy settings |
-| **Device Management** | ❌ | Trust device, remote logout |
-| **Session Management** | ❌ | Active sessions, concurrent policy |
-| **Login History** | ❌ | IP, device, location tracking |
-| **Account Lifecycle** | ❌ | Deactivate, delete (GDPR), export |
-
-### SYSTEM-ADMIN-SERVICE (Quản trị hệ thống)
-
-| Feature | Đã có | Cần thêm |
-|---------|-------|----------|
-| **Menu Permission** | ❌ | Tree structure, button-level, role assign, user override |
-| **Organization** | ❌ | Department tree, positions, user assignment |
-| **API Partner** | ❌ | Partner registration, API key lifecycle, rate limiting |
-| **Approval Workflow** | ❌ | Dynamic engine, multi-step, conditional routing |
-| **System Config** | ❌ | Key-value config, feature flags |
-| **Audit Trail** | ❌ | Immutable logs, export |
-| **Tenant Config** | ❌ | Domain-level branding/policy config |
+**Hybrid Build** — Custom build trên nền tảng base-core đã có (RBAC, PBAC, JWT, MFA, SSO, session management) + adopt Bucket4j cho rate limiting + optional Keycloak cho SSO delegation. Không có open source nào cover business-specific features (menu permission, org management, approval workflow) nên custom build là bắt buộc.
 
 ---
 
-## 3. Base-Core Extensions Needed
+## 2. Key Findings
 
-| Extension | Target Module | Priority | Description |
-|-----------|--------------|----------|-------------|
-| `TreeEntity<T>` | base-model | P0 | Abstract entity cho tree structures (menu, department) |
-| `@Audited` + AuditLogInterceptor | common-log | P1 | AOP-based audit trail creation |
-| `ApiKeyAuthenticationFilter` | base-security-starter | P1 | API key validation filter |
-| Rate limiting integration | base-security-starter | P1 | Bucket4j + Redis distributed rate limiting |
-| MFA filter chain support | base-security-starter | P1 | Partial auth → 2FA flow support |
-
----
-
-## 4. Database Impact
-
-| Service | New Tables | Estimated DDL Lines |
-|---------|-----------|-------------------|
-| auth-service | 6 tables | ~150 lines |
-| account-service | 7 tables | ~180 lines |
-| system-admin-service | 17 tables | ~400 lines |
-| **Total** | **30 tables** | **~730 lines** |
+| Category | Finding | Source |
+|----------|---------|-------|
+| Open Source | Keycloak (9.25/10) — optional IdP, không adopt trực tiếp. Bucket4j (8.35/10) — **ADOPT** cho rate limiting. Cerbos, OpenFGA, Casbin — skip. | [opensource_findings.md](./opensource_findings.md) |
+| Web Research | Spring Security 7 native MFA, Permission-First approach, Stripe API key pattern, custom state machine cho workflow. 14 unique sources. | [web_research.md](./web_research.md) |
+| Gap Coverage | 18% current coverage (9/49 features). auth-service has strong foundation. account-service + system-admin-service = stub only. | [comparison_analysis.md](./comparison_analysis.md) |
+| Current System | auth-service đã có: RBAC Engine, PBAC PolicyEvaluator, JWT (RS256), MFA (TOTP + OTP), SSO adapter, session management, E2EE, anonymous sessions, CQRS handlers. Clean Architecture with Hexagonal pattern. | [research_brief.md](./research_brief.md) |
 
 ---
 
-## 5. Implementation Phases
+## 3. Use Cases Identified
 
-```mermaid
-gantt
-    title ERP IAM Implementation Roadmap
-    dateFormat  YYYY-MM-DD
-    
-    section Phase 1 - Foundation (P0)
-    User Profile CRUD           :p1_1, 2026-08-11, 5d
-    Menu Item CRUD (tree)       :p1_2, 2026-08-11, 5d
-    Menu Permission assignment  :p1_3, after p1_2, 3d
-    User menu tree API          :p1_4, after p1_3, 2d
-    Organization (Dept/Position):p1_5, 2026-08-18, 5d
-    Audit Trail                 :p1_6, 2026-08-18, 3d
-    base-core TreeEntity        :p1_7, 2026-08-11, 2d
-    
-    section Phase 2 - Security (P1)
-    MFA/2FA Engine              :p2_1, 2026-09-01, 5d
-    CAPTCHA Integration         :p2_2, after p2_1, 2d
-    Password Policy Engine      :p2_3, 2026-09-01, 3d
-    OAuth2/SSO (Keycloak)       :p2_4, 2026-09-08, 5d
-    API Partner Management      :p2_5, 2026-09-08, 7d
-    Device Management           :p2_6, 2026-09-15, 3d
-    Session Management          :p2_7, 2026-09-15, 3d
-    
-    section Phase 3 - Advanced (P2)
-    Approval Workflow Engine    :p3_1, 2026-09-22, 10d
-    System Configuration        :p3_2, 2026-09-22, 3d
-    Feature Flags               :p3_3, after p3_2, 2d
-    User Preferences            :p3_4, 2026-09-29, 3d
-    Account Lifecycle (GDPR)    :p3_5, 2026-09-29, 3d
-    
-    section Phase 4 - Integration
-    Kafka event integration     :p4_1, 2026-10-06, 5d
-    E2E integration tests       :p4_2, after p4_1, 5d
-    API documentation           :p4_3, 2026-10-13, 3d
-```
+| UC ID | Tên | Mô tả ngắn | Priority |
+|-------|-----|------------|----------|
+| UC-MFA-01..05 | MFA Management | Enable/disable 2FA, login with MFA, recovery codes | Must |
+| UC-SSO-01..04 | SSO Integration | Login via Keycloak/Google/Microsoft, account linking | Must |
+| UC-PWD-01..02 | Password Policy | Configurable rules per domain, force reset | Must |
+| UC-PROF-01..05 | User Profile | CRUD profile, change email/phone, avatar upload | Must |
+| UC-DEV-01..03 | Device Management | List devices, trust device, remote logout | Should |
+| UC-SES-01..02 | Session Management | Active sessions, terminate session | Should |
+| UC-LIFE-01..03 | Account Lifecycle | Deactivate, deletion request (GDPR), data export | Should |
+| UC-MENU-01..05 | Menu Permission | Tree CRUD, role assign, user override, button-level | Must |
+| UC-ORG-01..05 | Organization | Department tree, positions, user assignment | Must |
+| UC-API-01..06 | API Partner | Register, key lifecycle, rate limit, usage dashboard | Must |
+| UC-WF-01..06 | Approval Workflow | Define, submit, approve/reject, delegate, escalation | Should |
+| UC-AUDIT-01..02 | Audit Trail | Search + export immutable logs | Must |
 
 ---
 
-## 6. Key Decisions Made
+## 4. Technical Highlights
 
-| Decision | Choice | Rationale |
-|----------|--------|-----------|
-| Authorization model | RBAC + PBAC (custom) | Already implemented, fits business needs |
-| Menu permission storage | Database + Redis cache | Dynamic, admin-configurable, fast retrieval |
-| Rate limiting library | Bucket4j + Redis | Proven, Spring Boot native, distributed |
-| IdP integration | Keycloak (optional adapter) | Avoid lock-in, adapter pattern |
-| MFA implementation | Spring Security 7 native | Framework-native, reduces custom code |
-| TOTP library | java-otp | Standard choice for JVM |
-| Approval workflow | Custom state machine | No suitable open source for ERP workflows |
-| Inter-service communication | REST (sync) + Kafka (async) | Already in tech stack |
-
----
-
-## 7. Next Steps
-
-### Immediate (Post-Research)
-```
-→ /wf_pre_openspec erp-iam-system business_analysis
-  (Uses business analysis as URD source)
-  
-→ /wf_brainstorm_openspec erp-iam-system
-  (Deep thinking with research context)
-  
-→ /wf_openspec erp-iam-system
-  (Generate implementation artifacts — entities, handlers, tests)
-```
-
-### Recommended Order
-1. **Phase 1 — system-admin-service (Menu + Org)** → Unblock frontend development
-2. **Phase 1 — account-service (Profile)** → User management foundation
-3. **Phase 2 — auth-service (MFA + SSO)** → Security hardening
-4. **Phase 2 — system-admin-service (API Partner)** → Partner onboarding
-5. **Phase 3 — system-admin-service (Workflow)** → ERP approval engine
-6. **Phase 4 — Integration + Tests** → Production readiness
+| Aspect | Decision/Finding |
+|--------|-----------------|
+| Architecture | Clean Architecture (Hexagonal) — adapter/in/web, adapter/out/persistence, application |
+| Data model | ~30+ entities across 3 services, 3 ERDs |
+| APIs | 57+ endpoints (15 auth, 14 account, 28 system-admin) |
+| Key dependencies | Bucket4j (rate limiting), dev.samstevens.totp (MFA), Passay (password policy), Google Tink (E2EE) |
+| Caching | Caffeine L1 (30s) + Redis L2 (5-30min TTL), 6 cache patterns |
+| Inter-service | REST (sync) + Kafka (async), 4 event topics |
+| Risk areas | 1. Scope creep (mitigate: 4-phase rollout) 2. Approval workflow state complexity (mitigate: immutable versions) |
 
 ---
 
-## 8. Generated Files
+## 5. Ready for
 
-| File | Description | Status |
-|------|-------------|--------|
-| [research_brief.md](research_brief.md) | Scope, keywords, current system analysis | ✅ |
-| [business_analysis.md](business_analysis.md) | Use cases, entities, business rules, traceability | ✅ |
-| [technical_spec.md](technical_spec.md) | Architecture, ERD, API spec, caching, security | ✅ |
-| [opensource_findings.md](opensource_findings.md) | 5 projects evaluated, scoring matrix | ✅ |
-| [web_research.md](web_research.md) | 4 search iterations, products evaluated | ✅ |
-| [comparison_analysis.md](comparison_analysis.md) | Build/Buy/Adopt, gap analysis (18%), risks | ✅ |
-| [validation_report.md](validation_report.md) | 5/5 checks passed | ✅ |
-| [handoff_summary.md](handoff_summary.md) | This document | ✅ |
+| Workflow | Command | Khi nào dùng |
+|----------|---------|-------------|
+| Brainstorm (deep thinking) | `/wf_brainstorm_openspec erp-iam-system --from-research` | Muốn explore thêm, có nhiều hướng tiếp cận |
+| URD Analysis | `/wf_pre_openspec openspec/research/erp-iam-system/business_analysis.md` | Đã rõ requirements, muốn formalize |
+| OpenSpec (direct) | `/wf_openspec erp-iam-system` | Đã rõ mọi thứ, muốn generate artifacts ngay |
+
+---
+
+## 6. Research Artifacts
+
+| File | Phase | Content |
+|------|-------|---------|
+| [research_brief.md](./research_brief.md) | 1 | Scope, 8 keywords, current system analysis (17 features scanned, tech stack constraints) |
+| [opensource_findings.md](./opensource_findings.md) | 2 | 5 open source projects evaluated with scoring matrix + gap analysis |
+| [web_research.md](./web_research.md) | 3 | 4 search iterations, 14 unique sources, 5 products evaluated |
+| [comparison_analysis.md](./comparison_analysis.md) | 4 | Build vs Buy vs Adopt, gap analysis (18% coverage), risk assessment |
+| [business_analysis.md](./business_analysis.md) | 5 | 47 use cases, 16 FRs, 8 NFRs, traceability matrix, business rules |
+| [technical_spec.md](./technical_spec.md) | 6 | 3 ERDs, 57+ API endpoints, caching strategy, agent implementation notes |
+| [validation_report.md](./validation_report.md) | 7 | 5/5 checks passed on first iteration |
+
+---
+
+## 7. Review Status
+
+| Check | Status | Notes |
+|-------|:---:|-------|
+| Source Verification | ✅ | All 14 sources verified (spring.io, keycloak.org, OWASP, NIST, GitHub) |
+| Consistency | ✅ | UCs ↔ APIs aligned, entities ↔ ERDs aligned, recommendations ↔ tech choices aligned |
+| Completeness | ✅ | All 3 modules covered, 47 UCs, 30+ entities, 57+ endpoints |
+| Feasibility | ✅ | Feasible with Spring Boot 4.1 + Kotlin + PostgreSQL. base-core reuse verified. |
+| Gap Coverage | ✅ | All 9 gaps from comparison_analysis addressed in tech spec |
+
+---
+
+## 8. Implementation Phases
+
+| Phase | Focus | Effort | Key Deliverables |
+|-------|-------|--------|-----------------|
+| Phase 1 — Foundation (P0) | Menu Permission, Organization, Profile, Audit | 3-4 weeks | Menu tree CRUD, dept/position CRUD, profile CRUD, audit trail |
+| Phase 2 — Security (P1) | MFA enhance, SSO, Password Policy, API Partner | 3-4 weeks | MFA engine, Keycloak adapter, API key + rate limiting |
+| Phase 3 — Advanced (P2) | Approval Workflow, System Config, Feature Flags | 2-3 weeks | Workflow engine, config CRUD, feature flags |
+| Phase 4 — Integration | Kafka events, E2E tests, API docs | 1-2 weeks | Inter-service events, integration tests, OpenAPI spec |
+
+---
+
+> **Generated by**: `wf_feature_research` workflow
+> **Next step**: Choose a downstream workflow from section 5

@@ -2,8 +2,8 @@
   "feature": "auth-core-features",
   "workflow": "wf_openspec",
   "outcome": "success",
-  "timestamp": "2026-08-19T08:55:35.754514+00:00",
-  "duration_seconds": 763,
+  "timestamp": "2026-08-20T03:00:35.893703+00:00",
+  "duration_seconds": 381,
   "tokens_used": 0,
   "prompt_layer_tokens": {},
   "output_artifacts": [

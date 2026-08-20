@@ -1,0 +1,13 @@
+{
+  "feature": "api-response-i18n-standard",
+  "workflow": "wf_archive",
+  "outcome": "success",
+  "timestamp": "2026-08-20T02:36:51.136796+00:00",
+  "duration_seconds": 87,
+  "tokens_used": 0,
+  "prompt_layer_tokens": {},
+  "output_artifacts": [],
+  "errors": [],
+  "lesson_extracted": null,
+  "recovery_pattern": null
+}

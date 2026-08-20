@@ -31,6 +31,9 @@ class MfaService(
     companion object {
         private const val TOTP_SETUP_PREFIX = "mfa:totp:setup:"
         private const val SSO_ONLY_MARKER = "!SSO_ONLY!"
+        private const val RECOVERY_CODES_PREFIX = "mfa:recovery:"
+        private const val RECOVERY_CODE_COUNT = 10
+        private const val RECOVERY_CODE_LENGTH = 8
     }
 
     /**
@@ -239,4 +242,102 @@ class MfaService(
 
     data class TotpSetupResult(val secret: String, val qrCodeUri: String, val issuer: String)
     data class MfaSettingsResult(val mfaEnabled: Boolean, val mfaMethod: String)
+
+    // ===============================
+    // Recovery Codes (FR-001)
+    // ===============================
+
+    companion object {
+        private const val TOTP_SETUP_PREFIX = "mfa:totp:setup:"
+        private const val SSO_ONLY_MARKER = "!SSO_ONLY!"
+        private const val RECOVERY_CODES_PREFIX = "mfa:recovery:"
+        private const val RECOVERY_CODE_COUNT = 10
+        private const val RECOVERY_CODE_LENGTH = 8
+    }
+
+    /**
+     * Generate recovery codes for a user. Called automatically on MFA setup
+     * or on-demand via regeneration endpoint (FR-001).
+     * Generates 10 single-use codes, stored as BCrypt hashes in Redis.
+     */
+    fun generateRecoveryCodes(userId: Long): List<String> {
+        val user = userRepository.findById(userId).orElseThrow {
+            com.ntt.authservice.shared.exception.ResourceNotFoundException("User", userId)
+        }
+
+        if (!user.mfaEnabled) {
+            throw com.ntt.authservice.shared.exception.MfaCodeInvalidException("MFA must be enabled to generate recovery codes")
+        }
+
+        val plainCodes = (1..RECOVERY_CODE_COUNT).map { generateSecureCode() }
+
+        // Store hashed codes in Redis (hash each code for security)
+        val hashedCodes = plainCodes.map { hashRecoveryCode(it) }
+        val key = RECOVERY_CODES_PREFIX + userId
+        redisTemplate.delete(key)
+        hashedCodes.forEach { hash ->
+            redisTemplate.opsForList().rightPush(key, hash)
+        }
+        // Recovery codes don't expire — valid until regenerated or MFA disabled
+
+        log.info("Recovery codes generated for userId={}, count={}", userId, RECOVERY_CODE_COUNT)
+        auditLogService.logEvent(userId, AuditAction.MFA_SETUP, "User", userId.toString(), "action=recovery_codes_generated")
+
+        return plainCodes
+    }
+
+    /**
+     * Verify a recovery code — single-use, removes after successful verification.
+     * Returns true if code is valid, throws exception otherwise.
+     */
+    fun verifyRecoveryCode(userId: Long, code: String): Boolean {
+        val key = RECOVERY_CODES_PREFIX + userId
+        val storedHashes = redisTemplate.opsForList().range(key, 0, -1) ?: emptyList()
+
+        if (storedHashes.isEmpty()) {
+            throw com.ntt.authservice.shared.exception.MfaCodeInvalidException("No recovery codes available")
+        }
+
+        val matchIndex = storedHashes.indexOfFirst { verifyRecoveryCodeHash(code, it) }
+        if (matchIndex == -1) {
+            auditLogService.logEvent(userId, AuditAction.MFA_VERIFY_FAILED, "User", userId.toString(), "method=RECOVERY")
+            throw com.ntt.authservice.shared.exception.MfaCodeInvalidException("Invalid recovery code")
+        }
+
+        // Remove used code (single-use)
+        val usedHash = storedHashes[matchIndex]
+        redisTemplate.opsForList().remove(key, 1, usedHash)
+
+        log.info("Recovery code used for userId={}, remaining={}", userId, storedHashes.size - 1)
+        auditLogService.logEvent(userId, AuditAction.MFA_VERIFY_SUCCESS, "User", userId.toString(), "method=RECOVERY, remaining=${storedHashes.size - 1}")
+
+        return true
+    }
+
+    /**
+     * Get remaining recovery code count for a user.
+     */
+    fun getRemainingRecoveryCodeCount(userId: Long): Long {
+        val key = RECOVERY_CODES_PREFIX + userId
+        return redisTemplate.opsForList().size(key) ?: 0
+    }
+
+    private fun generateSecureCode(): String {
+        val chars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789" // exclude confusable chars: I, O, 0, 1
+        return (1..RECOVERY_CODE_LENGTH)
+            .map { chars[java.security.SecureRandom().nextInt(chars.length)] }
+            .joinToString("")
+            .chunked(4)
+            .joinToString("-") // Format: XXXX-XXXX
+    }
+
+    private fun hashRecoveryCode(code: String): String {
+        val normalized = code.replace("-", "").uppercase()
+        val digest = java.security.MessageDigest.getInstance("SHA-256")
+        return digest.digest(normalized.toByteArray()).joinToString("") { "%02x".format(it) }
+    }
+
+    private fun verifyRecoveryCodeHash(plainCode: String, storedHash: String): Boolean {
+        return hashRecoveryCode(plainCode) == storedHash
+    }
 }

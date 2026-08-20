@@ -1,192 +1,62 @@
-# Service Structure: anonymous-login-optimization
+# Service Structure
 
-> _Generated: 2025-01-20_
-> Candidate Service: auth-service (`src/main/kotlin/com/ntt/authservice/`)
+_Generated: 2025-01-20_
 
----
+## auth-service
 
-## 1. Package Structure
+### Detected Packages
 
-```
-com.ntt.authservice/
-├── auth/                                      # Auth bounded context
-│   ├── domain/
-│   │   ├── model/
-│   │   │   ├── User.kt                        # Domain entity
-│   │   │   ├── UserStatus.kt                  # Status sealed class
-│   │   │   ├── AuthToken.kt                   # Domain value object
-│   │   │   └── vo/                             # Value objects
-│   │   │       ├── UserId.kt
-│   │   │       ├── PasswordHash.kt
-│   │   │       ├── Email.kt
-│   │   │       └── DomainCode.kt
-│   │   └── service/
-│   │       └── TokenHasher.kt
-│   ├── application/                            # Application layer
-│   │   ├── JwtService.kt                      # JWT token generation/validation
-│   │   ├── AuthService.kt                     # Legacy auth service
-│   │   ├── LoginResult.kt                     # Sealed result type
-│   │   ├── LoginRateLimitService.kt           # Multi-dimensional rate limiting
-│   │   ├── MfaRateLimitService.kt             # MFA rate limiting
-│   │   ├── LoginSessionService.kt             # Session recording
-│   │   ├── SessionPolicyService.kt            # Session policy enforcement
-│   │   ├── SessionCleanupScheduler.kt         # Scheduled cleanup
-│   │   ├── OtpService.kt                      # OTP management
-│   │   ├── TotpService.kt                     # TOTP authenticator
-│   │   ├── MfaService.kt                      # MFA orchestration
-│   │   ├── SsoAdapter.kt                      # SSO integration
-│   │   ├── DomainLookupService.kt             # Domain resolution
-│   │   ├── AltchaCaptchaVerifier.kt           # CAPTCHA verification
-│   │   ├── PasswordPolicyService.kt           # Password policy
-│   │   ├── cipher/                             # E2EE services
-│   │   │   ├── EncryptedAuditService.kt
-│   │   │   ├── X25519KeyExchangeServiceImpl.kt
-│   │   │   ├── CipherVersionNegotiator.kt
-│   │   │   └── DecryptionVaultService.kt
-│   │   ├── command/                            # CQRS commands
-│   │   │   ├── LoginCommand.kt
-│   │   │   ├── LoginHandler.kt
-│   │   │   ├── RegisterCommand.kt
-│   │   │   ├── RegisterHandler.kt
-│   │   │   ├── RefreshTokenCommand.kt
-│   │   │   ├── RefreshTokenHandler.kt
-│   │   │   ├── SwitchDomainCommand.kt
-│   │   │   ├── SwitchDomainHandler.kt
-│   │   │   ├── RevokeSessionsCommand.kt
-│   │   │   ├── RevokeSessionsHandler.kt
-│   │   │   ├── TokenGenerator.kt
-│   │   │   └── AuthDomainEvents.kt
-│   │   ├── query/                              # CQRS queries
-│   │   │   ├── BuildAuthResponseQuery.kt
-│   │   │   └── BuildAuthResponseHandler.kt
-│   │   ├── event/                              # Domain events
-│   │   │   ├── RateLimitExceededEvent.kt
-│   │   │   └── NewDeviceLoginEvent.kt
-│   │   └── port/out/                           # Outbound ports
-│   │       ├── UserPort.kt
-│   │       ├── DomainPort.kt
-│   │       ├── TokenStore.kt
-│   │       ├── CaptchaGateway.kt
-│   │       ├── PermissionCache.kt
-│   │       ├── SsoGateway.kt
-│   │       └── EventPublisher.kt
-│   └── adapter/
-│       ├── in/
-│       │   ├── web/                            # REST controllers
-│       │   │   ├── CqrsAuthController.kt
-│       │   │   ├── AuthController.kt
-│       │   │   ├── SessionController.kt
-│       │   │   ├── AdminSessionController.kt
-│       │   │   ├── TokenController.kt
-│       │   │   ├── MfaController.kt
-│       │   │   ├── CaptchaController.kt
-│       │   │   ├── SsoController.kt
-│       │   │   ├── KeyExchangeController.kt
-│       │   │   ├── AccountLifecycleController.kt
-│       │   │   ├── RateLimitAdminController.kt
-│       │   │   ├── dto/                        # DTOs
-│       │   │   │   ├── AuthResponse.kt
-│       │   │   │   ├── RequestDtos.kt
-│       │   │   │   ├── TokenDtos.kt
-│       │   │   │   ├── MfaDtos.kt
-│       │   │   │   └── SsoDtos.kt
-│       │   │   └── filter/
-│       │   │       └── LoginRateLimitFilter.kt
-│       │   └── kafka/                          # Kafka consumers
-│       └── out/
-│           ├── persistence/                    # JPA persistence
-│           │   ├── entity/
-│           │   ├── mapper/
-│           │   └── repository/
-│           ├── cache/                          # Cache adapters
-│           ├── cipher/                         # Cipher adapters
-│           ├── event/                          # Event publishers
-│           ├── gateway/                        # External gateway impls
-│           ├── http/                           # HTTP clients
-│           └── sso/                            # SSO provider impls
-├── rbac/                                       # RBAC bounded context
-│   ├── domain/model/
-│   ├── domain/service/
-│   ├── application/
-│   ├── adapter/in/web/
-│   └── adapter/out/persistence/
-│       ├── entity/
-│       │   └── PermissionEntities.kt           # Contains TokenBlacklistEntity
-│       ├── mapper/
-│       └── repository/
-│           └── Repositories.kt                 # Contains TokenBlacklistRepository
-├── pbac/                                       # PBAC bounded context
-│   ├── application/
-│   └── adapter/
-└── shared/                                     # Cross-cutting concerns
-    ├── config/
-    │   ├── SecurityConfig.kt
-    │   ├── SecurityProperties.kt
-    │   ├── RedisConfig.kt
-    │   ├── JacksonConfig.kt
-    │   ├── JpaAuditingConfig.kt
-    │   ├── I18nConfig.kt
-    │   └── HttpClientConfig.kt
-    ├── security/
-    │   └── JwtAuthFilter.kt
-    ├── exception/
-    │   ├── AuthExceptions.kt
-    │   ├── AuthCoreExceptions.kt
-    │   ├── AuthErrorCode.kt
-    │   ├── CipherExceptions.kt
-    │   └── GlobalExceptionHandler.kt
-    ├── persistence/
-    │   └── VersionedAuditableEntity.kt
-    ├── audit/
-    │   └── AuditLogService.kt
-    └── i18n/
-        ├── DatabaseMessageSource.kt
-        ├── I18nMessageEntity.kt
-        └── I18nMessageRepository.kt
-```
+- `auth.domain.model` — Domain entities (User, AuthToken, UserStatus), value objects (UserId, Email, PasswordHash)
+- `auth.domain.service` — Domain services (TokenHasher)
+- `auth.application` — Application services: JwtService, AuthService, AnonymousSessionDataService, AnonymousRateLimitService, SessionPromotionService, LoginRateLimitService, MfaRateLimitService, SessionPolicyService, LoginSessionService, MfaService, OtpService, TotpService, PasswordPolicyService, AccountLifecycleService, DomainLookupService, SessionCleanupScheduler, SsoAdapter, AltchaCaptchaVerifier, CaptchaVerifier
+- `auth.application.command` — CQRS commands + handlers: LoginCommand/Handler, RegisterCommand/Handler, AnonymousSessionHandler, RenewAnonymousTokenHandler, RefreshTokenHandler, RevokeSessionsHandler, SwitchDomainHandler, TokenGenerator, AuthDomainEvents
+- `auth.application.event` — Domain event handlers
+- `auth.application.port.out` — Output ports (CaptchaGateway, SsoGateway, UserPort, DomainPort, TokenStore, PermissionCache, EventPublisher)
+- `auth.application.query` — Query handlers
+- `auth.application.cipher` — E2EE cipher services (DecryptionVaultService)
+- `auth.adapter.in.web` — REST controllers: AnonymousAuthController, CqrsAuthController, AuthController, SessionController, MfaController, SsoController, CaptchaController, AccountLifecycleController, AdminSessionController, RateLimitAdminController, TokenController, KeyExchangeController
+- `auth.adapter.in.web.dto` — Request/Response DTOs: AnonymousDtos, RequestDtos, AuthResponse, MfaDtos, SsoDtos, TokenDtos
+- `auth.adapter.in.web.filter` — Request filters: LoginRateLimitFilter
+- `auth.adapter.in.kafka` — Kafka consumer
+- `auth.adapter.out.http` — HTTP gateways: HttpCaptchaGateway, HttpSsoGateway
+- `auth.adapter.out.gateway` — Gateway adapters: CaptchaGatewayAdapter
+- `auth.adapter.out.persistence` — JPA repositories
+- `auth.adapter.out.cipher` — Cipher adapters: RedisAntiReplayValidator, RedisCipherKeySessionResolver
+- `shared.config` — Configuration: SecurityConfig, SecurityProperties, RedisConfig
+- `shared.security` — Security filters: JwtAuthFilter
+- `shared.exception` — Exceptions: AuthException hierarchy, AuthErrorCode enum, GlobalExceptionHandler, AnonymousExceptions, CipherExceptions
+- `shared.i18n` — Internationalization: I18nMessageRepository
+- `shared.audit` — Audit infrastructure
+- `shared.persistence` — Shared persistence utilities
+- `rbac.adapter.out.persistence.entity` — RBAC entities: TokenBlacklistEntity, PermissionEntities
+- `rbac.adapter.out.persistence.repository` — RBAC repositories: TokenBlacklistRepository
+- `pbac.adapter.in.web` — Policy-Based Access Control controllers
 
----
+### Anonymous-Login-Optimization Specific Packages
 
-## 2. Naming Conventions
+- `auth.application` — AnonymousSessionDataService, AnonymousRateLimitService, SessionPromotionService, PromotionResult, AnonymousSessionResult
+- `auth.application.command` — AnonymousSessionHandler, RenewAnonymousTokenHandler, CreateAnonymousSessionCommand, RenewAnonymousTokenCommand
+- `auth.adapter.in.web` — AnonymousAuthController
+- `auth.adapter.in.web.dto` — AnonymousDtos (CreateAnonymousSessionRequest, StoreSessionDataRequest, AnonymousTokenResponse, SessionDataResponse, DataTransferredInfo)
+- `shared.exception` — AnonymousExceptions (AnonymousSessionExpiredException, AnonymousDataLimitExceededException, AnonymousPromotionConflictException, AnonymousRateLimitedException, AnonymousMaxRenewalsException)
 
-| Type | Convention | Example |
-|------|-----------|---------|
-| Controller | `{Feature}Controller` | `CqrsAuthController`, `MfaController`, `SessionController` |
-| Command | `{Action}Command` | `LoginCommand`, `RegisterCommand`, `RefreshTokenCommand` |
-| Command Handler | `{Action}Handler` | `LoginHandler`, `RegisterHandler`, `RefreshTokenHandler` |
-| Service | `{Domain}Service` | `JwtService`, `LoginRateLimitService`, `SessionPolicyService` |
-| Port | `{Domain}Port` / `{Domain}Gateway` / `{Domain}Cache` | `UserPort`, `CaptchaGateway`, `PermissionCache` |
-| DTO | `{Name}Dto` / `{Name}RequestDto` / `{Name}Response` | `LoginRequestDto`, `AuthResponse`, `RegisterRequestDto` |
-| Entity | `{Name}Entity` | `TokenBlacklistEntity` |
-| Repository | `{Name}Repository` | `TokenBlacklistRepository` |
-| Exception | `{Name}Exception` | `InvalidCredentialsException`, `RateLimitExceededException` |
-| Error Code | `AuthErrorCode.{SCREAMING_SNAKE}` | `AuthErrorCode.INVALID_CREDENTIALS`, `AuthErrorCode.RATE_LIMITED` |
-| Config | `{Name}Config` / `{Name}Properties` | `SecurityConfig`, `SecurityProperties` |
-| Filter | `{Name}Filter` | `JwtAuthFilter`, `LoginRateLimitFilter` |
-| Event | `{Name}Event` | `RateLimitExceededEvent`, `NewDeviceLoginEvent` |
+### Not Found
 
----
+- `*/factory/` — NOT FOUND (no factory package; token generation done by `TokenGenerator` component)
+- `*/repository/` under `auth` — NOT FOUND (repositories are in `rbac.adapter.out.persistence.repository`)
 
-## 3. Architecture Pattern
+### Naming Convention
 
-- **Hexagonal (Ports & Adapters)**: Clear separation via `port/out/` interfaces
-- **CQRS**: Commands and Queries separated (`command/`, `query/` packages)
-- **Clean Architecture**: Domain → Application → Adapter layers
-- **DDD Bounded Contexts**: `auth`, `rbac`, `pbac` as separate modules
-- **Shared Kernel**: `shared/` package for cross-cutting concerns
-
----
-
-## 4. Technology Stack
-
-| Technology | Usage | Evidence |
-|-----------|-------|---------|
-| Kotlin | Primary language | All `.kt` files |
-| Spring Boot | Framework | `@RestController`, `@Service`, `@Component`, `@Configuration` |
-| Spring Security | Auth framework | `SecurityFilterChain`, `OncePerRequestFilter`, `SecurityContextHolder` |
-| JJWT (io.jsonwebtoken) | JWT library | `Jwts.builder()`, `Jwts.parser()`, `Jwts.SIG.RS256` |
-| Spring Data JPA | Persistence | `JpaRepository<>` interfaces |
-| Spring Data Redis | Caching/Rate limiting | `StringRedisTemplate`, `RedisTemplate<String, Any>` |
-| Jakarta Validation | Input validation | `@field:NotBlank`, `@field:Email`, `@field:Size` |
-| base-core | Shared library | `BusinessException`, `ErrorCodeBase`, `BaseControllerAdvice` |
-| eventsourcing-utils | CQRS framework | `CommandHandler<C, R>`, `Command<R>` |
+- **Controllers**: `*Controller.kt` (e.g., `AnonymousAuthController`, `CqrsAuthController`)
+- **Handlers (CQRS)**: `*Handler.kt` (e.g., `AnonymousSessionHandler`, `LoginHandler`)
+- **Commands (CQRS)**: `*Command.kt` (e.g., `CreateAnonymousSessionCommand`, `LoginCommand`)
+- **Services**: `*Service.kt` (e.g., `AnonymousSessionDataService`, `SessionPromotionService`)
+- **DTOs**: `*Dtos.kt` or `*Dto.kt` (e.g., `AnonymousDtos.kt`, `LoginRequestDto`)
+- **Response**: `*Response.kt` (e.g., `AuthResponse.kt`, `AnonymousTokenResponse`)
+- **Results**: `*Result.kt` (e.g., `PromotionResult`, `LoginResult`, `AnonymousSessionResult`)
+- **Properties**: `*Properties.kt` (e.g., `SecurityProperties`, nested `AnonymousProperties`)
+- **Exceptions**: `*Exception.kt` or `*Exceptions.kt` (e.g., `AnonymousExceptions.kt`)
+- **Config**: `*Config.kt` (e.g., `SecurityConfig`, `RedisConfig`)
+- **Filter**: `*Filter.kt` (e.g., `JwtAuthFilter`, `LoginRateLimitFilter`)
+- **Gateway**: `*Gateway.kt` (e.g., `CaptchaGateway`, `HttpCaptchaGateway`)
+- **Port**: interfaces in `port/out/` (e.g., `CaptchaGateway`, `UserPort`)

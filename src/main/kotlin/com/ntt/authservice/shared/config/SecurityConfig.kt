@@ -1,6 +1,7 @@
 package com.ntt.authservice.shared.config
 
 import com.ntt.authservice.auth.adapter.`in`.web.filter.LoginRateLimitFilter
+import com.ntt.authservice.auth.adapter.`in`.web.filter.ServiceAuthFilter
 import com.ntt.authservice.shared.security.JwtAuthFilter
 import org.springframework.beans.factory.annotation.Value
 import org.springframework.boot.context.properties.EnableConfigurationProperties
@@ -24,6 +25,7 @@ import org.springframework.web.cors.UrlBasedCorsConfigurationSource
 class SecurityConfig(
     private val jwtAuthFilter: JwtAuthFilter,
     private val loginRateLimitFilter: LoginRateLimitFilter,
+    private val serviceAuthFilter: ServiceAuthFilter,
     private val securityProperties: SecurityProperties,
     @Value("\${app.cors.allowed-origins:http://localhost:3000}")
     private val allowedOrigins: String
@@ -57,6 +59,8 @@ class SecurityConfig(
                     .requestMatchers("/api/v1/auth/anonymous").permitAll()
                     // Anonymous session — authenticated with ROLE_ANONYMOUS
                     .requestMatchers("/api/v1/auth/anonymous/**").hasRole("ANONYMOUS")
+                    // Internal service endpoints — requires service JWT (FR-021)
+                    .requestMatchers("/api/internal/**").hasRole("SERVICE")
                     .requestMatchers("/actuator/**").permitAll()
                     .requestMatchers(HttpMethod.OPTIONS, "/**").permitAll()
                     // Authenticated endpoints
@@ -69,6 +73,7 @@ class SecurityConfig(
             }
             .addFilterBefore(loginRateLimitFilter, UsernamePasswordAuthenticationFilter::class.java)
             .addFilterBefore(jwtAuthFilter, UsernamePasswordAuthenticationFilter::class.java)
+            .addFilterBefore(serviceAuthFilter, UsernamePasswordAuthenticationFilter::class.java)
 
         return http.build()
     }

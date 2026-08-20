@@ -1,653 +1,486 @@
-# Business Analysis — ERP IAM System (3 Modules)
+# Tài liệu phân tích nghiệp vụ: ERP IAM System
 
-> Feature: Enterprise Identity & Access Management
-> Version: 1.0
-> Created: 2026-08-05
+> Phân tích nghiệp vụ chi tiết — chia nhỏ theo use case, đặc tả ngữ nghĩa từng chức năng.
 
 ---
 
-## 1. Tổng Quan Kiến Trúc Phân Chia 3 Module
+## 1. Tổng quan (Overview)
+
+### 1.1 Bối cảnh nghiệp vụ (Business Context)
+Hệ thống ERP boilerplate hiện có auth-service với authentication cơ bản (login/register, JWT, RBAC/PBAC, MFA, SSO, session management) nhưng thiếu nhiều tính năng enterprise-grade: dynamic menu permission, organization management, API partner management, approval workflow. Account-service và system-admin-service chỉ có stub code. Cần xây dựng IAM hoàn chỉnh chia 3 microservice với bounded contexts rõ ràng.
+
+### 1.2 Mục tiêu (Objectives)
+
+| # | Mục tiêu | KPI đo lường | Độ ưu tiên |
+|---|---------|-------------|-----------|
+| O-01 | Authentication hoàn chỉnh (MFA, SSO, password policy) | MFA enrollment rate > 50% enterprise users | High |
+| O-02 | Dynamic menu permission (tree + button-level) | Frontend render < 500ms, cache hit > 80% | High |
+| O-03 | Organization management (department, position) | Admin CRUD < 200ms response | High |
+| O-04 | API partner management (key, rate limit, quota) | Rate limit accuracy > 99%, 429 response < 50ms | High |
+| O-05 | Dynamic approval workflow engine | Workflow step completion notification < 5s | Medium |
+| O-06 | User profile management (tách biệt auth data) | Profile CRUD < 200ms, separate DB | High |
+| O-07 | Audit trail cho mọi thao tác admin | 100% admin actions logged, immutable | High |
+
+### 1.3 Phạm vi (Scope)
+
+| In Scope | Out of Scope |
+|----------|-------------|
+| User lifecycle (CRUD, lock/unlock, soft-delete) | Business domain logic (booking, payment) |
+| Authentication: username/password, OAuth2 SSO, MFA | Frontend implementation (API contracts only) |
+| RBAC: Role → Group → User hierarchy | Email/SMS provider (adapter pattern) |
+| PBAC: Dynamic policy conditions | Notification service (separate microservice) |
+| Menu permission: Dynamic tree + button-level | Payment/billing cho API partners |
+| API Partner: API key, rate limiting, quota | Mobile biometric auth |
+| Organization: Department, position, hierarchy | |
+| Approval workflow: Dynamic multi-step | |
+| Audit logging: All admin actions | |
+
+### 1.4 Stakeholders & Actors
+
+| Actor | Loại | Mô tả | Tương tác chính |
+|-------|------|--------|----------------|
+| End User | Primary | Người dùng hệ thống ERP | Login, MFA, view profile, use features |
+| System Admin | Primary | Quản trị viên hệ thống | Menu config, org management, user management |
+| Domain Admin | Primary | Quản trị viên domain/tenant | Role assignment, policy config, audit review |
+| API Partner | Primary | Đối tác tích hợp API | API key management, usage monitoring |
+| Approver | Primary | Người phê duyệt | Approve/reject workflow steps |
+| Keycloak IdP | External System | Optional identity provider | OAuth2/OIDC delegation |
+| Redis | External System | Cache + state store | Permission cache, rate limiting, OTP state |
+| Kafka | External System | Message broker | Inter-service events |
+
+---
+
+## 2. Use Case Diagram (tổng quan)
 
 ```mermaid
-graph TB
-    subgraph "External"
-        FE["Frontend App"]
-        MOBILE["Mobile App"]
-        PARTNER["API Partner"]
-        KC["Keycloak (Optional)"]
-    end
-
-    subgraph "API Gateway"
-        GW["Gateway + Rate Limiter"]
-    end
-
-    subgraph "auth-service"
-        AUTH["Authentication"]
-        JWT["JWT/Token Management"]
-        MFA["MFA/2FA Engine"]
-        RBAC["RBAC Engine"]
-        PBAC["PBAC Policy Engine"]
-        SSO["OAuth2/SSO Adapter"]
-    end
-
-    subgraph "account-service"
-        PROFILE["User Profile"]
-        PREF["Preferences"]
-        NOTIF["Notification Settings"]
-        SESSION["Session Management"]
-        DEVICE["Device Management"]
-    end
-
-    subgraph "system-admin-service"
-        MENU["Menu Permission"]
-        ORG["Organization/Dept"]
-        APPROVE["Approval Workflow"]
-        APIPARTNER["API Partner Mgmt"]
-        AUDIT["Audit Trail"]
-        SYSCONF["System Config"]
-        TENANT["Tenant/Domain Config"]
-    end
-
-    FE --> GW
-    MOBILE --> GW
-    PARTNER --> GW
-    GW --> AUTH
-    GW --> PROFILE
-    GW --> MENU
-    AUTH --> RBAC
-    AUTH --> PBAC
-    AUTH --> MFA
-    AUTH --> SSO
-    SSO --> KC
-    AUTH -.->|"verify user"| PROFILE
-    MENU -.->|"check permission"| RBAC
-
-    style AUTH fill:#2d333b,stroke:#6d5dfc,color:#e6edf3
-    style PROFILE fill:#2d333b,stroke:#3fb950,color:#e6edf3
-    style MENU fill:#2d333b,stroke:#f0883e,color:#e6edf3
-```
-
----
-
-## 2. Nguyên Tắc Phân Chia Module
-
-| Nguyên tắc | Giải thích |
-|------------|------------|
-| **Single Responsibility** | Mỗi service chỉ quản lý 1 domain cụ thể |
-| **Bounded Context** | auth = xác thực + phân quyền, account = profile + preferences, system-admin = cấu hình hệ thống |
-| **Loose Coupling** | Giao tiếp qua REST API hoặc Event, không share database |
-| **High Cohesion** | Các entity liên quan nằm cùng service |
-| **Scalability** | auth-service scale riêng vì traffic authentication cao |
-
----
-
-## 3. Phân Tích Chi Tiết — AUTH-SERVICE
-
-### 3.1 Tính Năng Hiện Có (Đã Triển Khai)
-
-| Feature | Status | Notes |
-|---------|--------|-------|
-| Login/Register | ✅ | Username/Password + domain-aware |
-| JWT Access/Refresh Token | ✅ | HMAC-SHA256, JTI, blacklist |
-| Token Refresh (Rotation) | ✅ | Revoke old → issue new |
-| Domain Switch | ✅ | Switch active domain without re-auth |
-| RBAC Engine | ✅ | User → Group → Role → Permission chain |
-| PBAC Policy Evaluator | ✅ | JSONB conditions, priority, DENY-wins |
-| Account Lock/Unlock | ✅ | Failed login count, timed lock |
-| Password Hashing | ✅ | PasswordEncoder (Argon2 ready) |
-| Permission Check API | ✅ | Single + Batch check endpoints |
-
-### 3.2 Tính Năng Cần Triển Khai
-
-#### AUTH-F01: Multi-Factor Authentication (2FA/MFA)
-**Mô tả:** Hỗ trợ xác thực nhiều lớp — OTP SMS, OTP Email, TOTP (Google Authenticator), CAPTCHA.
-
-**Use Cases:**
-| UC | Mô tả | Flow |
-|----|-------|------|
-| UC-MFA-01 | Enable 2FA cho user | User → chọn method (SMS/Email/TOTP) → xác thực lần đầu → lưu config |
-| UC-MFA-02 | Login với 2FA | Login (password) → partial token → verify OTP → full token |
-| UC-MFA-03 | CAPTCHA verification | Khi login/register → validate reCAPTCHA/hCaptcha token |
-| UC-MFA-04 | Recovery codes | Generate backup codes khi enable 2FA → store hashed |
-| UC-MFA-05 | Disable 2FA | Verify current 2FA → remove config |
-
-**Entities cần thêm:**
-```
-mfa_configs (user_id, method, secret_encrypted, is_active, created_at)
-otp_tokens (user_id, code_hash, channel, expires_at, verified, attempts)
-recovery_codes (user_id, code_hash, used_at)
-```
-
-**Business Rules:**
-- BR-MFA-01: OTP expires sau 5 phút, tối đa 3 lần nhập sai
-- BR-MFA-02: TOTP window = 30 giây, tolerance ±1 step
-- BR-MFA-03: Recovery code dùng 1 lần, generate 10 codes
-- BR-MFA-04: CAPTCHA bắt buộc sau 3 lần login fail
-- BR-MFA-05: Admin có thể enforce 2FA cho toàn domain
-
----
-
-#### AUTH-F02: OAuth2 / SSO Support
-**Mô tả:** Hỗ trợ đăng nhập SSO qua external IdP (Google, Microsoft, Keycloak) + OAuth2 Authorization Server.
-
-**Use Cases:**
-| UC | Mô tả | Flow |
-|----|-------|------|
-| UC-SSO-01 | Login via Keycloak | Redirect → Keycloak login → callback → exchange code → JWT |
-| UC-SSO-02 | Login via Google/Microsoft | OAuth2 Authorization Code flow |
-| UC-SSO-03 | Link external account | User nội bộ link thêm social account |
-| UC-SSO-04 | Auto-provision user | First-time SSO login → auto-create user + default role |
-
-**Entities cần thêm:**
-```
-sso_providers (id, code, name, provider_type, client_id, client_secret_enc, 
-               discovery_url, scopes, auto_provision, status)
-user_sso_links (user_id, provider_id, external_sub, external_email, linked_at)
-```
-
-**Business Rules:**
-- BR-SSO-01: Keycloak là optional downstream — khi enable, JWT validate qua Keycloak public key
-- BR-SSO-02: Auto-provision chỉ khi domain config cho phép
-- BR-SSO-03: Một user có thể link nhiều SSO provider
-- BR-SSO-04: Khi Keycloak disabled, fallback về local JWT (current flow)
-
----
-
-#### AUTH-F03: Enhanced Token Management
-**Mô tả:** Nâng cấp JWT — RS256 support, token introspection, session binding.
-
-**Cần bổ sung:**
-- RS256 key pair generation/rotation
-- Token introspection endpoint (`/api/auth/introspect`)
-- Active session listing + force logout
-- Device fingerprint binding (optional)
-
----
-
-#### AUTH-F04: Password Policy Engine
-**Mô tả:** Configurable password rules per domain.
-
-**Cần bổ sung:**
-```
-password_policies (domain_id, min_length, require_uppercase, require_lowercase,
-                   require_digit, require_special, max_age_days, history_count,
-                   min_change_interval_hours)
-password_history (user_id, password_hash, changed_at)
-```
-
-**Business Rules:**
-- BR-PWD-01: Không cho phép reuse N passwords gần nhất
-- BR-PWD-02: Force change password khi expired
-- BR-PWD-03: Admin có thể force reset password
-
----
-
-## 4. Phân Tích Chi Tiết — ACCOUNT-SERVICE
-
-### 4.1 Hiện Trạng
-- Chỉ có `DefaultSessionManagement.kt` (stub)
-- Đã có dependency: Spring Security, OAuth2 Client, Kafka, Spring Modulith
-
-### 4.2 Tính Năng Cần Triển Khai
-
-#### ACC-F01: User Profile Management
-**Mô tả:** CRUD quản lý thông tin cá nhân user — tách biệt khỏi auth data.
-
-**Use Cases:**
-| UC | Mô tả |
-|----|-------|
-| UC-PROF-01 | View/Update profile (fullName, phone, avatar, address, dateOfBirth, gender) |
-| UC-PROF-02 | Change email (verification required) |
-| UC-PROF-03 | Change phone (OTP required) |
-| UC-PROF-04 | Upload avatar (presigned URL) |
-| UC-PROF-05 | View login history |
-| UC-PROF-06 | Admin view/edit any user profile |
-
-**Entities:**
-```
-user_profiles (user_id, display_name, first_name, last_name, date_of_birth,
-               gender, address, city, country, timezone, locale, avatar_url,
-               bio, metadata_json)
-user_contacts (user_id, contact_type, contact_value, is_primary, is_verified,
-               verified_at)
-login_history (user_id, ip_address, user_agent, device_fingerprint, login_at,
-               login_method, status, country, city)
-```
-
----
-
-#### ACC-F02: User Preferences & Settings
-**Mô tả:** Quản lý cài đặt cá nhân — notification, language, theme, UI settings.
-
-**Entities:**
-```
-user_preferences (user_id, preference_key, preference_value, category)
-notification_settings (user_id, channel, event_type, is_enabled)
-```
-
-**Preference Categories:** UI, Notification, Privacy, Security, Regional
-
----
-
-#### ACC-F03: Device Management
-**Mô tả:** Quản lý thiết bị đã đăng nhập — hỗ trợ trust device, remote logout.
-
-**Entities:**
-```
-user_devices (user_id, device_id, device_name, device_type, os, browser,
-              fingerprint, last_active_at, trusted, trusted_until,
-              push_token, status)
-```
-
-**Use Cases:**
-| UC | Mô tả |
-|----|-------|
-| UC-DEV-01 | List active devices |
-| UC-DEV-02 | Trust device (skip 2FA cho device trusted) |
-| UC-DEV-03 | Revoke device (remote logout) |
-| UC-DEV-04 | Untrust all devices |
-
----
-
-#### ACC-F04: Session Management
-**Mô tả:** Active session tracking, concurrent session policy, force logout.
-
-**Entities:**
-```
-active_sessions (session_id, user_id, device_id, token_jti, created_at,
-                 last_accessed_at, expires_at, ip_address, status)
-```
-
-**Business Rules:**
-- BR-SES-01: Configurable max concurrent sessions per domain
-- BR-SES-02: Admin có thể force terminate session
-- BR-SES-03: Session auto-expire sau N phút inactive
-
----
-
-#### ACC-F05: Account Lifecycle
-**Mô tả:** Deactivation, deletion request, data export (GDPR).
-
-**Use Cases:**
-| UC | Mô tả |
-|----|-------|
-| UC-LIFE-01 | Deactivate account (tạm khóa) |
-| UC-LIFE-02 | Request account deletion (GDPR) |
-| UC-LIFE-03 | Export personal data (GDPR) |
-| UC-LIFE-04 | Reactivate account |
-
----
-
-## 5. Phân Tích Chi Tiết — SYSTEM-ADMIN-SERVICE
-
-### 5.1 Hiện Trạng
-- Chỉ có `DefaultSessionManagement.kt` (stub)
-- Đã có dependency: Spring Batch, Spring Modulith
-
-### 5.2 Tính Năng Cần Triển Khai
-
-#### SYS-F01: Menu Permission Management (Dynamic)
-**Mô tả:** Quản lý cây menu chức năng + button-level permission — dynamic theo user role, department, chức vụ.
-
-**Use Cases:**
-| UC | Mô tả |
-|----|-------|
-| UC-MENU-01 | CRUD menu items (tree structure) |
-| UC-MENU-02 | Assign menu permissions to role |
-| UC-MENU-03 | Get user's accessible menu tree (filtered by role/department) |
-| UC-MENU-04 | Button-level permission per menu item |
-| UC-MENU-05 | Menu versioning (draft → publish) |
-
-**Entities:**
-```
-menu_items (id, parent_id, domain_id, code, name, icon, path, route_name,
-            component, sort_order, menu_type, is_visible, is_cacheable,
-            status, metadata_json)
-    -- menu_type: DIRECTORY | MENU | BUTTON | API
+graph LR
+    User["👤 End User"] --> UC1["UC-MFA: MFA Management"]
+    User --> UC2["UC-SSO: SSO Login"]
+    User --> UC3["UC-PROF: Profile Management"]
+    User --> UC4["UC-WF-SUBMIT: Submit Approval"]
     
-menu_permissions (id, menu_id, permission_code, name, description)
-    -- permission_code: e.g., "view", "create", "edit", "delete", "export", "import", "approve"
-
-role_menu_permissions (id, role_id, menu_id, permission_code, is_granted)
-    -- Xác định role X có permission Y trên menu Z
-
-user_menu_overrides (id, user_id, menu_id, permission_code, is_granted, reason)
-    -- Override cho từng user cụ thể (ngoại lệ)
-```
-
-**API Design:**
-```
-GET    /api/admin/menus/tree                    -- Full menu tree (admin)
-GET    /api/admin/menus/user-tree               -- User's accessible menu (filtered)
-POST   /api/admin/menus                         -- Create menu item
-PUT    /api/admin/menus/{id}                    -- Update menu item
-DELETE /api/admin/menus/{id}                    -- Soft delete menu item
-GET    /api/admin/menus/{id}/permissions         -- List menu's permissions
-POST   /api/admin/menus/{id}/permissions         -- Add permission to menu
-POST   /api/admin/roles/{roleId}/menus           -- Assign menus to role
-GET    /api/admin/roles/{roleId}/menus           -- Get role's menu permissions
-POST   /api/admin/users/{userId}/menu-overrides  -- Override user's menu permission
-```
-
-**Menu Tree Response Format:**
-```json
-{
-  "menus": [
-    {
-      "id": 1,
-      "code": "system",
-      "name": "Quản lý hệ thống",
-      "icon": "settings",
-      "path": "/system",
-      "type": "DIRECTORY",
-      "permissions": ["view"],
-      "children": [
-        {
-          "id": 2,
-          "code": "user-management",
-          "name": "Quản lý người dùng",
-          "path": "/system/users",
-          "type": "MENU",
-          "permissions": ["view", "create", "edit", "delete", "export"],
-          "buttons": [
-            {"code": "btn-create", "name": "Tạo mới", "permission": "create"},
-            {"code": "btn-edit", "name": "Chỉnh sửa", "permission": "edit"},
-            {"code": "btn-delete", "name": "Xóa", "permission": "delete"},
-            {"code": "btn-export", "name": "Xuất Excel", "permission": "export"}
-          ]
-        }
-      ]
-    }
-  ]
-}
-```
-
-**Business Rules:**
-- BR-MENU-01: Menu hiển thị dựa trên intersection (role permissions ∩ menu permissions)
-- BR-MENU-02: User override > Role permission (ưu tiên cao hơn)
-- BR-MENU-03: BUTTON type menu không hiển thị trong navigation, chỉ control button visibility
-- BR-MENU-04: Admin domain có full access tất cả menu
-- BR-MENU-05: Menu cache Redis với TTL 5 phút, invalidate khi thay đổi permission
-
----
-
-#### SYS-F02: Organization Management
-**Mô tả:** Quản lý cơ cấu tổ chức — department, position, employee assignment.
-
-**Entities:**
-```
-departments (id, parent_id, domain_id, code, name, description, manager_user_id,
-             sort_order, status, level)
-
-positions (id, domain_id, code, name, description, department_id, grade_level,
-           status)
-
-user_positions (user_id, position_id, department_id, is_primary, effective_from,
-                effective_to, status)
-```
-
-**Use Cases:**
-| UC | Mô tả |
-|----|-------|
-| UC-ORG-01 | CRUD departments (tree structure) |
-| UC-ORG-02 | CRUD positions |
-| UC-ORG-03 | Assign user to position/department |
-| UC-ORG-04 | View organization chart |
-| UC-ORG-05 | Transfer user between departments |
-| UC-ORG-06 | Get all users in department (recursive) |
-
-**Business Rules:**
-- BR-ORG-01: Department tree tối đa 10 levels
-- BR-ORG-02: User có thể có nhiều position nhưng chỉ 1 primary
-- BR-ORG-03: Transfer department tự động cập nhật approval chain
-- BR-ORG-04: Department manager kế thừa quyền phê duyệt
-
----
-
-#### SYS-F03: API Partner Management
-**Mô tả:** Quản lý đối tác tích hợp API — API key, rate limiting, quota, subscription plan.
-
-**Entities:**
-```
-api_partners (id, domain_id, partner_name, partner_code, contact_email,
-              contact_phone, description, status, subscription_plan_id)
-
-api_keys (id, partner_id, key_prefix, key_hash, name, scopes_json,
-          rate_limit_per_second, rate_limit_per_minute, rate_limit_per_day,
-          quota_monthly, ip_whitelist_json, expires_at, status,
-          last_used_at, created_at)
-
-subscription_plans (id, code, name, description, max_requests_per_day,
-                    max_requests_per_month, rate_limit_per_second,
-                    allowed_apis_json, price_monthly, status)
-
-api_usage_logs (id, partner_id, api_key_id, endpoint, method, status_code,
-                response_time_ms, ip_address, request_at)
-```
-
-**Use Cases:**
-| UC | Mô tả |
-|----|-------|
-| UC-API-01 | Register API partner |
-| UC-API-02 | Generate/Rotate API key |
-| UC-API-03 | Set rate limit per API key |
-| UC-API-04 | View usage dashboard |
-| UC-API-05 | Suspend/Revoke API key |
-| UC-API-06 | Configure IP whitelist |
-| UC-API-07 | Manage subscription plans |
-
-**Business Rules:**
-- BR-API-01: API key hiển thị 1 lần duy nhất khi generate, sau đó chỉ lưu hash
-- BR-API-02: Rate limit enforce tại Gateway level (Redis-backed)
-- BR-API-03: Khi exceed quota → trả 429 + Retry-After header
-- BR-API-04: API key prefix format: `ntt_pk_` (production) / `ntt_sk_` (sandbox)
-- BR-API-05: Usage log aggregate hourly/daily cho dashboard
-
----
-
-#### SYS-F04: Dynamic Approval Workflow
-**Mô tả:** Engine phê duyệt động — multi-step, conditional routing, escalation, delegation.
-
-**Entities:**
-```
-workflow_definitions (id, domain_id, code, name, description, entity_type,
-                      trigger_event, version, status)
-
-workflow_steps (id, workflow_id, step_order, step_type, name,
-                approver_type, approver_value, condition_json,
-                timeout_hours, escalation_step_id, is_parallel)
-    -- approver_type: ROLE | DEPARTMENT_HEAD | USER | POSITION | DYNAMIC_RULE
-    -- step_type: APPROVAL | REVIEW | NOTIFICATION | AUTO_APPROVE
-
-workflow_instances (id, workflow_definition_id, entity_type, entity_id,
-                    requester_user_id, current_step_order, status,
-                    submitted_at, completed_at, metadata_json)
-
-workflow_step_instances (id, workflow_instance_id, step_id, assignee_user_id,
-                         action, comment, actioned_at, delegated_to_user_id,
-                         status, due_at)
-    -- action: APPROVED | REJECTED | DELEGATED | ESCALATED | AUTO_APPROVED
-
-workflow_delegation_rules (id, from_user_id, to_user_id, workflow_id,
-                           effective_from, effective_to, status)
-```
-
-**Use Cases:**
-| UC | Mô tả |
-|----|-------|
-| UC-WF-01 | Define approval workflow (admin) |
-| UC-WF-02 | Submit entity for approval |
-| UC-WF-03 | Approve/Reject step |
-| UC-WF-04 | Delegate approval |
-| UC-WF-05 | Auto-escalation khi timeout |
-| UC-WF-06 | View approval history |
-| UC-WF-07 | Configure conditional routing (amount-based, department-based) |
-| UC-WF-08 | Parallel approval (all must approve) |
-
-**Business Rules:**
-- BR-WF-01: Workflow version immutable — tạo version mới khi sửa
-- BR-WF-02: REJECTED → restart hoặc terminate (configurable)
-- BR-WF-03: Timeout escalation tự động sau N hours
-- BR-WF-04: Delegation phải trong cùng domain
-- BR-WF-05: Conditional routing dựa trên JSONB conditions (tương tự PBAC)
-
----
-
-#### SYS-F05: System Configuration
-**Mô tả:** Quản lý cấu hình hệ thống dynamic — feature flags, system parameters.
-
-**Entities:**
-```
-system_configs (id, domain_id, config_key, config_value, config_type,
-                category, description, is_encrypted, is_public)
-    -- config_type: STRING | NUMBER | BOOLEAN | JSON
-    -- category: SECURITY | UI | BUSINESS | INTEGRATION
-
-feature_flags (id, domain_id, flag_key, is_enabled, rollout_percentage,
-               target_roles_json, description, expires_at)
-```
-
----
-
-#### SYS-F06: Audit Trail
-**Mô tả:** Ghi nhận toàn bộ thao tác admin — immutable audit log.
-
-**Entities:**
-```
-audit_logs (id, domain_id, user_id, action_type, entity_type, entity_id,
-            old_value_json, new_value_json, ip_address, user_agent,
-            timestamp, module, description)
-    -- action_type: CREATE | UPDATE | DELETE | LOGIN | LOGOUT | PERMISSION_CHANGE
-                    | CONFIG_CHANGE | APPROVAL_ACTION
-```
-
-**Business Rules:**
-- BR-AUDIT-01: Audit log immutable — không cho UPDATE/DELETE
-- BR-AUDIT-02: Retention policy configurable per domain (default 2 năm)
-- BR-AUDIT-03: Sensitive data (password) KHÔNG log giá trị cũ/mới
-- BR-AUDIT-04: Support export audit log (CSV/Excel via base-file-starter)
-
----
-
-#### SYS-F07: Tenant/Domain Configuration (mở rộng từ auth-service)
-**Mô tả:** Quản lý cấu hình nâng cao cho mỗi domain/tenant.
-
-**Entities:**
-```
-domain_configs (domain_id, branding_json, login_page_config_json,
-                password_policy_json, mfa_policy_json, session_policy_json,
-                allowed_ip_ranges_json, max_users, max_api_partners)
-```
-
----
-
-## 6. Traceability Matrix
-
-| Feature ID | Use Cases | Entities | API Endpoints | Priority |
-|-----------|-----------|----------|---------------|----------|
-| AUTH-F01 (MFA) | UC-MFA-01..05 | mfa_configs, otp_tokens, recovery_codes | 6 | P0 |
-| AUTH-F02 (SSO) | UC-SSO-01..04 | sso_providers, user_sso_links | 5 | P1 |
-| AUTH-F03 (Token) | - | key_pairs | 3 | P1 |
-| AUTH-F04 (Password) | - | password_policies, password_history | 3 | P1 |
-| ACC-F01 (Profile) | UC-PROF-01..06 | user_profiles, user_contacts, login_history | 8 | P0 |
-| ACC-F02 (Preferences) | - | user_preferences, notification_settings | 4 | P2 |
-| ACC-F03 (Device) | UC-DEV-01..04 | user_devices | 4 | P1 |
-| ACC-F04 (Session) | - | active_sessions | 4 | P1 |
-| ACC-F05 (Lifecycle) | UC-LIFE-01..04 | - | 4 | P2 |
-| SYS-F01 (Menu) | UC-MENU-01..05 | menu_items, menu_permissions, role_menu_permissions, user_menu_overrides | 10 | P0 |
-| SYS-F02 (Org) | UC-ORG-01..06 | departments, positions, user_positions | 8 | P0 |
-| SYS-F03 (API Partner) | UC-API-01..07 | api_partners, api_keys, subscription_plans, api_usage_logs | 10 | P1 |
-| SYS-F04 (Workflow) | UC-WF-01..08 | workflow_definitions, workflow_steps, workflow_instances, workflow_step_instances, workflow_delegation_rules | 10 | P1 |
-| SYS-F05 (Config) | - | system_configs, feature_flags | 4 | P2 |
-| SYS-F06 (Audit) | - | audit_logs | 3 | P1 |
-| SYS-F07 (Tenant) | - | domain_configs | 3 | P2 |
-
----
-
-## 7. Data Flow Tổng Quan
-
-```mermaid
-sequenceDiagram
-    participant FE as Frontend
-    participant GW as API Gateway
-    participant AUTH as auth-service
-    participant ACC as account-service
-    participant SYS as system-admin
-    participant DB as PostgreSQL
-    participant REDIS as Redis Cache
-
-    Note over FE,REDIS: Login Flow with 2FA
-
-    FE->>GW: POST /api/auth/login {username, password, captcha}
-    GW->>AUTH: Forward (validate captcha)
-    AUTH->>DB: Validate credentials
-    AUTH-->>FE: {partial_token, require_2fa: true, methods: ["TOTP","SMS"]}
+    Admin["👤 System Admin"] --> UC5["UC-MENU: Menu Permission"]
+    Admin --> UC6["UC-ORG: Organization Management"]
+    Admin --> UC7["UC-API: API Partner Management"]
+    Admin --> UC8["UC-WF-DEF: Workflow Definition"]
+    Admin --> UC9["UC-AUDIT: Audit Trail"]
     
-    FE->>GW: POST /api/auth/verify-2fa {partial_token, code, method}
-    GW->>AUTH: Forward
-    AUTH->>DB: Verify OTP/TOTP
-    AUTH->>DB: Load roles, permissions
-    AUTH-->>FE: {access_token, refresh_token}
-
-    Note over FE,REDIS: Load Menu Permissions
-
-    FE->>GW: GET /api/admin/menus/user-tree
-    GW->>SYS: Forward (JWT validated)
-    SYS->>REDIS: Check cache (user:{id}:menu)
-    alt Cache hit
-        REDIS-->>SYS: Cached menu tree
-    else Cache miss
-        SYS->>AUTH: GET /api/permissions/user/{userId}/roles
-        AUTH-->>SYS: {roles, permissions}
-        SYS->>DB: Load menu_items + role_menu_permissions
-        SYS->>SYS: Filter by user roles
-        SYS->>REDIS: Cache result (TTL 5min)
-    end
-    SYS-->>FE: {menu_tree with buttons}
-
-    Note over FE,REDIS: API Partner Request
-
-    PARTNER->>GW: GET /api/v1/bookings (X-API-Key: ntt_pk_xxx)
-    GW->>REDIS: Check rate limit
-    alt Rate limit exceeded
-        GW-->>PARTNER: 429 Too Many Requests
-    else OK
-        GW->>SYS: Validate API key
-        SYS->>DB: Lookup api_keys
-        SYS-->>GW: {partner_id, scopes, quota_remaining}
-        GW->>BOOKING: Forward to business service
-    end
+    DomainAdmin["👤 Domain Admin"] --> UC10["UC-ROLE: Role Assignment"]
+    DomainAdmin --> UC11["UC-PWD: Password Policy"]
+    
+    Partner["👤 API Partner"] --> UC12["UC-APIKEY: API Key Lifecycle"]
+    
+    Approver["👤 Approver"] --> UC13["UC-WF-ACT: Approve/Reject"]
+    
+    UC5 -.->|"include"| UC10
+    UC1 -.->|"extend"| UC2
 ```
 
 ---
 
-## 8. Tổng Hợp Entity Count
+## 3. Danh sách Use Case (Use Case Index)
 
-| Service | New Entities | Existing Entities | Total |
-|---------|-------------|-------------------|-------|
-| auth-service | 6 (mfa_configs, otp_tokens, recovery_codes, sso_providers, user_sso_links, password_policies/history) | 11 | ~17 |
-| account-service | 6 (user_profiles, user_contacts, login_history, user_preferences, notification_settings, user_devices, active_sessions) | 0 | ~7 |
-| system-admin-service | 14 (menu_items, menu_permissions, role_menu_permissions, user_menu_overrides, departments, positions, user_positions, api_partners, api_keys, subscription_plans, api_usage_logs, workflow_*, system_configs, feature_flags, audit_logs, domain_configs) | 0 | ~17 |
-| **Total** | **~26** | **11** | **~41** |
+| UC-ID | Tên Use Case | Actor | Nhóm chức năng | Độ ưu tiên | Trạng thái |
+|-------|-------------|-------|----------------|-----------|-----------|
+| UC-MFA-01 | Enable 2FA cho user | End User | AUTH - MFA | High | Draft |
+| UC-MFA-02 | Login với 2FA | End User | AUTH - MFA | High | Draft |
+| UC-MFA-03 | CAPTCHA verification | End User | AUTH - MFA | High | Draft |
+| UC-MFA-04 | Recovery codes management | End User | AUTH - MFA | High | Draft |
+| UC-MFA-05 | Disable 2FA | End User | AUTH - MFA | Medium | Draft |
+| UC-SSO-01 | Login via Keycloak | End User | AUTH - SSO | High | Draft |
+| UC-SSO-02 | Login via Google/Microsoft | End User | AUTH - SSO | High | Draft |
+| UC-SSO-03 | Link external account | End User | AUTH - SSO | Medium | Draft |
+| UC-SSO-04 | Auto-provision SSO user | System | AUTH - SSO | Medium | Draft |
+| UC-PWD-01 | Configure password policy | Domain Admin | AUTH - Password | High | Draft |
+| UC-PWD-02 | Force password reset | Domain Admin | AUTH - Password | Medium | Draft |
+| UC-PROF-01 | View/Update profile | End User | ACCOUNT - Profile | High | Draft |
+| UC-PROF-02 | Change email (verified) | End User | ACCOUNT - Profile | High | Draft |
+| UC-PROF-03 | Upload avatar | End User | ACCOUNT - Profile | Medium | Draft |
+| UC-PROF-04 | View login history | End User | ACCOUNT - Profile | Medium | Draft |
+| UC-PROF-05 | Admin manage user profiles | System Admin | ACCOUNT - Profile | High | Draft |
+| UC-DEV-01 | List active devices | End User | ACCOUNT - Device | Medium | Draft |
+| UC-DEV-02 | Trust device (skip 2FA) | End User | ACCOUNT - Device | Medium | Draft |
+| UC-DEV-03 | Revoke device | End User | ACCOUNT - Device | Medium | Draft |
+| UC-SES-01 | List active sessions | End User | ACCOUNT - Session | Medium | Draft |
+| UC-SES-02 | Terminate session | End User | ACCOUNT - Session | Medium | Draft |
+| UC-LIFE-01 | Deactivate account | End User | ACCOUNT - Lifecycle | Medium | Draft |
+| UC-LIFE-02 | Request account deletion (GDPR) | End User | ACCOUNT - Lifecycle | Medium | Draft |
+| UC-LIFE-03 | Export personal data (GDPR) | End User | ACCOUNT - Lifecycle | Medium | Draft |
+| UC-MENU-01 | CRUD menu items (tree) | System Admin | SYS-ADMIN - Menu | High | Draft |
+| UC-MENU-02 | Assign menu permissions to role | System Admin | SYS-ADMIN - Menu | High | Draft |
+| UC-MENU-03 | Get user's accessible menu tree | End User | SYS-ADMIN - Menu | High | Draft |
+| UC-MENU-04 | Button-level permission | System Admin | SYS-ADMIN - Menu | High | Draft |
+| UC-MENU-05 | Menu versioning (draft→publish) | System Admin | SYS-ADMIN - Menu | Medium | Draft |
+| UC-ORG-01 | CRUD departments (tree) | System Admin | SYS-ADMIN - Org | High | Draft |
+| UC-ORG-02 | CRUD positions | System Admin | SYS-ADMIN - Org | High | Draft |
+| UC-ORG-03 | Assign user to position/department | System Admin | SYS-ADMIN - Org | High | Draft |
+| UC-ORG-04 | View organization chart | End User | SYS-ADMIN - Org | Medium | Draft |
+| UC-ORG-05 | Transfer user between departments | System Admin | SYS-ADMIN - Org | Medium | Draft |
+| UC-API-01 | Register API partner | System Admin | SYS-ADMIN - API | High | Draft |
+| UC-API-02 | Generate/Rotate API key | System Admin | SYS-ADMIN - API | High | Draft |
+| UC-API-03 | Set rate limit per API key | System Admin | SYS-ADMIN - API | High | Draft |
+| UC-API-04 | View usage dashboard | System Admin | SYS-ADMIN - API | Medium | Draft |
+| UC-API-05 | Suspend/Revoke API key | System Admin | SYS-ADMIN - API | High | Draft |
+| UC-API-06 | Configure IP whitelist | System Admin | SYS-ADMIN - API | Medium | Draft |
+| UC-WF-01 | Define approval workflow | System Admin | SYS-ADMIN - Workflow | High | Draft |
+| UC-WF-02 | Submit entity for approval | End User | SYS-ADMIN - Workflow | High | Draft |
+| UC-WF-03 | Approve/Reject step | Approver | SYS-ADMIN - Workflow | High | Draft |
+| UC-WF-04 | Delegate approval | Approver | SYS-ADMIN - Workflow | Medium | Draft |
+| UC-WF-05 | Auto-escalation on timeout | System | SYS-ADMIN - Workflow | Medium | Draft |
+| UC-WF-06 | View approval history | End User | SYS-ADMIN - Workflow | Medium | Draft |
+| UC-AUDIT-01 | Search audit logs | System Admin | SYS-ADMIN - Audit | High | Draft |
+| UC-AUDIT-02 | Export audit logs | System Admin | SYS-ADMIN - Audit | Medium | Draft |
 
 ---
 
-## 9. Base-Core Extensions Needed
+## 4. Đặc tả Use Case chi tiết
 
-| Extension | Module | Description |
-|-----------|--------|-------------|
-| `base-security-starter` enhancement | base-core | Thêm MFA filter chain, CAPTCHA validator, API key authentication filter |
-| `TreeEntity<T>` base class | base-model | Abstract entity cho tree structures (menu, department) với `parentId`, `sortOrder`, `level` |
-| `AuditLogService` | common-log hoặc base-core | Abstract service cho audit trail pattern (AOP-based) |
-| `RateLimiterFilter` | base-security-starter | API key rate limiting filter (Redis-backed, Bucket4j) |
-| `WorkflowEngine` interface | base-core | Abstract workflow engine interfaces (optional, có thể là starter mới) |
+### UC-MENU-01: CRUD Menu Items (Tree Structure)
+
+#### 4.1 Thông tin chung
+
+| Mục | Nội dung |
+|-----|----------|
+| **Mã** | UC-MENU-01 |
+| **Tên** | Create/Read/Update/Delete Menu Items |
+| **Mô tả ngữ nghĩa** | Quản lý cây menu chức năng dynamic — cho phép admin cấu hình navigation tree, route paths, icons, và component mappings. Giá trị: frontend nhận menu tree từ backend để render navigation bar, đảm bảo users chỉ thấy menu items được phân quyền. |
+| **Actor** | System Admin |
+| **Trigger** | Admin mở trang Menu Management |
+| **Độ ưu tiên** | High |
+| **Tần suất** | On-demand (khi cấu hình hệ thống mới hoặc thêm module) |
+| **Nhóm chức năng** | SYS-ADMIN - Menu Permission |
+
+#### 4.2 Điều kiện
+
+| Loại | Mô tả |
+|------|--------|
+| **Pre-conditions** | Admin đã authenticated + có quyền `menu:manage` |
+| **Post-conditions (Success)** | Menu tree updated, cache invalidated, all affected users see updated menu |
+| **Post-conditions (Failure)** | Menu tree unchanged, error message returned |
+| **Invariants** | Menu tree luôn acyclic (no circular parent references) |
+
+#### 4.3 Luồng chính (Basic Flow)
+
+| Step | Actor Action | System Response | Data | Ghi chú |
+|------|-------------|----------------|------|---------|
+| 1 | Admin mở Menu Management | Load full menu tree from DB | `GET /api/admin/menus/tree` | Cached in Redis |
+| 2 | Admin click "Add Menu Item" | Show create form | - | Form: code, name, icon, path, type, parent |
+| 3 | Admin fill form + select parent | Validate input | CreateMenuRequest | Type: DIRECTORY, MENU, BUTTON, API |
+| 4 | Admin submit | Create menu item, assign sort_order | `POST /api/admin/menus` | Auto-increment sort_order |
+| 5 | System | Invalidate menu cache for domain | Redis `menu:tree:{domainId}` | Event-driven |
+| 6 | System | Return updated menu tree | MenuTreeResponse | 201 Created |
+
+#### 4.4 Luồng thay thế (Alternative Flows)
+
+##### AF-001: Update Existing Menu Item
+- **Trigger**: Tại Step 2, admin chọn existing menu item
+- **Steps**:
+  1. Load menu item details
+  2. Admin modifies fields
+  3. Validate (code unique within domain, parent not self)
+  4. Update + invalidate cache
+- **Rejoin**: Step 6 (return updated tree)
+
+##### AF-002: Reorder Menu Items
+- **Trigger**: Admin drag-and-drop menu item to new position
+- **Steps**:
+  1. Receive new sort_order + optional new parent_id
+  2. Update sort_order of affected items
+  3. Invalidate cache
+- **Rejoin**: Step 6
+
+#### 4.5 Luồng ngoại lệ (Exception Flows)
+
+##### EF-001: Duplicate Code
+- **Trigger**: Tại Step 4, menu code already exists in domain
+- **Error**: `409 Conflict` — `MENU_CODE_DUPLICATE`
+- **Handling**: Return error message: "Menu code '{{code}}' already exists in this domain"
+- **Post-condition**: No changes persisted
+
+##### EF-002: Circular Parent Reference
+- **Trigger**: Tại Step 4 (update), parent_id creates cycle
+- **Error**: `422 Unprocessable Entity` — `MENU_CIRCULAR_REFERENCE`
+- **Handling**: Return error message: "Cannot set parent: circular reference detected"
+- **Post-condition**: No changes persisted
+
+##### EF-003: Delete Menu with Children
+- **Trigger**: Delete menu item that has children
+- **Error**: `409 Conflict` — `MENU_HAS_CHILDREN`
+- **Handling**: Return error: "Cannot delete menu with children. Move or delete children first."
+- **Post-condition**: No changes persisted
+
+#### 4.6 Quy tắc nghiệp vụ (Business Rules) — UC-MENU-01
+
+| BR-ID | Quy tắc | Mô tả chi tiết | Validation |
+|-------|---------|----------------|-----------|
+| BR-MENU-01 | Menu display by intersection | Menu hiển thị dựa trên intersection (role permissions ∩ menu permissions) | Query filter |
+| BR-MENU-02 | User override > Role | User override ưu tiên cao hơn role permission | Override check |
+| BR-MENU-03 | BUTTON type invisible | BUTTON type không hiển thị trong navigation, chỉ control button visibility | menu_type filter |
+| BR-MENU-04 | Admin full access | Admin domain có full access tất cả menu | Role check |
+| BR-MENU-05 | Cache invalidation | Menu cache Redis TTL 5 phút, invalidate khi thay đổi permission | Redis event |
 
 ---
 
-## 10. Validation Checklist (Phase 5)
+### UC-MFA-02: Login với 2FA
 
-- [x] ≥ 1 use case defined → 30+ use cases
-- [x] Each UC has basic flow + ≥ 1 exception flow
-- [x] Each UC has semantic description
-- [x] Traceability matrix complete
-- [x] Business rules documented
+#### 4.1 Thông tin chung
+
+| Mục | Nội dung |
+|-----|----------|
+| **Mã** | UC-MFA-02 |
+| **Tên** | Login with Multi-Factor Authentication |
+| **Mô tả ngữ nghĩa** | Progressive authentication flow — sau khi verify password, user phải verify 2FA code (OTP hoặc TOTP) để nhận full JWT token. Giá trị: bảo mật enterprise-grade, chống credential theft. |
+| **Actor** | End User |
+| **Trigger** | User submit login form với MFA enabled |
+| **Độ ưu tiên** | High |
+| **Tần suất** | Daily (mỗi lần login) |
+| **Nhóm chức năng** | AUTH - MFA |
+
+#### 4.3 Luồng chính (Basic Flow)
+
+| Step | Actor Action | System Response | Data | Ghi chú |
+|------|-------------|----------------|------|---------|
+| 1 | User submit username + password | Validate credentials | LoginRequest | Argon2 verify |
+| 2 | - | Check MFA enabled | User.mfaEnabled | From DB |
+| 3 | - | Issue partial token, return MFA challenge | `{partial_token, require_2fa: true, methods: ["TOTP"]}` | 200 OK |
+| 4 | User enter TOTP/OTP code | Verify code against secret/Redis | VerifyMfaRequest | Within tolerance window |
+| 5 | - | Issue full JWT (access + refresh) | AuthResponse | Full authorization |
+
+#### 4.4 Luồng thay thế (Alternative Flows)
+
+##### AF-001: Trusted Device Skip
+- **Trigger**: Tại Step 2, device fingerprint matches trusted device
+- **Steps**: Skip MFA, issue full token directly
+- **Rejoin**: Step 5
+
+##### AF-002: Recovery Code
+- **Trigger**: Tại Step 4, user chooses "Use recovery code"
+- **Steps**: Verify recovery code hash, mark as used
+- **Rejoin**: Step 5
+
+#### 4.5 Luồng ngoại lệ (Exception Flows)
+
+##### EF-001: Wrong OTP Code
+- **Trigger**: Tại Step 4, code invalid
+- **Error**: `401 Unauthorized` — `MFA_CODE_INVALID`
+- **Handling**: Increment attempt counter. After 3 fails → lock MFA for 30 min.
+- **Post-condition**: Partial token still valid (within TTL)
+
+##### EF-002: Partial Token Expired
+- **Trigger**: Tại Step 4, partial_token expired (> 5 min)
+- **Error**: `401 Unauthorized` — `MFA_TOKEN_EXPIRED`
+- **Handling**: Return "Session expired, please login again"
+- **Post-condition**: Must restart login flow
+
+#### 4.6 Quy tắc nghiệp vụ (Business Rules)
+
+| BR-ID | Quy tắc | Mô tả chi tiết | Validation |
+|-------|---------|----------------|-----------|
+| BR-MFA-01 | OTP TTL = 5 min | OTP code expires after 300 seconds | Redis TTL |
+| BR-MFA-02 | Max 3 OTP attempts | After 3 wrong codes → rate limit lock 30 min | Redis counter |
+| BR-MFA-03 | TOTP window ±1 | Accept TOTP code within ±1 step (30 sec each) | Algorithm tolerance |
+| BR-MFA-04 | Recovery code single-use | Each recovery code can only be used once | Mark `used_at` |
+| BR-MFA-05 | Trusted device TTL = 30 days | Trusted device skips 2FA for 30 days | `trusted_until` field |
+
+#### 4.7 Yêu cầu phi chức năng
+
+| Loại | Yêu cầu | Target |
+|------|---------|--------|
+| Performance | MFA verification | < 200ms |
+| Security | OTP brute-force protection | Rate limit: 5 attempts / 15 min |
+| Security | Partial token scope | Cannot access any API except /verify-2fa |
+| Availability | MFA service uptime | 99.9% |
+
+---
+
+### UC-API-02: Generate/Rotate API Key
+
+#### 4.1 Thông tin chung
+
+| Mục | Nội dung |
+|-----|----------|
+| **Mã** | UC-API-02 |
+| **Tên** | Generate or Rotate API Key |
+| **Mô tả ngữ nghĩa** | Tạo hoặc xoay vòng API key cho đối tác tích hợp. Key chỉ hiển thị 1 lần sau khi tạo (show-once pattern theo Stripe), sau đó chỉ lưu hash. Giá trị: cho phép partner truy cập API an toàn với lifecycle management. |
+| **Actor** | System Admin |
+| **Trigger** | Admin click "Generate API Key" hoặc "Rotate Key" |
+| **Độ ưu tiên** | High |
+| **Tần suất** | On-demand (khi onboard partner hoặc key rotation schedule) |
+| **Nhóm chức năng** | SYS-ADMIN - API Partner |
+
+#### 4.3 Luồng chính (Basic Flow)
+
+| Step | Actor Action | System Response | Data | Ghi chú |
+|------|-------------|----------------|------|---------|
+| 1 | Admin select partner | Load partner details | `GET /api/admin/partners/{id}` | |
+| 2 | Admin click "Generate Key" | Show key config form | - | Name, scopes, rate limits, IP whitelist |
+| 3 | Admin configure + submit | Generate key: `ntt_pk_` + random 48 chars | `POST /api/admin/partners/{id}/api-keys` | Show-once pattern |
+| 4 | - | Hash key (SHA-256), store hash | key_hash in DB | Raw key NOT stored |
+| 5 | - | Return raw key (ONE TIME ONLY) | `{key: "ntt_pk_abc...", key_id: 123}` | User must copy now |
+| 6 | Admin copies key | Confirmation | - | Key cannot be retrieved again |
+
+#### 4.5 Luồng ngoại lệ (Exception Flows)
+
+##### EF-001: Max Keys Exceeded
+- **Trigger**: Partner already has max allowed keys
+- **Error**: `409 Conflict` — `MAX_API_KEYS_EXCEEDED`
+- **Handling**: Return "Maximum API keys reached for this partner"
+
+#### 4.6 Quy tắc nghiệp vụ (Business Rules)
+
+| BR-ID | Quy tắc | Mô tả chi tiết | Validation |
+|-------|---------|----------------|-----------|
+| BR-API-01 | Show-once key | Raw key displayed only at generation time | No raw key in DB |
+| BR-API-02 | Key prefix format | Production: `ntt_pk_`, Sandbox: `ntt_sk_` | Prefix validation |
+| BR-API-03 | Rate limit enforcement | Per-key rate limits enforced at filter level | Bucket4j + Redis |
+| BR-API-04 | 429 on exceed | Return `429 Too Many Requests` + `Retry-After` header | HTTP standard |
+| BR-API-05 | Usage log aggregation | Aggregate hourly/daily for dashboard | Scheduled job |
+
+---
+
+### UC-WF-02: Submit Entity for Approval
+
+#### 4.1 Thông tin chung
+
+| Mục | Nội dung |
+|-----|----------|
+| **Mã** | UC-WF-02 |
+| **Tên** | Submit Entity for Approval |
+| **Mô tả ngữ nghĩa** | Gửi business entity (order, purchase request, etc.) vào workflow phê duyệt. System tự động xác định workflow definition phù hợp, tạo instance, assign step đầu tiên. Giá trị: standardize approval process, đảm bảo compliance. |
+| **Actor** | End User |
+| **Trigger** | User click "Submit for Approval" trên business entity |
+| **Độ ưu tiên** | High |
+| **Tần suất** | Daily (mỗi khi có entity cần phê duyệt) |
+| **Nhóm chức năng** | SYS-ADMIN - Approval Workflow |
+
+#### 4.3 Luồng chính (Basic Flow)
+
+| Step | Actor Action | System Response | Data | Ghi chú |
+|------|-------------|----------------|------|---------|
+| 1 | User click "Submit for Approval" | Look up workflow_definition by entity_type | SubmitWorkflowRequest | Match entity_type + domain |
+| 2 | - | Create workflow_instance | PENDING status | Record requester_user_id |
+| 3 | - | Resolve first step approver | Based on approver_type (ROLE/DEPT_HEAD/USER) | Dynamic resolution |
+| 4 | - | Create workflow_step_instance | Assign to approver | Set due_at based on timeout_hours |
+| 5 | - | Send notification to approver | Kafka event / in-app notification | Async |
+| 6 | - | Return workflow instance | `{instance_id, status: "PENDING", current_step: 1}` | 201 Created |
+
+#### 4.5 Luồng ngoại lệ (Exception Flows)
+
+##### EF-001: No Workflow Defined
+- **Trigger**: No workflow_definition matches entity_type
+- **Error**: `404 Not Found` — `WORKFLOW_NOT_FOUND`
+- **Handling**: Return "No approval workflow configured for this entity type"
+
+##### EF-002: Cannot Resolve Approver
+- **Trigger**: Step approver_type = DEPT_HEAD but user has no department
+- **Error**: `422 Unprocessable Entity` — `APPROVER_NOT_RESOLVED`
+- **Handling**: Return "Cannot determine approver. Please contact admin."
+
+#### 4.6 Quy tắc nghiệp vụ (Business Rules)
+
+| BR-ID | Quy tắc | Mô tả chi tiết | Validation |
+|-------|---------|----------------|-----------|
+| BR-WF-01 | Workflow version immutable | Cannot edit active workflow — create new version | Version field |
+| BR-WF-02 | REJECTED → configurable | Restart or terminate based on workflow config | Per-definition setting |
+| BR-WF-03 | Timeout escalation | Auto-escalate after N hours to escalation_step | Scheduled job |
+| BR-WF-04 | Delegation same domain | Can only delegate to user in same domain | Domain check |
+| BR-WF-05 | Conditional routing | JSONB conditions evaluate dynamic routing | Similar to PBAC |
+
+---
+
+## 5. Ma trận truy xuất (Traceability Matrix)
+
+| UC-ID | FR-ID | NFR-ID | BR-ID | Screen | API Endpoint | DB Entity |
+|-------|-------|--------|-------|--------|-------------|-----------|
+| UC-MFA-01 | FR-001 | NFR-001, NFR-002 | BR-MFA-01..05 | MFA Settings | POST /api/mfa/enable | mfa_configs, recovery_codes |
+| UC-MFA-02 | FR-002 | NFR-001, NFR-002 | BR-MFA-01..05 | Login + MFA | POST /api/auth/verify-2fa | otp_tokens |
+| UC-SSO-01 | FR-003 | NFR-001 | BR-SSO-01..04 | SSO Login | GET /api/sso/{provider}/authorize | user_sso_links |
+| UC-PWD-01 | FR-004 | NFR-002 | BR-PWD-01..03 | Password Policy Config | PUT /api/admin/password-policy | password_policies |
+| UC-PROF-01 | FR-005 | NFR-001 | - | User Profile | PUT /api/account/profile | user_profiles |
+| UC-DEV-01 | FR-006 | NFR-001 | - | Device List | GET /api/account/devices | user_devices |
+| UC-MENU-01 | FR-007, FR-008 | NFR-001, NFR-003 | BR-MENU-01..05 | Menu Mgmt | POST /api/admin/menus | menu_items, menu_permissions |
+| UC-MENU-03 | FR-009 | NFR-001, NFR-003 | BR-MENU-01..05 | Navigation | GET /api/admin/menus/user-tree | role_menu_permissions |
+| UC-ORG-01 | FR-010 | NFR-001 | BR-ORG-01..04 | Dept Mgmt | POST /api/admin/departments | departments |
+| UC-API-01 | FR-011 | NFR-001, NFR-004 | BR-API-01..05 | Partner Mgmt | POST /api/admin/partners | api_partners |
+| UC-API-02 | FR-012 | NFR-002, NFR-004 | BR-API-01..05 | API Key Mgmt | POST /api/admin/partners/{id}/api-keys | api_keys |
+| UC-WF-01 | FR-013 | NFR-001 | BR-WF-01..05 | Workflow Def | POST /api/admin/workflows | workflow_definitions |
+| UC-WF-02 | FR-014 | NFR-001 | BR-WF-01..05 | Submit | POST /api/workflows/submit | workflow_instances |
+| UC-WF-03 | FR-015 | NFR-001 | BR-WF-01..05 | Approve | POST /api/workflows/{id}/approve | workflow_step_instances |
+| UC-AUDIT-01 | FR-016 | NFR-001, NFR-005 | BR-AUDIT-01..04 | Audit Logs | GET /api/admin/audit-logs | audit_logs |
+
+---
+
+## 6. Yêu cầu chức năng tổng hợp (Functional Requirements)
+
+| FR-ID | Tên | Mô tả | UC liên quan | Độ ưu tiên |
+|-------|-----|--------|-------------|-----------|
+| FR-001 | MFA Enable/Disable | Hệ thống phải hỗ trợ enable/disable MFA per user (SMS, Email, TOTP) | UC-MFA-01, UC-MFA-05 | High |
+| FR-002 | MFA Login Flow | Hệ thống phải hỗ trợ progressive auth (partial → verify → full token) | UC-MFA-02 | High |
+| FR-003 | SSO Integration | Hệ thống phải hỗ trợ OAuth2/OIDC login via external IdP | UC-SSO-01, UC-SSO-02 | High |
+| FR-004 | Password Policy | Hệ thống phải hỗ trợ configurable password rules per domain | UC-PWD-01 | High |
+| FR-005 | User Profile CRUD | Hệ thống phải hỗ trợ separate user profile management | UC-PROF-01..05 | High |
+| FR-006 | Device Management | Hệ thống phải track và manage user devices | UC-DEV-01..03 | Medium |
+| FR-007 | Menu Tree CRUD | Hệ thống phải hỗ trợ dynamic menu tree management | UC-MENU-01 | High |
+| FR-008 | Menu Permission Assignment | Hệ thống phải hỗ trợ role-based + user-override menu permissions | UC-MENU-02, UC-MENU-04 | High |
+| FR-009 | User Menu Tree | Hệ thống phải return filtered menu tree per user based on permissions | UC-MENU-03 | High |
+| FR-010 | Organization Management | Hệ thống phải hỗ trợ department/position tree management | UC-ORG-01..05 | High |
+| FR-011 | API Partner Registration | Hệ thống phải hỗ trợ partner onboarding với subscription plans | UC-API-01 | High |
+| FR-012 | API Key Lifecycle | Hệ thống phải hỗ trợ key generation, rotation, revocation | UC-API-02, UC-API-05 | High |
+| FR-013 | Workflow Definition | Hệ thống phải hỗ trợ dynamic workflow definition (steps, approvers, conditions) | UC-WF-01 | High |
+| FR-014 | Workflow Submission | Hệ thống phải hỗ trợ submit entity vào workflow | UC-WF-02 | High |
+| FR-015 | Workflow Actions | Hệ thống phải hỗ trợ approve/reject/delegate/escalate | UC-WF-03..05 | High |
+| FR-016 | Audit Trail | Hệ thống phải log mọi admin action (immutable) | UC-AUDIT-01, UC-AUDIT-02 | High |
+
+---
+
+## 7. Yêu cầu phi chức năng tổng hợp (Non-Functional Requirements)
+
+| NFR-ID | Loại | Yêu cầu | Target | Measurement |
+|--------|------|---------|--------|-------------|
+| NFR-001 | Performance | API response time | < 500ms (P95) | APM monitoring |
+| NFR-002 | Security | Authentication + authorization on all endpoints | 100% coverage | Security audit |
+| NFR-003 | Performance | Permission cache hit ratio | > 80% | Redis metrics |
+| NFR-004 | Performance | Rate limit accuracy | > 99% | Load test |
+| NFR-005 | Compliance | Audit log immutability | No UPDATE/DELETE on audit_logs | DB constraint |
+| NFR-006 | Scalability | Concurrent users per service | 1000+ | Load test |
+| NFR-007 | Availability | Service uptime | 99.9% | Monitoring |
+| NFR-008 | Data | GDPR compliance | Data export + deletion support | Manual verification |
+
+---
+
+## 8. Thuật ngữ nghiệp vụ (Glossary)
+
+| Thuật ngữ | Định nghĩa | Context sử dụng |
+|-----------|-----------|-----------------|
+| Domain | Business domain/tenant trong hệ thống ERP (e.g., booking, rental) | Multi-tenant isolation |
+| RBAC | Role-Based Access Control — phân quyền qua User→Group→Role→Permission chain | auth-service |
+| PBAC | Policy-Based Access Control — phân quyền qua dynamic conditions (JSONB) | auth-service |
+| Menu Item | Node trong navigation tree — có thể là DIRECTORY, MENU, BUTTON, hoặc API | system-admin-service |
+| Permission Code | Mã quyền trên menu item (e.g., view, create, edit, delete, export) | system-admin-service |
+| API Key | Chuỗi xác thực cho API partner (prefix + random, hash stored) | system-admin-service |
+| Workflow Instance | Một instance cụ thể của workflow definition — track trạng thái phê duyệt | system-admin-service |
+| Partial Token | JWT token tạm thời chỉ cho phép verify 2FA, không access API khác | auth-service MFA flow |
+
+---
+
+## 9. Phụ lục (Appendix)
+
+### 9.1 Research References
+- [opensource_findings.md](./opensource_findings.md) — 5 projects evaluated (Keycloak, Cerbos, OpenFGA, Casbin, Bucket4j)
+- [web_research.md](./web_research.md) — 4 search iterations, 14 unique sources
+- [comparison_analysis.md](./comparison_analysis.md) — Hybrid build recommendation, 18% current gap coverage
+
+### 9.2 Open Questions
+- [ ] OQ-001: Spring Security 7 `@EnableMultiFactorAuthentication` exact API stable? (may change before GA)
+- [ ] OQ-002: DPoP (Demonstrating Proof-of-Possession) support — Phase 4 consideration?
+
+### 9.3 Assumptions
+- ⚠️ AS-001: base-core chưa có TreeEntity — cần tạo mới — Lý do: codebase scan confirmed
+- ⚠️ AS-002: account-service và system-admin-service chỉ có stub — Lý do: codebase scan confirmed
+- ⚠️ AS-003: Spring Security 7 MFA API based on early documentation — Lý do: Spring Boot 4.1.0 docs in development
+- ⚠️ AS-004: Kafka compileOnly dependency — cần thêm runtime dependency khi implement events — Lý do: build.gradle.kts review
+
+---
+
+> **Next step**: Technical Specification (technical_spec.md)
+> **Traceability**: Research Brief → Business Analysis → Technical Spec

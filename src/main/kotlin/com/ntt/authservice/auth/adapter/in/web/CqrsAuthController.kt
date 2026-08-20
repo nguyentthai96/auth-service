@@ -2,6 +2,7 @@ package com.ntt.authservice.auth.adapter.`in`.web
 
 import com.ntt.authservice.auth.adapter.`in`.web.dto.AuthResponse
 import com.ntt.authservice.auth.adapter.`in`.web.dto.DataTransferredInfo
+import com.ntt.authservice.auth.application.DomainLookupService
 import com.ntt.authservice.auth.application.JwtService
 import com.ntt.authservice.auth.application.LoginResult
 import com.ntt.authservice.auth.application.LoginSessionService
@@ -43,6 +44,7 @@ class CqrsAuthController(
     private val buildAuthResponseHandler: BuildAuthResponseHandler,
     private val passwordPolicyService: PasswordPolicyService,
     private val loginSessionService: LoginSessionService,
+    private val domainLookupService: DomainLookupService,
     private val securityProperties: SecurityProperties,
     private val messageSource: MessageSource,
     private val jwtService: JwtService
@@ -194,8 +196,8 @@ class CqrsAuthController(
         @RequestHeader("Authorization") authHeader: String
     ): ResponseEntity<Map<String, String>> {
         val userId = getCurrentUserId()
-        // TODO: resolve domainId from user's active domain
-        passwordPolicyService.changePassword(userId, request.oldPassword, request.newPassword, 0L)
+        val domainId = domainLookupService.getPrimaryDomainId(userId)
+        passwordPolicyService.changePassword(userId, request.oldPassword, request.newPassword, domainId)
         val message = messageSource.getMessage("auth.password_changed", null, LocaleContextHolder.getLocale())
         return ResponseEntity.ok(mapOf("message" to message))
     }

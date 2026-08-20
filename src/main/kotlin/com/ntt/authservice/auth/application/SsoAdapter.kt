@@ -78,17 +78,18 @@ class SsoAdapter(
     }
 
     /**
-     * List available SSO providers.
+     * List available SSO providers from configuration.
+     * Reads from SecurityProperties.sso.providers — consistent with OAuth2TokenExchanger.
      */
     fun getProviders(): List<SsoProviderInfo> {
         if (!securityProperties.sso.enabled) return emptyList()
-        // Read from Spring OAuth2 client registrations would go here
-        // For now, return configured providers
-        return listOf(
-            SsoProviderInfo("google", "Google", true),
-            SsoProviderInfo("microsoft", "Microsoft", true),
-            SsoProviderInfo("keycloak", "Keycloak", true)
-        )
+        return securityProperties.sso.providers
+            .filter { (_, config) -> config.enabled }
+            .map { (id, _) -> SsoProviderInfo(
+                id = id,
+                name = id.replaceFirstChar { it.uppercase() },
+                enabled = true
+            )}
     }
 
     /**
@@ -167,7 +168,7 @@ class SsoAdapter(
 
     /**
      * Exchange OAuth2 authorization code for user info.
-     * TODO: Implement per-provider token exchange (Google, Microsoft, Keycloak)
+     * Delegates to OAuth2TokenExchanger which uses config-driven provider endpoints.
      */
     private fun exchangeCodeForUser(code: String, provider: String, redirectUri: String): IdpUserInfo {
         // Resolve client credentials from environment variables

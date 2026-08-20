@@ -2,8 +2,8 @@
   "feature": "api-response-i18n-standard",
   "workflow": "wf_brainstorm_openspec",
   "outcome": "success",
-  "timestamp": "2026-08-19T07:54:49.131398+00:00",
-  "duration_seconds": 225,
+  "timestamp": "2026-08-20T02:17:45.206039+00:00",
+  "duration_seconds": 244,
   "tokens_used": 0,
   "prompt_layer_tokens": {},
   "output_artifacts": [

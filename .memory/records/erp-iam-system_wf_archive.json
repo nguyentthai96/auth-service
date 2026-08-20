@@ -1,0 +1,13 @@
+{
+  "feature": "erp-iam-system",
+  "workflow": "wf_archive",
+  "outcome": "success",
+  "timestamp": "2026-08-20T07:06:40.007042+00:00",
+  "duration_seconds": 119,
+  "tokens_used": 0,
+  "prompt_layer_tokens": {},
+  "output_artifacts": [],
+  "errors": [],
+  "lesson_extracted": null,
+  "recovery_pattern": null
+}

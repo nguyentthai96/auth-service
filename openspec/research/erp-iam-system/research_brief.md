@@ -1,4 +1,4 @@
-# Research Brief: ERP IAM System (3 Modules)
+# Research Brief: ERP IAM System
 
 > Tài liệu khởi đầu cho quá trình research tính năng — xác định scope, keywords, context.
 
@@ -9,7 +9,7 @@
 | **Tên tính năng** | Enterprise IAM — system-admin-service, account-service, auth-service |
 | **Ngày tạo** | 2026-08-05 |
 | **Input source** | Idea (mô tả tự do từ user + directory reference) |
-| **Input content** | Thiết kế và triển khai hệ thống IAM hoàn chỉnh cho ERP enterprise, chia thành 3 microservice |
+| **Input content** | Thiết kế và triển khai hệ thống IAM hoàn chỉnh cho ERP enterprise, chia thành 3 microservice: auth-service (xác thực + phân quyền), account-service (profile + preferences), system-admin-service (menu, org, API partner, workflow, audit) |
 | **Người yêu cầu** | nguyentthai96 |
 
 ## 2. Mô tả tính năng
@@ -104,8 +104,18 @@ Cần xây dựng IAM hoàn chỉnh để:
 | Domain/Role/Group Management | auth-service | `rbac.adapter.in.web` | ✅ Có | `RbacControllers.kt` |
 | Role-Permission Controller | auth-service | `rbac.adapter.in.web` | ✅ Có | `RolePermissionController.kt` |
 | Exception Handling | auth-service | `shared.exception` | ✅ Có | `GlobalExceptionHandler.kt`, `AuthExceptions.kt` |
-| Session Management (stub) | account-service | `shared.session` | 🔲 Stub | `DefaultSessionManagement.kt` |
-| System Admin (stub) | system-admin-service | `shared.session` | 🔲 Stub | `DefaultSessionManagement.kt` |
+| MFA Service | auth-service | `auth.application` | ✅ Có | `MfaService.kt`, `TotpService.kt`, `OtpService.kt` |
+| SSO Adapter | auth-service | `auth.application` | ✅ Có | `SsoAdapter.kt`, `SsoController.kt` |
+| Session Management | auth-service | `auth.application` | ✅ Có | `LoginSessionService.kt`, `SessionPolicyService.kt` |
+| E2EE Cipher | auth-service | `auth.application.cipher` | ✅ Có | `DecryptionVaultService.kt`, `CipherVersionNegotiator.kt` |
+| Anonymous Session | auth-service | `auth.application` | ✅ Có | `AnonymousSessionHandler.kt` |
+| Password Policy | auth-service | `auth.application` | ✅ Có | `PasswordPolicyService.kt`, `PasswordHistoryEntity.kt`, `PasswordPolicyEntity.kt` |
+| Account Lifecycle | account-service | `lifecycle` | ✅ Có | `AccountLifecycleController.kt`, `AccountLifecycleService.kt`, `DataExportService.kt` |
+| Session Management | account-service | `session` | ✅ Có | `SessionController.kt`, `SessionService.kt`, `SessionRedisAdapter.kt`, `ActiveSessionEntity.kt` |
+| Profile Event Listener | account-service | `profile` | ⚠️ Partial | `ProfileKafkaListener.kt` (listener only, no CRUD yet) |
+| Menu Permission | system-admin-service | `menu` | ✅ Có | `MenuController.kt`, `MenuPermissionService.kt`, `MenuEntities.kt`, `MenuPermissionCacheAdapter.kt` |
+| API Partner Management | system-admin-service | `apipartner` | ✅ Có | `ApiPartnerController.kt`, `ApiKeyService.kt`, `ApiPartnerService.kt`, `ApiUsageService.kt` |
+| Domain/Tenant Config | system-admin-service | `tenant` | ✅ Có | `DomainConfigController.kt`, `DomainConfigService.kt`, `DomainConfigEntity.kt` |
 
 ### 4.2 Existing Code Patterns
 
@@ -114,31 +124,35 @@ Cần xây dựng IAM hoàn chỉnh để:
 | **Architecture** | Clean Architecture (Hexagonal): `adapter/in/web`, `adapter/out/persistence`, `application` | auth-service package structure |
 | **Entity Base** | `SnowflakePersistentAuditableEntity` (id, createdAt, updatedAt, active) | base-core library |
 | **ID Generation** | Snowflake 64-bit Long | base-core `SnowflakeIdGenerator` |
-| **Service Layer** | `AbstractCrudService<E>` từ base-core | base-core library |
-| **Controller Layer** | `BaseController` từ base-core | base-core library |
 | **Response Format** | `ApiResponse<T>` unified format | base-core `base-web-starter` |
-| **Exception Handling** | `BaseControllerAdvice` + custom exceptions | `GlobalExceptionHandler.kt` |
-| **Logging** | `@SystemLog` AOP + `HttpLoggingFilter` | base-core `common-log` |
+| **Exception Handling** | `GlobalExceptionHandler` + custom exceptions | `GlobalExceptionHandler.kt` |
+| **Logging** | AOP-based logging + `HttpLoggingFilter` | base-core `common-log` |
 | **DTO Mapping** | Extension functions `toResponse()` | auth-service Kotlin convention |
 | **Validation** | Jakarta `@Valid` + Bean Validation | `spring-boot-starter-validation` |
 | **Password** | `PasswordEncoder` (Argon2 ready, BouncyCastle) | `build.gradle.kts` test dependency |
 | **DB Migration** | Flyway | `build.gradle.kts` dependency |
+| **CQRS** | Command/Query handlers (optional flag) | `CqrsAuthController.kt` |
+| **Event Sourcing** | `eventsourcing-utils` dependency | `build.gradle.kts` |
+| **Caching** | Caffeine L1 + Redis L2 | `RedisConfig.kt` + application.yml |
+| **i18n** | Database-backed MessageSource | `DatabaseMessageSource.kt` |
 
 ### 4.3 Tech Stack Constraints
 
 | Component | Version/Technology |
 |-----------|-------------------|
-| Language | Kotlin 2.4.10 |
+| Language | Kotlin 2.4.x |
 | JDK | 25 |
 | Framework | Spring Boot 4.1.0 (Spring Framework 7, Spring Security 7) |
 | Build | Gradle 8.x, Convention Plugins (`ntt.spring-app-conventions`) |
-| Database | PostgreSQL 14+ |
+| Database | PostgreSQL 17+ |
 | ORM | Spring Data JPA + Hibernate |
 | Migration | Flyway |
-| Security | Spring Security + JJWT (HMAC-SHA256) |
-| Messaging | Spring Kafka (account-service) |
-| Modulith | Spring Modulith (account-service, system-admin-service) |
-| Testing | JUnit 5 + Testcontainers + ArchUnit + H2 |
+| Security | Spring Security + JJWT (RS256 support) |
+| Cache | Caffeine (L1) + Redis (L2) |
+| Messaging | Spring Kafka (compileOnly) |
+| E2EE | Google Tink + AWS KMS |
+| MFA | dev.samstevens.totp + Passay password policy |
+| Testing | JUnit 5 + ArchUnit + Mockito-Kotlin + H2 |
 | Base Library | base-core platform (base-web-starter, base-data-starter, common-log) |
 | Platform BOM | `com.ntt:platform:0.0.1-SNAPSHOT` |
 
@@ -147,35 +161,35 @@ Cần xây dựng IAM hoàn chỉnh để:
 | Integration Point | Type | Module/File | Notes |
 |-------------------|------|-------------|-------|
 | `SnowflakePersistentAuditableEntity` | Base Class | base-core/base-model | Mọi entity mới phải extend |
-| `AbstractCrudService<E>` | Base Class | base-core | Service layer chuẩn |
-| `BaseController` | Base Class | base-core/base-web-starter | Controller layer chuẩn |
 | `ApiResponse<T>` | Response Format | base-core/base-web-starter | Unified API response |
-| `BaseControllerAdvice` | Exception Handling | base-core | Global exception handler |
-| `@SystemLog` | AOP Annotation | common-log | Logging annotation |
-| `JwtService` | Service | auth-service | JWT generation/validation |
-| `RbacEngine` | Service | auth-service | RBAC chain evaluation |
-| `PolicyEvaluator` | Service | auth-service | PBAC condition evaluation |
-| `SecurityConfig` | Config | auth-service | Spring Security filter chain |
+| `GlobalExceptionHandler` | Exception Handling | shared/exception | Global exception handler |
+| `JwtService` | Service | auth/application | JWT generation/validation |
+| `RbacEngine` | Service | rbac/application | RBAC chain evaluation |
+| `PolicyEvaluator` | Service | pbac/application | PBAC condition evaluation |
+| `SecurityConfig` | Config | shared/config | Spring Security filter chain |
+| `MfaService` / `TotpService` | Service | auth/application | MFA verification |
+| `SsoAdapter` | Service | auth/application | OAuth2 SSO integration |
+| `LoginSessionService` | Service | auth/application | Session management |
 | PostgreSQL | Database | All services | Separate DB per service |
-| Redis | Cache | Planned | Permission cache, rate limiting |
-| Kafka | Messaging | account-service, system-admin-service | Inter-service events |
+| Redis | Cache/State | auth-service | Permission cache, OTP, rate limiting |
+| Kafka | Messaging | All services | Inter-service events (compileOnly) |
 
 ## 5. Research Questions
 
 ### 5.1 Câu hỏi cần trả lời
-- [x] Q1: Spring Security 7 có native MFA support không? Cách integrate? → **Có**, dùng `@EnableMultiFactorAuthentication` + `FactorGrantedAuthority`
-- [x] Q2: Keycloak 26 integrate với Spring Boot 4.x như thế nào? → Dùng `spring-boot-starter-oauth2-resource-server`, không cần adapter
-- [x] Q3: Có open source nào cho menu permission system không? → **Không** có solution phù hợp, cần custom build
-- [x] Q4: Bucket4j + Redis có production-ready cho distributed rate limiting không? → **Có**, dùng ProxyManager + Redisson
-- [x] Q5: Nên dùng state machine hay workflow engine cho approval workflow? → Custom state machine (đơn giản hơn Camunda/Temporal cho use case này)
-- [x] Q6: Cerbos/OpenFGA có cần thiết không khi đã có PolicyEvaluator? → **Không**, PolicyEvaluator hiện tại đủ dùng
-- [x] Q7: PostgreSQL recursive CTE hay ltree cho organization hierarchy? → Recursive CTE (đơn giản, đủ performance cho ≤10 levels)
+- [x] Q1: Spring Security 7 có native MFA support không? → **Có**, dùng `FactorGrantedAuthority`
+- [x] Q2: Keycloak 26 integrate với Spring Boot 4.x như thế nào? → `spring-boot-starter-oauth2-resource-server`
+- [x] Q3: Có open source nào cho menu permission system không? → **Không** phù hợp, cần custom build
+- [x] Q4: Bucket4j + Redis production-ready cho distributed rate limiting? → **Có**
+- [x] Q5: State machine hay workflow engine cho approval workflow? → Custom state machine
+- [x] Q6: Cerbos/OpenFGA cần thiết khi đã có PolicyEvaluator? → **Không**
+- [x] Q7: PostgreSQL recursive CTE hay ltree cho organization hierarchy? → Recursive CTE
 
 ### 5.2 Assumptions cần verify
-- [x] A1: base-core chưa có TreeEntity base class → **Confirmed**, cần tạo mới
-- [x] A2: Spring Security 7 `FactorGrantedAuthority` available trong Spring Boot 4.1.0 → **Confirmed** qua search
-- [x] A3: Bucket4j có Spring Boot starter → **Confirmed**, có integration module
-- [x] A4: account-service và system-admin-service chỉ có stub → **Confirmed** qua codebase scan
+- [x] A1: base-core chưa có TreeEntity base class → **Confirmed**
+- [x] A2: Spring Security 7 `FactorGrantedAuthority` available → **Confirmed**
+- [x] A3: Bucket4j có Spring Boot starter → **Confirmed**
+- [x] A4: account-service và system-admin-service có code → **Updated**: account-service đã có lifecycle + session module; system-admin-service đã có menu + apipartner + tenant module. Không chỉ là stub.
 
 ## 6. Success Criteria
 
@@ -183,7 +197,7 @@ Cần xây dựng IAM hoàn chỉnh để:
 |----------|-----------|-------------|
 | Research coverage | Đủ sources cho mọi domain (auth, menu, org, API, workflow) | ≥ 10 unique sources |
 | Open source options | Đánh giá các projects liên quan | ≥ 5 repos evaluated |
-| Gap analysis | Xác định tất cả gaps giữa current và target system | All critical gaps identified + severity |
+| Gap analysis | Xác định tất cả gaps giữa current và target system | All critical gaps identified |
 | Business analysis | Mọi use cases documented với flows | ≥ 30 use cases across 3 modules |
 | Technical spec | ERD, API spec, caching, security — agent-ready | 3 ERDs + 80+ API endpoints |
 

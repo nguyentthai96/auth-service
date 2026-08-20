@@ -46,3 +46,40 @@ data class SsoProvisionedEvent(
 ) : DomainEvent {
     override val eventType: String = "iam.user.sso_provisioned"
 }
+
+/**
+ * Event published when an account is deactivated (FR-009).
+ * Consumed by account-service to deactivate profile, devices, preferences.
+ */
+data class AccountDeactivatedEvent(
+    val userId: Long,
+    val reason: String? = null
+) : DomainEvent {
+    override val eventType: String = "iam.account.deactivated"
+}
+
+/**
+ * Event published when an account is permanently deleted (FR-009 — GDPR).
+ * Consumed by account-service to purge PII data.
+ */
+data class AccountDeletedEvent(
+    val userId: Long
+) : DomainEvent {
+    override val eventType: String = "iam.account.deleted"
+}
+
+/**
+ * Event published for security audit trail persistence (FR-015).
+ * Consumed by system-admin-service audit module for immutable storage.
+ */
+data class AuditEvent(
+    val userId: Long?,
+    val action: String,
+    val entityType: String?,
+    val entityId: String?,
+    val ipAddress: String?,
+    val userAgent: String?,
+    val details: String?
+) : DomainEvent {
+    override val eventType: String = "iam.audit.event"
+}

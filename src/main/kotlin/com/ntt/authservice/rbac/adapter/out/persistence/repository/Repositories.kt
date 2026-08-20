@@ -2,6 +2,9 @@ package com.ntt.authservice.rbac.adapter.out.persistence.repository
 
 import com.ntt.authservice.rbac.adapter.out.persistence.entity.*
 import org.springframework.data.jpa.repository.JpaRepository
+import org.springframework.data.jpa.repository.Modifying
+import org.springframework.data.jpa.repository.Query
+import org.springframework.data.repository.query.Param
 import org.springframework.stereotype.Repository
 
 @Repository
@@ -70,6 +73,10 @@ interface RolePermissionRepository : JpaRepository<RolePermissionEntity, Long> {
 @Repository
 interface RefreshTokenRepository : JpaRepository<RefreshTokenEntity, Long> {
     fun findByTokenHashAndRevokedFalse(tokenHash: String): RefreshTokenEntity?
+
+    @Modifying
+    @Query("UPDATE RefreshTokenEntity r SET r.revoked = true WHERE r.userId = :userId AND r.revoked = false")
+    fun revokeAllByUserId(@Param("userId") userId: Long): Int
 }
 
 @Repository

@@ -30,4 +30,45 @@ class DomainLookupService(
 
         return domain.code
     }
+
+    /**
+     * Find the primary domain ID for a user.
+     * Used by password change flow to resolve domain-scoped password policy.
+     * Priority: isPrimary flag → first active membership → error.
+     */
+    fun getPrimaryDomainId(userId: Long): Long {
+        val membership = userDomainRepository.findAllByUserIdAndActiveTrue(userId)
+            .firstOrNull { it.isPrimary }
+            ?: userDomainRepository.findAllByUserIdAndActiveTrue(userId).firstOrNull()
+            ?: throw ResourceNotFoundException("DomainMembership", userId)
+
+        return membership.domainId
+    }
+
+    /**
+     * Get domain branding configuration (FR-016).
+     * Returns branding fields: logo, colors, login page config.
+     */
+    fun getDomainBranding(domainCode: String): DomainBrandingInfo {
+        val domain = domainPort.findByCode(domainCode)
+            ?: throw ResourceNotFoundException("Domain", domainCode)
+
+        return DomainBrandingInfo(
+            domainCode = domain.code,
+            domainName = domain.name,
+            logoUrl = domain.logoUrl,
+            primaryColor = domain.primaryColor,
+            loginPageConfig = domain.loginPageConfig,
+            faviconUrl = domain.faviconUrl
+        )
+    }
+
+    data class DomainBrandingInfo(
+        val domainCode: String,
+        val domainName: String,
+        val logoUrl: String?,
+        val primaryColor: String?,
+        val loginPageConfig: String?,
+        val faviconUrl: String?
+    )
 }

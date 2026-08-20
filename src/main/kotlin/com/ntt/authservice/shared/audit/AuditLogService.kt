@@ -1,6 +1,8 @@
 package com.ntt.authservice.shared.audit
 
 import com.ntt.authservice.auth.application.cipher.EncryptedAuditService
+import com.ntt.authservice.auth.application.port.out.AuditEvent
+import com.ntt.authservice.auth.application.port.out.EventPublisher
 import org.slf4j.LoggerFactory
 import org.springframework.beans.factory.ObjectProvider
 import org.springframework.stereotype.Service
@@ -10,17 +12,19 @@ import org.springframework.web.context.request.ServletRequestAttributes
 
 /**
  * Audit log service for security-sensitive events.
- * Logs to structured logger (JSON) and optionally to audit_log table.
+ * Logs to structured logger (JSON) and publishes to audit event stream for persistence (FR-015).
  */
 @Service
 class AuditLogService(
-    private val encryptedAuditService: ObjectProvider<EncryptedAuditService>
+    private val encryptedAuditService: ObjectProvider<EncryptedAuditService>,
+    private val eventPublisher: ObjectProvider<EventPublisher>
 ) {
 
     private val log = LoggerFactory.getLogger("AUDIT")
 
     /**
      * Log an audit event with contextual information.
+     * Persists to audit_log via EventPublisher (FR-015 enhancement).
      */
     fun logEvent(
         userId: Long?,
@@ -44,7 +48,18 @@ class AuditLogService(
             details ?: "-"
         )
 
-        // TODO: persist to audit_log table for compliance requirements
+        // Persist audit event via EventPublisher (FR-015 — replaces TODO)
+        eventPublisher.ifAvailable?.publish(
+            AuditEvent(
+                userId = userId,
+                action = action.name,
+                entityType = entityType,
+                entityId = entityId,
+                ipAddress = ipAddress,
+                userAgent = userAgent,
+                details = details
+            )
+        )
     }
 
     /**
@@ -104,6 +119,7 @@ enum class AuditAction {
     MFA_LOGIN_LOCKED,
     MFA_ADMIN_UNLOCKED,
     TRUSTED_DEVICE_SET,
+    SESSION_REVOKED,
 
     // E2EE Audit Actions
     E2EE_KEY_EXCHANGE,

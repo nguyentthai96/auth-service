@@ -1,22 +1,25 @@
 # Pre-OpenSpec: anonymous-login-optimization
 
-> **Type**: EXTEND
+> **Type**: MAINTENANCE
 > **Flow**: Non-Financial
 > **Source**: Research Artifacts (business_analysis.md, technical_spec.md, research_brief.md)
-> **Classification Evidence**: keyword `anonymous`, `session`, `token` → module `auth.application`, `auth.adapter.in.web` → file `JwtService.kt`, `LoginHandler.kt`, `SecurityConfig.kt`
-> **Archive**: N/A
-> **Quality Score**: 82/100
+> **Classification Evidence**: keyword `anonymous`, `session`, `token` → module `auth.application`, `auth.adapter.in.web` → file `AnonymousAuthController.kt`, `AnonymousSessionHandler.kt`, `SessionPromotionService.kt` (ALL EXIST — feature fully implemented)
+> **Archive**: `openspec/changes/archive/2026-08-20-anonymous-login-optimization/pre_openspec.md`
+> **Previous Version**: EXTEND → reclassified to MAINTENANCE (all classes exist in codebase)
+> **Quality Score**: 85/100
 
 ## 📋 Feature Summary
 
-Tính năng Anonymous Login Optimization cho phép visitor (chưa đăng nhập) tạo phiên ẩn danh tạm thời để tương tác hạn chế với hệ thống. Phiên ẩn danh được lưu trong Redis với TTL, cho phép lưu trữ dữ liệu tạm thời (cart, preferences). Khi user đăng nhập, phiên ẩn danh được "promote" — tự động chuyển dữ liệu tạm thời sang tài khoản xác thực, blacklist anonymous token, và xóa session. Feature mở rộng LoginHandler, JwtService, SecurityConfig hiện có và thêm các endpoint/service mới.
+Tính năng Anonymous Login Optimization cho phép visitor (chưa đăng nhập) tạo phiên ẩn danh tạm thời để tương tác hạn chế với hệ thống. Phiên ẩn danh được lưu trong Redis với TTL, cho phép lưu trữ dữ liệu tạm thời (cart, preferences). Khi user đăng nhập hoặc đăng ký, phiên ẩn danh được "promote" — tự động chuyển dữ liệu tạm thời sang tài khoản xác thực, blacklist anonymous token, và xóa session.
+
+**[CHANGED]** Feature đã được implement đầy đủ trong codebase. Classification thay đổi từ EXTEND → MAINTENANCE. Scope hiện tại: optimization, refinement, bug fix, hoặc enhancement trên code hiện có.
 
 | Metric | Giá trị |
 |--------|---------|
 | Số FR | 13 (Research: 8, Enriched: 5) |
 | Issues | 4 (🔴: 1, 🟡: 3) |
 | Open Questions | 2 |
-| **Quality Score** | **82/100** |
+| **Quality Score** | **85/100** |
 
 ---
 
@@ -58,8 +61,8 @@ Tính năng Anonymous Login Optimization cho phép visitor (chưa đăng nhập)
 
 ### FR-006: Lưu trữ session data namespace [IDEA]
 - **Actor**: Anonymous User (via Client/Service)
-- **Action**: Hệ thống phải cho phép store/retrieve key-value data trong anonymous session theo namespace (`PUT/GET /api/v1/auth/anonymous/session/data`)
-- **Validation**: Data được lưu/đọc đúng namespace. Redis key format: `anon:data:{sessionId}:{namespace}:{key}`.
+- **Action**: Hệ thống phải cho phép store/retrieve/delete key-value data trong anonymous session theo namespace (`PUT/GET/DELETE /api/v1/auth/anonymous/session/data`)
+- **Validation**: Data được lưu/đọc/xóa đúng namespace. Redis key format: `anon:data:{sessionId}:{namespace}:{key}`.
 
 ### FR-007: Giới hạn kích thước session data [IDEA]
 - **Actor**: System
@@ -97,7 +100,7 @@ Tính năng Anonymous Login Optimization cho phép visitor (chưa đăng nhập)
 
 ### FR-013: Promotion metadata trong login response [ENRICHED]
 - **Actor**: System
-- **Action**: Hệ thống phải trả thêm `promotedFromAnonymous: Boolean` và `dataTransferred: { itemCount, namespaces }` trong login response khi promotion xảy ra
+- **Action**: Hệ thống phải trả thêm `promotedFromAnonymous: Boolean` và `dataTransferred: { itemCount, namespaces, status }` trong login response khi promotion xảy ra
 - **Validation**: Response chứa promotion metadata. Nếu không có promotion hoặc session expired: `promotedFromAnonymous: false`.
 - **Justification**: Client biết promotion có thành công và data nào đã được migrate.
 
@@ -118,9 +121,11 @@ Tính năng Anonymous Login Optimization cho phép visitor (chưa đăng nhập)
 
 Không phát hiện trùng lặp giữa các FR. Tất cả FR có scope rõ ràng và không chồng chéo.
 
+**[CHANGED]** So với archive: FR-006 đã bổ sung DELETE endpoint (trước đó chỉ có PUT/GET). Codebase hiện tại đã implement DELETE endpoint trong `AnonymousAuthController.kt`.
+
 ## 5. Enriched Domain Requirements
 
-Đã bổ sung 5 FR enriched (FR-009 → FR-013), đạt đúng giới hạn `min(5, ceil(13 × 0.20)) = min(5, 3) = 3` → thực tế bổ sung 5 vì base FR count = 8 → `min(5, ceil(8 × 0.20)) = min(5, 2) = 2`. ⚠️ Assumption: sử dụng giới hạn max = 5 vì tất cả enriched FRs đều critical cho security và integration.
+Đã bổ sung 5 FR enriched (FR-009 → FR-013). ⚠️ Assumption: sử dụng giới hạn max = 5 vì tất cả enriched FRs đều critical cho security và integration.
 
 ### Enriched FRs
 
@@ -151,22 +156,22 @@ Không phát hiện trùng lặp giữa các FR. Tất cả FR có scope rõ rà
 
 | Tiêu chí | Điểm | Deduction |
 |----------|-------|-----------|
-| Rõ ràng (Clarity) | 22/25 | FR-004: merge strategy "last-write-wins for scalars" cần định nghĩa rõ hơn |
-| Đầy đủ (Completeness) | 20/25 | FR-003: chưa rõ behavior khi user register (không chỉ login) với anonymousSessionId; FR-006: chưa rõ DELETE session data behavior |
-| Nhất quán (Consistency) | 22/25 | FR-009: rate limit config dùng sliding window nhưng LoginRateLimitService hiện dùng fixed window — cần align |
+| Rõ ràng (Clarity) | 23/25 | FR-004: merge strategy "last-write-wins for scalars" cần định nghĩa rõ hơn — scalar = single Redis String value |
+| Đầy đủ (Completeness) | 22/25 | FR-003: đã bao gồm register promotion (RegisterHandler implemented); FR-006: đã bổ sung DELETE endpoint |
+| Nhất quán (Consistency) | 22/25 | FR-009: rate limit dùng fixed window (align với LoginRateLimitService INCR+EXPIRE pattern) — đã nhất quán |
 | Kiểm thử được (Testability) | 18/25 | FR-004: "tất cả data" khó verify boundary; FR-010: concurrent promotion test cần distributed test setup |
-| **Tổng** | **82/100** | |
+| **Tổng** | **85/100** | |
 
 ### Chi tiết trừ điểm
 
 | # | Tiêu chí | Điểm trừ | FR | Lý do (trích URD) | Cách cải thiện |
 |---|----------|----------|-----|-------------------|---------------|
-| 1 | Clarity | -3 | FR-004 | "last-write-wins for scalars" — scalar chưa define rõ (string? number? cả hai?) | Liệt kê cụ thể data types được coi là scalar |
-| 2 | Completeness | -3 | FR-003 | Chỉ đề cập login promotion, không có register promotion | Bổ sung behavior khi RegisterHandler nhận anonymousSessionId |
-| 3 | Completeness | -2 | FR-006 | Chỉ đề cập PUT/GET, thiếu DELETE endpoint cho session data | Bổ sung DELETE /api/v1/auth/anonymous/session/data/{namespace}/{key} |
-| 4 | Consistency | -3 | FR-009 | LoginRateLimitService dùng INCR+EXPIRE (fixed window), FR-009 ghi sliding window | Align sang fixed window giống existing pattern |
+| 1 | Clarity | -2 | FR-004 | "last-write-wins for scalars" — scalar = single Redis String value (đã clarified hơn archive) | Liệt kê cụ thể data types ví dụ: preferences, locale |
+| 2 | Completeness | -1 | FR-003 | Archive thiếu register promotion, codebase đã implement RegisterHandler promotion | Đã cập nhật — RegisterHandler cũng hỗ trợ anonymousSessionId |
+| 3 | Completeness | -2 | FR-006 | Archive thiếu DELETE endpoint; codebase đã implement DELETE | Đã cập nhật FR-006 để bao gồm DELETE |
+| 4 | Consistency | -3 | FR-009 | Fixed window align với LoginRateLimitService pattern — nhất quán | N/A — đã resolve |
 | 5 | Testability | -4 | FR-004 | "tất cả data" không quantifiable — bao nhiêu keys, namespace nào? | Định nghĩa test fixture cụ thể: N keys × M namespaces, verify count |
-| 6 | Testability | -3 | FR-010 | Concurrent promotion cần 2+ instances hoặc mock distributed lock | Mô tả test strategy: single-instance concurrent thread test + integration test |
+| 6 | Testability | -3 | FR-010 | Concurrent promotion cần 2+ threads hoặc mock distributed lock | Mô tả test strategy: single-instance concurrent thread test + integration test |
 
 ---
 
@@ -175,16 +180,16 @@ Không phát hiện trùng lặp giữa các FR. Tất cả FR có scope rõ rà
 | # | Loại | Mức độ | Mô tả | FR | Đề xuất |
 |---|------|--------|-------|-----|---------|
 | 1 | Risk | 🔴 | Redis memory exhaustion nếu bot farm tạo hàng loạt anonymous sessions | FR-001, FR-002, FR-009 | Rate limiting + TTL + monitoring alert khi anonymous session count > threshold |
-| 2 | Ambiguity | 🟡 | FR-004 merge strategy "last-write-wins for scalars" chưa define scalar types | FR-004 | Định nghĩa cụ thể scalar = single-value Redis String keys |
-| 3 | Missing | 🟡 | Không có DELETE endpoint cho anonymous session data | FR-006 | Bổ sung FR cho DELETE /api/v1/auth/anonymous/session/data/{namespace}/{key} |
-| 4 | Incomplete | 🟡 | Chưa có monitoring/metrics cho anonymous session lifecycle | FR-001, FR-008 | Micrometer counters: sessions created, renewed, promoted, expired |
+| 2 | Ambiguity | 🟡 | FR-004 merge strategy "last-write-wins for scalars" chưa define rõ với nhiều data types | FR-004 | Định nghĩa cụ thể scalar = single-value Redis String keys |
+| 3 | Missing | 🟡 | Chưa có monitoring/metrics cho anonymous session lifecycle đầy đủ (hiện có counters nhưng chưa có dashboard) | FR-001, FR-008 | Micrometer counters đã implement: `sessions.created`, `sessions.renewed`, `sessions.promoted`, `data.stored`, `data.size_exceeded`, `rate_limited` |
+| 4 | Incomplete | 🟡 | Chưa rõ behavior khi Redis data transfer fail giữa chừng (partial transfer) — hiện tại trả status PARTIAL | FR-004 | Codebase đã handle: `DataTransferResult.partial=true` → `PromotionResult.Status.PARTIAL` |
 
 ## 9. Open Questions
 
-- FR-003: Promotion có hỗ trợ khi user register (không chỉ login) không? RegisterHandler cũng cần extend?
-- FR-009: Rate limit cho anonymous token creation nên dùng fixed window (align với LoginRateLimitService) hay sliding window (chính xác hơn)?
+- FR-003: ~~Promotion có hỗ trợ khi user register (không chỉ login) không?~~ **RESOLVED**: RegisterHandler đã implement promotion support với `anonymousSessionId` + `anonymousTokenJti` trong `RegisterCommand`.
+- FR-009: ~~Rate limit cho anonymous token creation nên dùng fixed window hay sliding window?~~ **RESOLVED**: Codebase dùng fixed window (INCR+EXPIRE) align với `LoginRateLimitService` pattern.
 
-> Nếu không được trả lời → default: promotion chỉ qua login; fixed window align với existing pattern.
+> Cả 2 open questions từ archive đã được resolve trong implementation.
 
 ## 10. Detected Scope
 
@@ -192,38 +197,46 @@ Không phát hiện trùng lặp giữa các FR. Tất cả FR có scope rõ rà
 
 ### 10.1 Domain
 
-Authentication & Session Management — mở rộng auth domain hiện có để hỗ trợ anonymous/guest sessions.
+Authentication & Session Management — mở rộng auth domain hiện có để hỗ trợ anonymous/guest sessions. Feature đã được implement đầy đủ.
 
 ### 10.2 Flow Type
 
 Non-Financial — không có giao dịch tài chính, không cần OTP/biometric xác nhận. Anonymous session creation và promotion là command-style operations.
 
 ### 10.3 Candidate Services
-- **auth-service** (primary): Keyword match `anonymous`, `session`, `token`, `login` → module `auth.application` → file `JwtService.kt`, `LoginHandler.kt`, `TokenGenerator.kt`, `LoginRateLimitService.kt`, `SessionPolicyService.kt`
-- **auth-service/shared**: Config và security filter → module `shared.config`, `shared.security` → file `SecurityConfig.kt`, `SecurityProperties.kt`, `JwtAuthFilter.kt`
+- **auth-service** (primary): Keyword match `anonymous`, `session`, `token`, `login` → module `auth.application` → files: `AnonymousSessionHandler.kt`, `AnonymousRateLimitService.kt`, `AnonymousSessionDataService.kt`, `SessionPromotionService.kt`, `RenewAnonymousTokenHandler.kt`, `JwtService.kt`
+- **auth-service/adapter**: Controller và DTOs → module `auth.adapter.in.web` → files: `AnonymousAuthController.kt`, `AnonymousDtos.kt`
+- **auth-service/shared**: Config và security filter → module `shared.config`, `shared.security`, `shared.exception` → files: `SecurityConfig.kt`, `SecurityProperties.kt`, `JwtAuthFilter.kt`, `AnonymousExceptions.kt`, `AuthErrorCode.kt`
 
 ### Detection Evidence
-- Keyword: `anonymous`, `session`, `token` → Module: `auth.application`, `auth.adapter.in.web` → File: `src/main/kotlin/com/ntt/authservice/auth/application/JwtService.kt`, `src/main/kotlin/com/ntt/authservice/auth/adapter/in/web/CqrsAuthController.kt`
-- Keyword: `rate limit` → Module: `auth.application` → File: `src/main/kotlin/com/ntt/authservice/auth/application/LoginRateLimitService.kt`, `src/main/kotlin/com/ntt/authservice/auth/application/MfaRateLimitService.kt`
-- Keyword: `blacklist` → Module: `rbac.adapter.out.persistence` → File: `TokenBlacklistRepository` in `src/main/kotlin/com/ntt/authservice/rbac/adapter/out/persistence/repository/Repositories.kt`, `TokenBlacklistEntity` in `src/main/kotlin/com/ntt/authservice/rbac/adapter/out/persistence/entity/PermissionEntities.kt`
-- Keyword: `Redis`, `StringRedisTemplate` → Module: `shared.config` → File: `src/main/kotlin/com/ntt/authservice/shared/config/RedisConfig.kt`
-- Keyword: `SecurityConfig`, `permitAll` → Module: `shared.config` → File: `src/main/kotlin/com/ntt/authservice/shared/config/SecurityConfig.kt`
-- Keyword: `CommandHandler` → Module: `auth.application.command` → File: `src/main/kotlin/com/ntt/authservice/auth/application/command/LoginHandler.kt` implements `CommandHandler<LoginCommand, LoginResult>`
-- Keyword: `generateMfaToken` (pattern for custom JWT) → Module: `auth.application` → File: `src/main/kotlin/com/ntt/authservice/auth/application/JwtService.kt` line 124
+- Keyword: `anonymous` → Module: `auth.application.command` → File: `src/main/kotlin/com/ntt/authservice/auth/application/command/AnonymousSessionHandler.kt` — implements `CommandHandler<CreateAnonymousSessionCommand, AnonymousSessionResult>`
+- Keyword: `anonymous`, `rate limit` → Module: `auth.application` → File: `src/main/kotlin/com/ntt/authservice/auth/application/AnonymousRateLimitService.kt` — uses `StringRedisTemplate`, INCR+EXPIRE pattern
+- Keyword: `anonymous`, `session`, `data` → Module: `auth.application` → File: `src/main/kotlin/com/ntt/authservice/auth/application/AnonymousSessionDataService.kt` — Redis CRUD with namespace isolation
+- Keyword: `promotion`, `session` → Module: `auth.application` → File: `src/main/kotlin/com/ntt/authservice/auth/application/SessionPromotionService.kt` — distributed lock + data transfer orchestration
+- Keyword: `renew`, `anonymous` → Module: `auth.application.command` → File: `src/main/kotlin/com/ntt/authservice/auth/application/command/RenewAnonymousTokenHandler.kt` — implements `CommandHandler<RenewAnonymousTokenCommand, AnonymousSessionResult>`
+- Keyword: `generateAnonymousToken` → Module: `auth.application` → File: `src/main/kotlin/com/ntt/authservice/auth/application/JwtService.kt` line 157 — generates anonymous JWT with `type=anonymous` claim
+- Keyword: `anonymous` → Module: `auth.adapter.in.web` → File: `src/main/kotlin/com/ntt/authservice/auth/adapter/in/web/AnonymousAuthController.kt` — REST controller at `/api/v1/auth/anonymous`
+- Keyword: `ROLE_ANONYMOUS` → Module: `shared.security` → File: `src/main/kotlin/com/ntt/authservice/shared/security/JwtAuthFilter.kt` line 63 — anonymous token detection
+- Keyword: `AnonymousProperties` → Module: `shared.config` → File: `src/main/kotlin/com/ntt/authservice/shared/config/SecurityProperties.kt` line 194 — nested data class
+- Keyword: `ANONYMOUS_SESSION_EXPIRED` → Module: `shared.exception` → File: `src/main/kotlin/com/ntt/authservice/shared/exception/AuthErrorCode.kt` — AUTH_040~AUTH_044
+- Keyword: `anonymousSessionId` → Module: `auth.application.command` → File: `src/main/kotlin/com/ntt/authservice/auth/application/command/LoginHandler.kt` line 155 — promotion call
+- Keyword: `anonymousSessionId` → Module: `auth.application.command` → File: `src/main/kotlin/com/ntt/authservice/auth/application/command/RegisterHandler.kt` line 83 — promotion call
+- Keyword: `permitAll` + `anonymous` → Module: `shared.config` → File: `src/main/kotlin/com/ntt/authservice/shared/config/SecurityConfig.kt` line 57 — `/api/v1/auth/anonymous` permitAll
+- Keyword: `promotedFromAnonymous` → Module: `auth.adapter.in.web.dto` → File: `src/main/kotlin/com/ntt/authservice/auth/adapter/in/web/dto/AuthResponse.kt` line 17 — promotion metadata in response
 
 ### 10.4 External Integrations
-- **Redis**: `StringRedisTemplate` + `RedisTemplate<String, Any>` — anonymous session data, rate limiting, distributed lock (existing integration in `src/main/kotlin/com/ntt/authservice/shared/config/RedisConfig.kt`)
+- **Redis**: `StringRedisTemplate` — anonymous session data, rate limiting, distributed lock (existing integration in `src/main/kotlin/com/ntt/authservice/shared/config/RedisConfig.kt`)
 - **PostgreSQL**: `TokenBlacklistRepository` (JPA) — anonymous token blacklisting (existing table `token_blacklist`, entity in `src/main/kotlin/com/ntt/authservice/rbac/adapter/out/persistence/entity/PermissionEntities.kt`)
 - **CAPTCHA**: `CaptchaGateway` — optional abuse prevention for anonymous token creation (existing port in `src/main/kotlin/com/ntt/authservice/auth/application/port/out/CaptchaGateway.kt`)
 
 ### 10.5 Required Modules
-- `auth.application` — JwtService extension, new services (SessionPromotionService, AnonymousSessionDataService, AnonymousRateLimitService)
-- `auth.application.command` — New CQRS handlers (AnonymousSessionHandler, RenewAnonymousTokenHandler), LoginCommand extension
-- `auth.adapter.in.web` — New controller (AnonymousAuthController), CqrsAuthController extension
-- `auth.adapter.in.web.dto` — New DTOs (AnonymousTokenResponse, CreateAnonymousSessionRequest, StoreAnonymousDataRequest)
-- `shared.config` — SecurityConfig extension (new permitAll paths), SecurityProperties extension (AnonymousProperties)
-- `shared.security` — JwtAuthFilter extension (ROLE_ANONYMOUS)
-- `shared.exception` — New exception classes (AnonymousSessionExpiredException, AnonymousSessionDataLimitExceededException, AnonymousPromotionConflictException)
+- `auth.application` — `JwtService` (EXISTING), `AnonymousSessionDataService` (EXISTING), `AnonymousRateLimitService` (EXISTING), `SessionPromotionService` (EXISTING), `PromotionResult` (EXISTING), `AnonymousSessionResult` (EXISTING)
+- `auth.application.command` — `AnonymousSessionHandler` (EXISTING), `RenewAnonymousTokenHandler` (EXISTING), `CreateAnonymousSessionCommand` (EXISTING), `RenewAnonymousTokenCommand` (EXISTING), `LoginHandler` (EXISTING - modified), `RegisterHandler` (EXISTING - modified), `LoginCommand` (EXISTING - modified)
+- `auth.adapter.in.web` — `AnonymousAuthController` (EXISTING)
+- `auth.adapter.in.web.dto` — `AnonymousDtos` (EXISTING), `AuthResponse` (EXISTING - modified), `RequestDtos` (EXISTING - modified)
+- `shared.config` — `SecurityConfig` (EXISTING - modified), `SecurityProperties.AnonymousProperties` (EXISTING)
+- `shared.security` — `JwtAuthFilter` (EXISTING - modified)
+- `shared.exception` — `AnonymousExceptions` (EXISTING), `AuthErrorCode` (EXISTING - modified)
 
 ---
 
@@ -234,56 +247,58 @@ Non-Financial — không có giao dịch tài chính, không cần OTP/biometric
 | 1 | Anonymous User | Truy cập app lần đầu, chưa có token | Client kiểm tra token — không có |
 | 2 | Client | Gửi `POST /api/v1/auth/anonymous` | System check rate limit → sinh UUID sessionId → generate anonymous JWT → init Redis session → trả token |
 | 3 | Anonymous User | Sử dụng app, lưu data (cart, preferences) | `PUT /api/v1/auth/anonymous/session/data` → validate token → check session → check size → store in Redis |
-| 4 | Anonymous User | Token gần hết hạn | `POST /api/v1/auth/anonymous/renew` → validate token → check session → generate new JWT → blacklist old JTI → refresh TTL |
-| 5 | Anonymous User | Quyết định đăng nhập | `POST /api/v1/auth/login` với `anonymousSessionId` → standard login flow |
+| 4 | Anonymous User | Token gần hết hạn | `POST /api/v1/auth/anonymous/renew` → validate token → check session → check renewal count → generate new JWT → blacklist old JTI → refresh TTL |
+| 5 | Anonymous User | Quyết định đăng nhập | `POST /api/v1/auth/login` với `anonymousSessionId` + `anonymousToken` → standard login flow |
 | 6 | System | Login thành công + anonymousSessionId present | Acquire distributed lock → verify session exists → transfer data to user namespace → blacklist anonymous JTI → delete session → release lock |
-| 7 | System | Trả login response | Auth tokens + `promotedFromAnonymous: true` + `dataTransferred: { itemCount, namespaces }` |
+| 7 | System | Trả login response | Auth tokens + `promotedFromAnonymous: true` + `dataTransferred: { itemCount, namespaces, status }` |
 
 ## 12. Traceability Matrix
 
 | FR-ID | Research Section | Spec Section | Affected Class | Status |
 |-------|-----------------|-------------|---------------|--------|
-| FR-001 | BA UC-001 | TS §4.1, §6.2 | `JwtService` (MODIFY), `AnonymousSessionHandler` (ADD) | Mapped |
-| FR-002 | BA UC-001 | TS §2.2, §4.1 | `AnonymousSessionHandler` (ADD), Redis (REUSE) | Mapped |
-| FR-003 | BA UC-002 | TS §4.2, §6.2 | `LoginCommand` (MODIFY), `LoginHandler` (MODIFY), `CqrsAuthController` (MODIFY), `LoginRequestDto` (MODIFY) | Mapped |
-| FR-004 | BA UC-002, UC-006 | TS §4.2 | `SessionPromotionService` (ADD), `AnonymousSessionDataService` (ADD) | Mapped |
-| FR-005 | BA UC-002, UC-007 | TS §4.2 | `SessionPromotionService` (ADD), `TokenBlacklistRepository` (REUSE) | Mapped |
-| FR-006 | BA UC-003 | TS §6.2 | `AnonymousSessionDataService` (ADD), `AnonymousAuthController` (ADD) | Mapped |
-| FR-007 | BA UC-003 BR-006 | TS §6.2 | `AnonymousSessionDataService` (ADD) | Mapped |
-| FR-008 | BA UC-004 | TS §6.2 | `RenewAnonymousTokenHandler` (ADD), `JwtService` (MODIFY) | Mapped |
-| FR-009 | BA UC-005 BR-003 | TS §9.1 | `AnonymousRateLimitService` (ADD) | Mapped |
-| FR-010 | BA UC-002 EF-002 | TS §4.2 | `SessionPromotionService` (ADD) | Mapped |
-| FR-011 | TS §7.1 | TS §7.1, §7.2 | `JwtAuthFilter` (MODIFY), `SecurityConfig` (MODIFY) | Mapped |
-| FR-012 | TS §9.5 | TS §9.5 | `SecurityProperties` (MODIFY), `AnonymousProperties` (ADD) | Mapped |
-| FR-013 | BA UC-002 BR-011 | TS §6.2 | `AuthResponse` (MODIFY), `LoginResult` (MODIFY) | Mapped |
+| FR-001 | BA UC-001 | TS §4.1, §6.2 | `JwtService` (EXISTING), `AnonymousSessionHandler` (EXISTING) | [REUSE] Implemented |
+| FR-002 | BA UC-001 | TS §2.2, §4.1 | `AnonymousSessionHandler` (EXISTING), Redis (REUSE) | [REUSE] Implemented |
+| FR-003 | BA UC-002 | TS §4.2, §6.2 | `LoginCommand` (EXISTING), `LoginHandler` (EXISTING), `CqrsAuthController` (EXISTING), `LoginRequestDto` (EXISTING) | [REUSE] Implemented |
+| FR-004 | BA UC-002, UC-006 | TS §4.2 | `SessionPromotionService` (EXISTING), `AnonymousSessionDataService` (EXISTING) | [REUSE] Implemented |
+| FR-005 | BA UC-002, UC-007 | TS §4.2 | `SessionPromotionService` (EXISTING), `TokenBlacklistRepository` (REUSE) | [REUSE] Implemented |
+| FR-006 | BA UC-003 | TS §6.2 | `AnonymousSessionDataService` (EXISTING), `AnonymousAuthController` (EXISTING) | [REUSE] Implemented |
+| FR-007 | BA UC-003 BR-006 | TS §6.2 | `AnonymousSessionDataService` (EXISTING) | [REUSE] Implemented |
+| FR-008 | BA UC-004 | TS §6.2 | `RenewAnonymousTokenHandler` (EXISTING), `JwtService` (EXISTING) | [REUSE] Implemented |
+| FR-009 | BA UC-005 BR-003 | TS §9.1 | `AnonymousRateLimitService` (EXISTING) | [REUSE] Implemented |
+| FR-010 | BA UC-002 EF-002 | TS §4.2 | `SessionPromotionService` (EXISTING) | [REUSE] Implemented |
+| FR-011 | TS §7.1 | TS §7.1, §7.2 | `JwtAuthFilter` (EXISTING), `SecurityConfig` (EXISTING) | [REUSE] Implemented |
+| FR-012 | TS §9.5 | TS §9.5 | `SecurityProperties.AnonymousProperties` (EXISTING) | [REUSE] Implemented |
+| FR-013 | BA UC-002 BR-011 | TS §6.2 | `AuthResponse` (EXISTING), `LoginResult` (EXISTING), `PromotionResult` (EXISTING) | [REUSE] Implemented |
 
-### Change Impact Map (EXTEND)
+### Change Impact Map (MAINTENANCE)
+
+**[CHANGED]** All entries updated from archive [ADD]/[MODIFY] → [REUSE]. Feature is fully implemented.
 
 ```
-FR-001 → [MODIFY] JwtService (src/main/kotlin/com/ntt/authservice/auth/application/JwtService.kt) → POST /api/v1/auth/anonymous
-         [ADD] AnonymousSessionHandler (NEW)
-FR-002 → [ADD] AnonymousSessionHandler (NEW) → Redis anon:session:{id}
-FR-003 → [MODIFY] LoginCommand (src/main/kotlin/com/ntt/authservice/auth/application/command/LoginCommand.kt) → internal
-         [MODIFY] LoginHandler (src/main/kotlin/com/ntt/authservice/auth/application/command/LoginHandler.kt) → POST /api/auth/login
-         [MODIFY] CqrsAuthController (src/main/kotlin/com/ntt/authservice/auth/adapter/in/web/CqrsAuthController.kt) → POST /api/auth/login
-         [MODIFY] LoginRequestDto (src/main/kotlin/com/ntt/authservice/auth/adapter/in/web/dto/RequestDtos.kt) → internal
-FR-004 → [ADD] SessionPromotionService (NEW) → internal
-         [ADD] AnonymousSessionDataService (NEW) → Redis anon:data:{id}:*
-FR-005 → [ADD] SessionPromotionService (NEW) → internal
-         [REUSE] TokenBlacklistRepository (src/main/kotlin/com/ntt/authservice/rbac/adapter/out/persistence/repository/Repositories.kt) → no changes needed
-FR-006 → [ADD] AnonymousSessionDataService (NEW) → PUT/GET /api/v1/auth/anonymous/session/data
-         [ADD] AnonymousAuthController (NEW) → new endpoints
-FR-007 → [ADD] AnonymousSessionDataService (NEW) → internal validation
-FR-008 → [ADD] RenewAnonymousTokenHandler (NEW) → POST /api/v1/auth/anonymous/renew
-         [MODIFY] JwtService (src/main/kotlin/com/ntt/authservice/auth/application/JwtService.kt) → internal
-FR-009 → [ADD] AnonymousRateLimitService (NEW) → internal
-FR-010 → [ADD] SessionPromotionService (NEW) → Redis anon:lock:{id}
-FR-011 → [MODIFY] JwtAuthFilter (src/main/kotlin/com/ntt/authservice/shared/security/JwtAuthFilter.kt) → all anonymous requests
-         [MODIFY] SecurityConfig (src/main/kotlin/com/ntt/authservice/shared/config/SecurityConfig.kt) → permitAll paths
-FR-012 → [MODIFY] SecurityProperties (src/main/kotlin/com/ntt/authservice/shared/config/SecurityProperties.kt) → internal
-         [ADD] AnonymousProperties nested class (NEW) → internal
-FR-013 → [MODIFY] AuthResponse (src/main/kotlin/com/ntt/authservice/auth/adapter/in/web/dto/AuthResponse.kt) → login response
-         [MODIFY] LoginResult (src/main/kotlin/com/ntt/authservice/auth/application/LoginResult.kt) → internal
+FR-001 → [REUSE] JwtService (src/main/kotlin/com/ntt/authservice/auth/application/JwtService.kt) → generateAnonymousToken() at line 157
+         [REUSE] AnonymousSessionHandler (src/main/kotlin/com/ntt/authservice/auth/application/command/AnonymousSessionHandler.kt)
+FR-002 → [REUSE] AnonymousSessionHandler (src/main/kotlin/com/ntt/authservice/auth/application/command/AnonymousSessionHandler.kt) → Redis anon:session:{id}
+FR-003 → [REUSE] LoginCommand (src/main/kotlin/com/ntt/authservice/auth/application/command/LoginCommand.kt) → anonymousSessionId field
+         [REUSE] LoginHandler (src/main/kotlin/com/ntt/authservice/auth/application/command/LoginHandler.kt) → promotion at line 155
+         [REUSE] RegisterHandler (src/main/kotlin/com/ntt/authservice/auth/application/command/RegisterHandler.kt) → promotion at line 83
+         [REUSE] LoginRequestDto (src/main/kotlin/com/ntt/authservice/auth/adapter/in/web/dto/RequestDtos.kt) → anonymousSessionId + anonymousToken fields
+FR-004 → [REUSE] SessionPromotionService (src/main/kotlin/com/ntt/authservice/auth/application/SessionPromotionService.kt) → transferData()
+         [REUSE] AnonymousSessionDataService (src/main/kotlin/com/ntt/authservice/auth/application/AnonymousSessionDataService.kt) → transferData(), Redis SCAN
+FR-005 → [REUSE] SessionPromotionService (src/main/kotlin/com/ntt/authservice/auth/application/SessionPromotionService.kt) → blacklist at line 79
+         [REUSE] TokenBlacklistRepository (src/main/kotlin/com/ntt/authservice/rbac/adapter/out/persistence/repository/Repositories.kt) → save()
+FR-006 → [REUSE] AnonymousSessionDataService (src/main/kotlin/com/ntt/authservice/auth/application/AnonymousSessionDataService.kt) → storeData/getData/deleteData
+         [REUSE] AnonymousAuthController (src/main/kotlin/com/ntt/authservice/auth/adapter/in/web/AnonymousAuthController.kt) → PUT/GET/DELETE endpoints
+FR-007 → [REUSE] AnonymousSessionDataService (src/main/kotlin/com/ntt/authservice/auth/application/AnonymousSessionDataService.kt) → getSessionDataSize() check
+FR-008 → [REUSE] RenewAnonymousTokenHandler (src/main/kotlin/com/ntt/authservice/auth/application/command/RenewAnonymousTokenHandler.kt) → full renewal flow
+         [REUSE] JwtService (src/main/kotlin/com/ntt/authservice/auth/application/JwtService.kt) → generateAnonymousToken()
+FR-009 → [REUSE] AnonymousRateLimitService (src/main/kotlin/com/ntt/authservice/auth/application/AnonymousRateLimitService.kt) → checkRateLimit()
+FR-010 → [REUSE] SessionPromotionService (src/main/kotlin/com/ntt/authservice/auth/application/SessionPromotionService.kt) → acquireLock/releaseLock at Redis anon:lock:{id}
+FR-011 → [REUSE] JwtAuthFilter (src/main/kotlin/com/ntt/authservice/shared/security/JwtAuthFilter.kt) → ROLE_ANONYMOUS at line 63
+         [REUSE] SecurityConfig (src/main/kotlin/com/ntt/authservice/shared/config/SecurityConfig.kt) → permitAll at line 57, hasRole("ANONYMOUS") at line 59
+FR-012 → [REUSE] SecurityProperties.AnonymousProperties (src/main/kotlin/com/ntt/authservice/shared/config/SecurityProperties.kt) → line 194
+FR-013 → [REUSE] AuthResponse (src/main/kotlin/com/ntt/authservice/auth/adapter/in/web/dto/AuthResponse.kt) → promotedFromAnonymous, dataTransferred fields
+         [REUSE] LoginResult.Success (src/main/kotlin/com/ntt/authservice/auth/application/LoginResult.kt) → promotionResult field
+         [REUSE] PromotionResult (src/main/kotlin/com/ntt/authservice/auth/application/PromotionResult.kt) → Status enum
 ```
 
 ## 13. Agent Notes (Tổng hợp bổ sung)
@@ -292,75 +307,50 @@ FR-013 → [MODIFY] AuthResponse (src/main/kotlin/com/ntt/authservice/auth/adapt
 
 ### Observations
 
-- Feature này là **EXTEND** — mở rộng auth domain hiện có, không phải greenfield. Hệ thống đã có mature infrastructure: JwtService (RS256 + HMAC fallback), CQRS CommandHandler, StringRedisTemplate + RedisTemplate, LoginRateLimitService, TokenBlacklistRepository.
-- Độ phức tạp trung bình-cao: ~15 classes cần tạo mới, ~10 classes cần modify. Tuy nhiên, hầu hết classes mới follow existing patterns (CommandHandler, Redis operations, rate limiting).
-- Rủi ro chính: Redis memory exhaustion nếu anonymous session bị abuse. Mitigation: rate limiting + TTL + data size limit.
-- Research phase đã rất thorough (8 artifacts, 100% gap coverage) — confidence cao cho implementation.
+- **[CHANGED] Feature đã FULLY IMPLEMENTED**: Phase B code scan confirms ALL planned classes (both ADD and MODIFY from archive) already exist and are integrated into the codebase. Classification changed: EXTEND → MAINTENANCE.
+- Feature mở rộng auth domain hiện có, không phải greenfield. Hệ thống có mature infrastructure: JwtService (RS256 + HMAC fallback), CQRS CommandHandler, StringRedisTemplate + RedisTemplate, LoginRateLimitService, TokenBlacklistRepository.
+- **Implementation quality**: Code follows existing patterns consistently — CQRS handlers, Redis operations, rate limiting, error handling, Micrometer metrics. No anti-patterns detected.
+- **Improvements over archive spec**:
+  - Open Question 1 (register promotion) → RESOLVED: RegisterHandler implements promotion
+  - Open Question 2 (rate limit window) → RESOLVED: Fixed window, consistent with LoginRateLimitService
+  - Missing DELETE endpoint → RESOLVED: AnonymousAuthController has DELETE endpoint
+  - Missing monitoring → PARTIALLY RESOLVED: Micrometer counters exist for key operations
+- Rủi ro chính: Redis memory exhaustion nếu anonymous session bị abuse. Mitigation already in place: rate limiting + TTL + data size limit + fail-open strategy.
 - Package structure: `com.ntt.authservice` với clean architecture layers: `domain.model`, `application`, `application.command`, `application.port.out`, `adapter.in.web`, `adapter.out.persistence`.
 
 ### Related Features / Precedents
 
-- **MFA Token Generation** (`JwtService.generateMfaToken()` at line 124 in `JwtService.kt`): Cùng pattern — custom claims (`type=mfa`), short TTL. Reference trực tiếp cho `generateAnonymousToken()`.
-- **Login Rate Limiting** (`LoginRateLimitService` at `src/main/kotlin/com/ntt/authservice/auth/application/LoginRateLimitService.kt`): Cùng Redis INCR+EXPIRE pattern, `StringRedisTemplate`. Reference cho `AnonymousRateLimitService`.
-- **MFA Rate Limiting** (`MfaRateLimitService` at `src/main/kotlin/com/ntt/authservice/auth/application/MfaRateLimitService.kt`): Cùng `StringRedisTemplate` usage, fail-open strategy, lock key pattern. Reference cho Redis operations.
+- **MFA Token Generation** (`JwtService.generateMfaToken()` in `JwtService.kt`): Cùng pattern — custom claims (`type=mfa`), short TTL. Reference trực tiếp cho `generateAnonymousToken()`.
+- **Login Rate Limiting** (`LoginRateLimitService` at `src/main/kotlin/com/ntt/authservice/auth/application/LoginRateLimitService.kt`): Cùng Redis INCR+EXPIRE pattern, `StringRedisTemplate`. Implemented consistently in `AnonymousRateLimitService`.
+- **MFA Rate Limiting** (`MfaRateLimitService` at `src/main/kotlin/com/ntt/authservice/auth/application/MfaRateLimitService.kt`): Cùng `StringRedisTemplate` usage, fail-open strategy, lock key pattern.
 - **CQRS Handlers** (`LoginHandler implements CommandHandler<LoginCommand, LoginResult>`): Reference cho `AnonymousSessionHandler`, `RenewAnonymousTokenHandler`.
-- **Session Policy** (`SessionPolicyService` at `src/main/kotlin/com/ntt/authservice/auth/application/SessionPolicyService.kt`): Reference for session management patterns, configurable policy.
+- **Session Policy** (`SessionPolicyService` at `src/main/kotlin/com/ntt/authservice/auth/application/SessionPolicyService.kt`): Reference for session management patterns.
+- **Session Cleanup** (`SessionCleanupScheduler` at `src/main/kotlin/com/ntt/authservice/auth/application/SessionCleanupScheduler.kt`): Existing scheduler pattern.
 
 ### Integration Notes
 
-- **JwtService**: Thêm 2 methods: `generateAnonymousToken(sessionId)` và `parseAnonymousToken(token)`. Follow pattern của `generateMfaToken()` — custom claims, configurable TTL. File: `src/main/kotlin/com/ntt/authservice/auth/application/JwtService.kt`.
-- **LoginCommand**: Thêm optional field `anonymousSessionId: String?`. Backward compatible. File: `src/main/kotlin/com/ntt/authservice/auth/application/command/LoginCommand.kt`.
-- **LoginHandler**: Thêm promotion logic sau successful auth — call `SessionPromotionService.promoteSession()`. Non-blocking: promotion failure không ảnh hưởng login success. File: `src/main/kotlin/com/ntt/authservice/auth/application/command/LoginHandler.kt`.
-- **SecurityConfig**: Thêm `/api/v1/auth/anonymous` và `/api/v1/auth/anonymous/**` vào `permitAll()`. Hiện tại đang cho phép: `/api/auth/login`, `/api/auth/register`, `/api/auth/refresh`, `/api/auth/mfa/*`, `/api/auth/sso/*`, `/api/captcha/challenge`, `/.well-known/jwks.json`, `/actuator/**`. File: `src/main/kotlin/com/ntt/authservice/shared/config/SecurityConfig.kt`.
-- **JwtAuthFilter**: Extend để nhận diện `type=anonymous` claim → set `ROLE_ANONYMOUS` authority. Current filter chỉ handle `roles`/`permissions` claims từ authenticated tokens — cần thêm anonymous branch trước roles extraction. File: `src/main/kotlin/com/ntt/authservice/shared/security/JwtAuthFilter.kt`.
-- **Redis keys**: Namespace prefix `anon:` — không conflict với existing keys (`rate:login:attempts:`, `rate:login:lock:`, `mfa:verify:attempts:`, `mfa:verify:lock:`).
-- **Token Blacklist**: Reuse existing `TokenBlacklistRepository` + `TokenBlacklistEntity`. Thêm reason values: `PROMOTION`, `RENEWAL`. Files: `src/main/kotlin/com/ntt/authservice/rbac/adapter/out/persistence/repository/Repositories.kt`, `src/main/kotlin/com/ntt/authservice/rbac/adapter/out/persistence/entity/PermissionEntities.kt`.
-- **SecurityProperties**: Thêm nested `AnonymousProperties` data class vào `SecurityProperties`. Follow pattern của existing nested classes (JwtProperties, MfaProperties, SessionProperties). File: `src/main/kotlin/com/ntt/authservice/shared/config/SecurityProperties.kt`.
-- **Error Handling**: Follow `AuthException` → `AuthErrorCode` pattern. New error codes: `ANONYMOUS_SESSION_EXPIRED` (AUTH_040), `ANONYMOUS_DATA_LIMIT` (AUTH_041), `ANONYMOUS_PROMOTION_CONFLICT` (AUTH_042). Files: `src/main/kotlin/com/ntt/authservice/shared/exception/AuthErrorCode.kt`, `src/main/kotlin/com/ntt/authservice/shared/exception/AuthExceptions.kt`.
-- **DTOs**: Follow existing patterns in `src/main/kotlin/com/ntt/authservice/auth/adapter/in/web/dto/RequestDtos.kt` — `@field:NotBlank`, optional fields via `val x: String? = null`. AuthResponse pattern: companion `from()` factory.
+- **JwtService**: `generateAnonymousToken(sessionId)` at line 157, `parseAnonymousToken(token)` at line 175. Follow pattern of `generateMfaToken()`. File: `src/main/kotlin/com/ntt/authservice/auth/application/JwtService.kt`.
+- **LoginCommand**: Optional fields `anonymousSessionId: String?` and `anonymousTokenJti: String?`. Backward compatible. File: `src/main/kotlin/com/ntt/authservice/auth/application/command/LoginCommand.kt`.
+- **LoginHandler**: Promotion logic at line 155 — calls `SessionPromotionService.promoteSession()`. Best-effort: promotion failure doesn't affect login success (DD-007). File: `src/main/kotlin/com/ntt/authservice/auth/application/command/LoginHandler.kt`.
+- **RegisterHandler**: Promotion logic at line 83 — same pattern as LoginHandler. File: `src/main/kotlin/com/ntt/authservice/auth/application/command/RegisterHandler.kt`.
+- **SecurityConfig**: `/api/v1/auth/anonymous` permitAll (line 57), `/api/v1/auth/anonymous/**` hasRole("ANONYMOUS") (line 59). File: `src/main/kotlin/com/ntt/authservice/shared/config/SecurityConfig.kt`.
+- **JwtAuthFilter**: Anonymous token detection at line 63 — sets `ROLE_ANONYMOUS` authority, stores `type=anonymous` and `sessionId` in auth details. File: `src/main/kotlin/com/ntt/authservice/shared/security/JwtAuthFilter.kt`.
+- **Redis keys**: Namespace prefix `anon:` — no conflict with existing keys (`rate:login:attempts:`, `mfa:verify:attempts:`, etc.).
+- **Token Blacklist**: Reuses existing `TokenBlacklistRepository` + `TokenBlacklistEntity`. Added reasons: `PROMOTION`, `RENEWAL`.
+- **SecurityProperties**: `AnonymousProperties` nested data class at line 194 with defaults: tokenTtl=3600, sessionTtl=86400, maxDataSize=65536, maxRenewals=24, rateLimit=5/3600s.
+- **Error Handling**: `AnonymousExceptions.kt` with 5 exception classes extending `AuthException`. Error codes AUTH_040~AUTH_044 in `AuthErrorCode.kt`. Handled by `GlobalExceptionHandler`.
+- **DTOs**: `AnonymousDtos.kt` with `CreateAnonymousSessionRequest`, `StoreSessionDataRequest`, `AnonymousTokenResponse`, `SessionDataResponse`, `DataTransferredInfo`. `AuthResponse` extended with `promotedFromAnonymous` and `dataTransferred` fields.
+- **Metrics**: Micrometer counters: `auth.anonymous.sessions.created`, `auth.anonymous.sessions.renewed`, `auth.anonymous.sessions.promoted` (with status tag), `auth.anonymous.data.stored`, `auth.anonymous.data.size_exceeded`, `auth.anonymous.rate_limited`, `auth.anonymous.token.generation.duration` (timer), `auth.anonymous.promotion.duration` (timer).
 
-### Suggested Approach
+### Suggested Approach (MAINTENANCE)
 
-1. **Phase 1 — Foundation**: Tạo `AnonymousProperties` config nested in `SecurityProperties`. Extend `JwtService` với `generateAnonymousToken()` + `parseAnonymousToken()` methods.
-2. **Phase 2 — Core Services**: Tạo `AnonymousSessionDataService` (Redis CRUD), `AnonymousRateLimitService` (rate limiting following `LoginRateLimitService` pattern), `SessionPromotionService` (orchestration with distributed lock).
-3. **Phase 3 — CQRS Handlers**: Tạo `AnonymousSessionHandler` (`CommandHandler<CreateAnonymousSessionCommand, AnonymousSessionResult>`), `RenewAnonymousTokenHandler`. Extend `LoginCommand` + `LoginHandler` với promotion support.
-4. **Phase 4 — Controller + DTOs**: Tạo `AnonymousAuthController` (new REST controller), request/response DTOs. Extend `CqrsAuthController.login()`, `LoginRequestDto`, `AuthResponse`.
-5. **Phase 5 — Security**: Extend `SecurityConfig` (permitAll paths cho `/api/v1/auth/anonymous/**`), `JwtAuthFilter` (ROLE_ANONYMOUS detection).
-6. **Phase 6 — Error Handling**: Add new `AuthErrorCode` entries, new exception classes following `AuthCoreExceptions.kt` pattern.
-7. **Phase 7 — Testing**: Integration tests cho all use cases defined in technical_spec.md.
+Since the feature is fully implemented, maintenance activities should focus on:
 
-### ⚠️ Implementation Status (Phase B Code Scan — Updated)
-
-> **CRITICAL**: Phase B code scan reveals that the anonymous login optimization feature has been **FULLY IMPLEMENTED** in the codebase. All planned classes (both [ADD] and [MODIFY]) already exist and are integrated.
-
-**Classes found in codebase (previously marked [ADD]):**
-
-| Class | File Path | Status |
-|-------|-----------|--------|
-| `AnonymousSessionHandler` | `src/main/kotlin/com/ntt/authservice/auth/application/command/AnonymousSessionHandler.kt` | ✅ EXISTS |
-| `CreateAnonymousSessionCommand` | `src/main/kotlin/com/ntt/authservice/auth/application/command/CreateAnonymousSessionCommand.kt` | ✅ EXISTS |
-| `RenewAnonymousTokenHandler` | `src/main/kotlin/com/ntt/authservice/auth/application/command/RenewAnonymousTokenHandler.kt` | ✅ EXISTS |
-| `RenewAnonymousTokenCommand` | `src/main/kotlin/com/ntt/authservice/auth/application/command/RenewAnonymousTokenCommand.kt` | ✅ EXISTS |
-| `AnonymousSessionDataService` | `src/main/kotlin/com/ntt/authservice/auth/application/AnonymousSessionDataService.kt` | ✅ EXISTS |
-| `SessionPromotionService` | `src/main/kotlin/com/ntt/authservice/auth/application/SessionPromotionService.kt` | ✅ EXISTS |
-| `AnonymousRateLimitService` | `src/main/kotlin/com/ntt/authservice/auth/application/AnonymousRateLimitService.kt` | ✅ EXISTS |
-| `AnonymousSessionResult` | `src/main/kotlin/com/ntt/authservice/auth/application/AnonymousSessionResult.kt` | ✅ EXISTS |
-| `PromotionResult` | `src/main/kotlin/com/ntt/authservice/auth/application/PromotionResult.kt` | ✅ EXISTS |
-| `AnonymousAuthController` | `src/main/kotlin/com/ntt/authservice/auth/adapter/in/web/AnonymousAuthController.kt` | ✅ EXISTS |
-| `AnonymousDtos` | `src/main/kotlin/com/ntt/authservice/auth/adapter/in/web/dto/AnonymousDtos.kt` | ✅ EXISTS |
-| `AnonymousExceptions` | `src/main/kotlin/com/ntt/authservice/shared/exception/AnonymousExceptions.kt` | ✅ EXISTS |
-
-**Modifications already applied:**
-- `JwtService.generateAnonymousToken()` — line 154 (IMPLEMENTED)
-- `LoginHandler` — imports & uses `SessionPromotionService` (IMPLEMENTED)
-- `RegisterHandler` — imports & uses `SessionPromotionService` (IMPLEMENTED)
-- `SecurityConfig` — `/api/v1/auth/anonymous` in `permitAll()` (IMPLEMENTED)
-- `JwtAuthFilter` — `ROLE_ANONYMOUS` authority for `type=anonymous` tokens (IMPLEMENTED)
-- `SecurityProperties.AnonymousProperties` — line 124 (IMPLEMENTED)
-- `AuthErrorCode` — `AUTH_040`~`AUTH_044` anonymous codes (IMPLEMENTED)
-- `GlobalExceptionHandler` — anonymous exception handling (IMPLEMENTED)
-
-**Impact on downstream workflows**: If `/wf_openspec` or `/wf_openspec_apply` is invoked, the feature type should be reassessed as **MAINTENANCE** (optimization/refinement of existing implementation) rather than **EXTEND** (adding new capability). All [ADD] tags in Change Impact Map should be updated to [REUSE] or [MODIFY] depending on whether optimization changes are needed.
+1. **Optimization**: Performance tuning of Redis SCAN operations in `AnonymousSessionDataService.transferData()` — currently uses SCAN with count=100, may need tuning for large data sets.
+2. **Monitoring Enhancement**: Add Prometheus/Grafana dashboards for anonymous session metrics (counters + timers already exist).
+3. **Testing**: Comprehensive integration tests covering all 8 use cases, edge cases (concurrent promotion, rate limit boundary, data size boundary, renewal count boundary).
+4. **Configuration Validation**: Validate `AnonymousProperties` defaults against production requirements.
+5. **Security Audit**: Review fail-open strategy in `AnonymousRateLimitService` — acceptable for availability but should be monitored.
 
 ### Context from Confluence Images
 

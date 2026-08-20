@@ -7,12 +7,14 @@ import jakarta.servlet.FilterChain
 import jakarta.servlet.http.HttpServletRequest
 import jakarta.servlet.http.HttpServletResponse
 import org.slf4j.LoggerFactory
+import org.springframework.context.MessageSource
 import org.springframework.http.HttpStatus
 import org.springframework.http.MediaType
 import org.springframework.http.ProblemDetail
 import org.springframework.stereotype.Component
 import org.springframework.web.filter.OncePerRequestFilter
 import java.net.URI
+import java.util.Locale
 
 /**
  * Pre-authentication rate limit filter for login endpoint.
@@ -20,11 +22,16 @@ import java.net.URI
  * BEFORE the request reaches LoginHandler.
  *
  * Uses LoginRateLimitService (Redis INCR pattern).
+ *
+ * Note: This filter runs in the Spring Security filter chain BEFORE DispatcherServlet,
+ * so LocaleContextHolder is not populated yet. We parse Accept-Language directly
+ * using Locale.LanguageRange for i18n ProblemDetail responses.
  */
 @Component
 class LoginRateLimitFilter(
     private val loginRateLimitService: LoginRateLimitService,
-    private val objectMapper: ObjectMapper
+    private val objectMapper: ObjectMapper,
+    private val messageSource: MessageSource
 ) : OncePerRequestFilter() {
 
     private val log = LoggerFactory.getLogger(LoginRateLimitFilter::class.java)
@@ -58,7 +65,7 @@ class LoginRateLimitFilter(
                 deviceFingerprint = deviceFingerprint
             )
         } catch (ex: RateLimitExceededException) {
-            writeRateLimitResponse(response, ex)
+            writeRateLimitResponse(request, response, ex)
             return
         }
 
@@ -91,8 +98,40 @@ class LoginRateLimitFilter(
         return null
     }
 
-    private fun writeRateLimitResponse(response: HttpServletResponse, ex: RateLimitExceededException) {
-        val problem = ProblemDetail.forStatusAndDetail(HttpStatus.TOO_MANY_REQUESTS, ex.message)
+    /**
+     * Resolve locale from Accept-Language header.
+     *
+     * This filter runs BEFORE DispatcherServlet, so AcceptHeaderLocaleResolver
+     * (configured in I18nConfig) hasn't populated LocaleContextHolder yet.
+     * We parse the header directly using JDK Locale.LanguageRange.
+     *
+     * Supported locales mirror I18nConfig: [en, vi]. Default: en.
+     */
+    private fun resolveLocale(request: HttpServletRequest): Locale {
+        val acceptLanguage = request.getHeader("Accept-Language") ?: return Locale.ENGLISH
+        return try {
+            val ranges = Locale.LanguageRange.parse(acceptLanguage)
+            val supported = listOf(Locale.ENGLISH, Locale.forLanguageTag("vi"))
+            Locale.lookup(ranges, supported) ?: Locale.ENGLISH
+        } catch (e: Exception) {
+            Locale.ENGLISH
+        }
+    }
+
+    private fun writeRateLimitResponse(
+        request: HttpServletRequest,
+        response: HttpServletResponse,
+        ex: RateLimitExceededException
+    ) {
+        val locale = resolveLocale(request)
+        val detail = messageSource.getMessage(
+            "auth.rate_limited",
+            arrayOf(ex.retryAfterSeconds, ex.dimension),
+            ex.message,
+            locale
+        )
+
+        val problem = ProblemDetail.forStatusAndDetail(HttpStatus.TOO_MANY_REQUESTS, detail)
         problem.title = "AUTH_020"
         problem.type = URI.create("https://auth-service/errors/rate_limited")
         problem.setProperty("errorCode", "AUTH_020")
@@ -102,6 +141,7 @@ class LoginRateLimitFilter(
         response.status = HttpStatus.TOO_MANY_REQUESTS.value()
         response.contentType = MediaType.APPLICATION_PROBLEM_JSON_VALUE
         response.setHeader("Retry-After", ex.retryAfterSeconds.toString())
+        response.setHeader("Content-Language", locale.toLanguageTag())
         response.writer.write(objectMapper.writeValueAsString(problem))
     }
 }

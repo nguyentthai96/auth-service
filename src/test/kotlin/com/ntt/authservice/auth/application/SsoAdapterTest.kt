@@ -62,10 +62,29 @@ class SsoAdapterTest {
     }
 
     @Test
-    @DisplayName("should return available SSO providers when SSO enabled")
+    @DisplayName("should return available SSO providers from config when SSO enabled")
     fun shouldReturnSsoProviders() {
-        whenever(securityProperties.sso).thenReturn(ssoProperties)
-        whenever(ssoProperties.enabled).thenReturn(true)
+        val providersMap = mapOf(
+            "google" to SecurityProperties.SsoProperties.ProviderConfig(
+                tokenEndpoint = "https://oauth2.googleapis.com/token",
+                userInfoEndpoint = "https://openidconnect.googleapis.com/v1/userinfo",
+                enabled = true
+            ),
+            "microsoft" to SecurityProperties.SsoProperties.ProviderConfig(
+                tokenEndpoint = "https://login.microsoftonline.com/common/oauth2/v2.0/token",
+                userInfoEndpoint = "https://graph.microsoft.com/oidc/userinfo",
+                enabled = true
+            ),
+            "keycloak" to SecurityProperties.SsoProperties.ProviderConfig(
+                tokenEndpoint = "http://localhost:8080/realms/master/protocol/openid-connect/token",
+                userInfoEndpoint = "http://localhost:8080/realms/master/protocol/openid-connect/userinfo",
+                enabled = true
+            )
+        )
+        whenever(securityProperties.sso).thenReturn(SecurityProperties.SsoProperties(
+            enabled = true,
+            providers = providersMap
+        ))
 
         val providers = ssoAdapter.getProviders()
 
@@ -76,10 +95,37 @@ class SsoAdapterTest {
     }
 
     @Test
+    @DisplayName("should return only enabled providers from config")
+    fun shouldReturnOnlyEnabledProviders() {
+        val providersMap = mapOf(
+            "google" to SecurityProperties.SsoProperties.ProviderConfig(
+                tokenEndpoint = "https://oauth2.googleapis.com/token",
+                userInfoEndpoint = "https://openidconnect.googleapis.com/v1/userinfo",
+                enabled = true
+            ),
+            "keycloak" to SecurityProperties.SsoProperties.ProviderConfig(
+                tokenEndpoint = "http://localhost:8080/token",
+                userInfoEndpoint = "http://localhost:8080/userinfo",
+                enabled = false
+            )
+        )
+        whenever(securityProperties.sso).thenReturn(SecurityProperties.SsoProperties(
+            enabled = true,
+            providers = providersMap
+        ))
+
+        val providers = ssoAdapter.getProviders()
+
+        assertEquals(1, providers.size)
+        assertEquals("google", providers[0].id)
+    }
+
+    @Test
     @DisplayName("should return empty providers when SSO disabled")
     fun shouldReturnEmptyProvidersWhenDisabled() {
-        whenever(securityProperties.sso).thenReturn(ssoProperties)
-        whenever(ssoProperties.enabled).thenReturn(false)
+        whenever(securityProperties.sso).thenReturn(SecurityProperties.SsoProperties(
+            enabled = false
+        ))
 
         val providers = ssoAdapter.getProviders()
 

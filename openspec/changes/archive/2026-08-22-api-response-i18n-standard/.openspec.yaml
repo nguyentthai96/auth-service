@@ -1,0 +1,47 @@
+name: api-response-i18n-standard
+type: EXTEND
+flow: Command
+status: complete
+created: 2026-08-11
+updated: 2026-08-22
+artifacts:
+  - id: impact_analysis
+    type: markdown
+    status: done
+    dependencies: []
+  - id: proposal
+    type: markdown
+    status: done
+    dependencies: []
+  - id: srs
+    type: markdown
+    status: done
+    dependencies: [proposal]
+  - id: design
+    type: markdown
+    status: done
+    dependencies: [srs]
+  - id: tasks
+    type: markdown
+    status: done
+    dependencies: [design, srs, impact_analysis]
+  - id: api_contract
+    type: markdown
+    status: done
+    dependencies: [srs, design]
+  - id: fe_tasks
+    type: markdown
+    status: done
+    dependencies: [api_contract, tasks]
+applyRequires:
+  - tasks
+context:
+  dynamic: 5
+  static: 0
+  rules: 5
+  skills: 2
+frs:
+  total: 14
+  idea: 9
+  enriched: 4
+  user_added: 1

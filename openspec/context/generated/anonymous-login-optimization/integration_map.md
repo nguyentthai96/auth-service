@@ -1,98 +1,73 @@
-# Integration Map: anonymous-login-optimization
+# Integration Map
 
-> _Generated: 2025-01-20_
-> Candidate Service: auth-service (`src/main/kotlin/com/ntt/authservice/`)
+_Generated: 2025-01-20_
 
----
+## Redis (Cache / Session Store)
 
-## 1. Redis Integration
+- Client: `StringRedisTemplate` (auto-configured by Spring Boot)
+- Protocol: Redis (Lettuce driver)
+- Configuration: `src/main/kotlin/com/ntt/authservice/shared/config/RedisConfig.kt`
+- Usage in anonymous feature:
+  - `AnonymousSessionHandler` — `src/main/kotlin/com/ntt/authservice/auth/application/command/AnonymousSessionHandler.kt` — session creation (`opsForHash.putAll`, `expire`)
+  - `AnonymousSessionDataService` — `src/main/kotlin/com/ntt/authservice/auth/application/AnonymousSessionDataService.kt` — CRUD (`opsForValue.set/get/size`, `execute` with SCAN)
+  - `AnonymousRateLimitService` — `src/main/kotlin/com/ntt/authservice/auth/application/AnonymousRateLimitService.kt` — rate limit (`opsForValue.increment`, `expire`, `getExpire`)
+  - `SessionPromotionService` — `src/main/kotlin/com/ntt/authservice/auth/application/SessionPromotionService.kt` — lock (`opsForValue.setIfAbsent`), delete
+  - `RenewAnonymousTokenHandler` — `src/main/kotlin/com/ntt/authservice/auth/application/command/RenewAnonymousTokenHandler.kt` — renewal count (`opsForHash.get/put`, `expire`)
+- Redis key patterns:
+  - `anon:session:{sessionId}` — Session metadata (Hash: deviceFingerprint, ipAddress, createdAt, renewalCount)
+  - `anon:data:{sessionId}:{namespace}:{key}` — Session data (String)
+  - `anon:rate:{ipAddress}` — Rate limit counter (String, auto-expire)
+  - `anon:lock:{sessionId}` — Distributed promotion lock (String, TTL 30s)
+  - `user:session_data:{userId}:{namespace}:{key}` — Promoted data destination (String)
 
-| Component | Type | File Path | Details |
-|-----------|------|-----------|---------|
-| `RedisConfig` | Configuration | `src/main/kotlin/com/ntt/authservice/shared/config/RedisConfig.kt` | Configures `RedisTemplate<String, Any>` with `StringRedisSerializer` (key) + `GenericJackson2JsonRedisSerializer` (value/hash-value) |
-| `StringRedisTemplate` | Auto-configured | Spring Boot auto-config | Used by `LoginRateLimitService`, `MfaRateLimitService` for atomic INCR+EXPIRE |
-| `LoginRateLimitService` | Rate limiting | `src/main/kotlin/com/ntt/authservice/auth/application/LoginRateLimitService.kt` | Redis keys: `rate:login:attempts:{dim}:{key}`, `rate:login:lock:{dim}:{key}`. Operations: `opsForValue().increment()`, `expire()`, `hasKey()`, `delete()`. Fail-open on Redis failure. |
-| `MfaRateLimitService` | Rate limiting | `src/main/kotlin/com/ntt/authservice/auth/application/MfaRateLimitService.kt` | Redis keys: `mfa:verify:attempts:{userId}:{type}`, `mfa:verify:lock:{userId}:{type}`. Same INCR+EXPIRE pattern. Fail-open. |
+## Redis (General — existing)
 
-### Redis Key Namespaces (Existing)
+- Client: `StringRedisTemplate` (shared bean)
+- Other users:
+  - `LoginRateLimitService` — `src/main/kotlin/com/ntt/authservice/auth/application/LoginRateLimitService.kt` — login rate limiting
+  - `MfaRateLimitService` — `src/main/kotlin/com/ntt/authservice/auth/application/MfaRateLimitService.kt` — MFA rate limiting
+  - `OtpService` — `src/main/kotlin/com/ntt/authservice/auth/application/OtpService.kt` — OTP storage
+  - `MfaService` — `src/main/kotlin/com/ntt/authservice/auth/application/MfaService.kt` — MFA session state
+  - `DecryptionVaultService` — `src/main/kotlin/com/ntt/authservice/auth/application/cipher/DecryptionVaultService.kt` — cipher key cache
+  - `RedisAntiReplayValidator` — `src/main/kotlin/com/ntt/authservice/auth/adapter/out/cipher/RedisAntiReplayValidator.kt` — nonce tracking
+  - `RedisCipherKeySessionResolver` — `src/main/kotlin/com/ntt/authservice/auth/adapter/out/cipher/RedisCipherKeySessionResolver.kt` — key session cache
 
-| Prefix | Purpose | TTL | Service |
-|--------|---------|-----|---------|
-| `rate:login:attempts:` | Login rate limit counters | Window-based (60-3600s) | `LoginRateLimitService` |
-| `rate:login:lock:` | Login rate limit locks | Lock duration (300-3600s) | `LoginRateLimitService` |
-| `mfa:verify:attempts:` | MFA attempt counters | Window-based (900-3600s) | `MfaRateLimitService` |
-| `mfa:verify:lock:` | MFA account locks | Lock duration (1800-3600s) | `MfaRateLimitService` |
+## PostgreSQL (JPA)
 
-### Redis Key Namespaces (Planned for Anonymous Feature)
+- Client: `TokenBlacklistRepository` (Spring Data JPA)
+- Protocol: JDBC / JPA
+- Entity: `TokenBlacklistEntity` — `src/main/kotlin/com/ntt/authservice/rbac/adapter/out/persistence/entity/PermissionEntities.kt`
+- Repository: `TokenBlacklistRepository` — `src/main/kotlin/com/ntt/authservice/rbac/adapter/out/persistence/repository/Repositories.kt`
+- Usage: Token blacklisting after promotion (`reason=PROMOTION`) and renewal (`reason=RENEWAL`)
+- Method: `existsByTokenJti(jti)` for validation, `save(entity)` for insertion
 
-| Prefix | Purpose | TTL | Service |
-|--------|---------|-----|---------|
-| `anon:session:` | Anonymous session metadata (Hash) | 24h (configurable) | `AnonymousSessionDataService` (ADD) |
-| `anon:data:` | Anonymous session data (String) | Same as session TTL | `AnonymousSessionDataService` (ADD) |
-| `anon:lock:` | Promotion distributed lock | 30s | `SessionPromotionService` (ADD) |
-| `anon:rate:` | Anonymous creation rate limit | 1h window | `AnonymousRateLimitService` (ADD) |
+## CAPTCHA (HTTP)
 
----
+- Client: `CaptchaGateway` (interface) — `src/main/kotlin/com/ntt/authservice/auth/application/port/out/CaptchaGateway.kt`
+- Implementation: `HttpCaptchaGateway` — `src/main/kotlin/com/ntt/authservice/auth/adapter/out/http/HttpCaptchaGateway.kt`
+- Adapter: `CaptchaGatewayAdapter` — `src/main/kotlin/com/ntt/authservice/auth/adapter/out/gateway/CaptchaGatewayAdapter.kt`
+- Protocol: HTTP (via `@HttpExchange`)
+- Usage in anonymous: Optional — CAPTCHA triggered when rate limit approaching threshold (AF-002 in BA)
 
-## 2. PostgreSQL / JPA Integration
+## SSO (HTTP)
 
-| Component | Type | File Path | Details |
-|-----------|------|-----------|---------|
-| `TokenBlacklistRepository` | Repository | `src/main/kotlin/com/ntt/authservice/rbac/adapter/out/persistence/repository/Repositories.kt` (line 76) | `JpaRepository<TokenBlacklistEntity, Long>`, method `existsByTokenJti(jti: String): Boolean` |
-| `TokenBlacklistEntity` | Entity | `src/main/kotlin/com/ntt/authservice/rbac/adapter/out/persistence/entity/PermissionEntities.kt` (line 107) | Extends `SnowflakeBaseEntity`, table `token_blacklist`, fields: `tokenJti`, `reason`, `expiresAt` |
-| `TokenStore` | Port | `src/main/kotlin/com/ntt/authservice/auth/application/port/out/TokenStore.kt` | Outbound port for token persistence (refresh token hash storage) |
-| `UserPort` | Port | `src/main/kotlin/com/ntt/authservice/auth/application/port/out/UserPort.kt` | Outbound port for user CRUD |
-| `DomainPort` | Port | `src/main/kotlin/com/ntt/authservice/auth/application/port/out/DomainPort.kt` | Outbound port for domain lookup |
+- Client: `SsoGateway` (interface) — `src/main/kotlin/com/ntt/authservice/auth/application/port/out/SsoGateway.kt`
+- Implementation: `HttpSsoGateway` — `src/main/kotlin/com/ntt/authservice/auth/adapter/out/http/HttpSsoGateway.kt`
+- Protocol: HTTP (OAuth2/OIDC token exchange)
+- Usage in anonymous: Indirect — SSO login may also trigger session promotion if `anonymousSessionId` provided
 
----
+## Micrometer (Metrics)
 
-## 3. CAPTCHA Integration
+- Client: `MeterRegistry` (auto-configured)
+- Protocol: In-process metrics collection
+- Usage in anonymous:
+  - `AnonymousSessionHandler` — counters: `auth.anonymous.sessions.created`, timer: `auth.anonymous.token.generation.duration`
+  - `AnonymousRateLimitService` — counter: `auth.anonymous.rate_limited`
+  - `AnonymousSessionDataService` — counters: `auth.anonymous.data.stored`, `auth.anonymous.data.size_exceeded`
+  - `SessionPromotionService` — counter: `auth.anonymous.sessions.promoted` (with status tag), timer: `auth.anonymous.promotion.duration`
+  - `RenewAnonymousTokenHandler` — counter: `auth.anonymous.sessions.renewed`
 
-| Component | Type | File Path | Details |
-|-----------|------|-----------|---------|
-| `CaptchaGateway` | Port (interface) | `src/main/kotlin/com/ntt/authservice/auth/application/port/out/CaptchaGateway.kt` | `verify(token: String): Boolean` |
-| `AltchaCaptchaVerifier` | Implementation | `src/main/kotlin/com/ntt/authservice/auth/application/AltchaCaptchaVerifier.kt` | ALTCHA proof-of-work CAPTCHA, HMAC-based challenge generation |
-| Config | Properties | `SecurityProperties.CaptchaProperties` | `provider`, `secretKey`, `siteKey`, `verifyUrl`, `altcha.*` |
+## NOT DETECTED
 
----
-
-## 4. SSO Integration
-
-| Component | Type | File Path | Details |
-|-----------|------|-----------|---------|
-| `SsoGateway` | Port (interface) | `src/main/kotlin/com/ntt/authservice/auth/application/port/out/SsoGateway.kt` | SSO provider gateway |
-| `SsoAdapter` | Service | `src/main/kotlin/com/ntt/authservice/auth/application/SsoAdapter.kt` | SSO integration orchestration |
-| `SsoController` | Controller | `src/main/kotlin/com/ntt/authservice/auth/adapter/in/web/SsoController.kt` | SSO callback + provider listing endpoints |
-
----
-
-## 5. Event / Messaging Integration
-
-| Component | Type | File Path | Details |
-|-----------|------|-----------|---------|
-| `EventPublisher` | Port (interface) | `src/main/kotlin/com/ntt/authservice/auth/application/port/out/EventPublisher.kt` | Domain event publishing port |
-| `ApplicationEventPublisher` | Spring built-in | Used by `MfaRateLimitService` | Publishes `RateLimitExceededEvent` for alerting |
-| `RateLimitExceededEvent` | Event | `src/main/kotlin/com/ntt/authservice/auth/application/event/RateLimitExceededEvent.kt` | Rate limit exceeded notification |
-| `NewDeviceLoginEvent` | Event | `src/main/kotlin/com/ntt/authservice/auth/application/event/NewDeviceLoginEvent.kt` | New device detected during login |
-| Kafka consumer | Adapter | `src/main/kotlin/com/ntt/authservice/auth/adapter/in/kafka/` | Inbound Kafka message handling |
-
----
-
-## 6. Audit Integration
-
-| Component | Type | File Path | Details |
-|-----------|------|-----------|---------|
-| `AuditLogService` | Service | `src/main/kotlin/com/ntt/authservice/shared/audit/AuditLogService.kt` | Centralized audit logging. Used by `MfaRateLimitService` for lock events. |
-
----
-
-## 7. External Dependencies (Libraries)
-
-| Library | Package | Usage | Evidence |
-|---------|---------|-------|---------|
-| `base-core` | `com.ntt.basecore` | `BusinessException`, `ErrorCodeBase`, `BaseControllerAdvice` | `AuthException` extends `BusinessException` |
-| `eventsourcing-utils` | `com.ntt.eventsourcingutils` | `CommandHandler<C,R>`, `Command<R>` | `LoginHandler implements CommandHandler<LoginCommand, LoginResult>` |
-| JJWT | `io.jsonwebtoken` | JWT generation + validation | `Jwts.builder()`, `Jwts.parser()`, `Jwts.SIG.RS256` |
-| Spring Security | `org.springframework.security` | Auth framework | `SecurityFilterChain`, `OncePerRequestFilter` |
-| Spring Data Redis | `org.springframework.data.redis` | Redis operations | `StringRedisTemplate`, `RedisTemplate` |
-| Spring Data JPA | `org.springframework.data.jpa` | JPA repositories | `JpaRepository<>` |
+- Kafka Producer (anonymous feature does not produce Kafka events)
+- External HTTP API calls from anonymous flow (all interactions are Redis/PostgreSQL)

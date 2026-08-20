@@ -2,8 +2,8 @@
   "feature": "anonymous-login-optimization",
   "workflow": "wf_openspec_apply",
   "outcome": "success",
-  "timestamp": "2026-08-19T07:34:04.285223+00:00",
-  "duration_seconds": 884,
+  "timestamp": "2026-08-20T02:05:20.050563+00:00",
+  "duration_seconds": 261,
   "tokens_used": 0,
   "prompt_layer_tokens": {},
   "output_artifacts": [
