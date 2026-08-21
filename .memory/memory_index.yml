@@ -54,6 +54,18 @@ lessons:
   frequency: 3
   id: L004
   type: failure_pattern
-total_failures: 29
-total_records: 95
+- action: 'Mitigate ''PROXY_DOWN'' errors in wf_archive. Common errors: Error code:
+    502 - {''type'': ''error'', ''error'': {''type'': ''api_error'', ''message'':
+    ''All upstream endpoint; Error code: 502 - {''type'': ''error'', ''error'': {''type'':
+    ''api_error'', ''message'': ''All upstream endpoint'
+  description: 'Workflow ''wf_archive'' fails with ''PROXY_DOWN'' across features:
+    `user_logout_event`, erp-iam-system'
+  fingerprint:
+  - wf_archive
+  - PROXY_DOWN
+  frequency: 2
+  id: L005
+  type: failure_pattern
+total_failures: 30
+total_records: 96
 total_successes: 66
