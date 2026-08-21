@@ -1,76 +1,89 @@
 # Error Handling Pattern
 
-_Generated: 2026-08-25_
+_Generated: 2026-08-27_
 
 ## Exception Classes
 
-- AuthException (base) — `src/main/kotlin/com/ntt/authservice/shared/exception/AuthExceptions.kt`
-  - Properties: authError (AuthErrorCode), httpStatus (HttpStatus)
-  - Extends: BusinessException (base-core)
-- ResourceNotFoundException — `src/main/kotlin/com/ntt/authservice/shared/exception/AuthExceptions.kt` — AUTH_005, 404
-- DuplicateResourceException — `src/main/kotlin/com/ntt/authservice/shared/exception/AuthExceptions.kt` — AUTH_006, 409
-- PermissionDeniedException — `src/main/kotlin/com/ntt/authservice/shared/exception/AuthExceptions.kt` — AUTH_004, 403
-- WriteNotAllowedException — `src/main/kotlin/com/ntt/authservice/shared/exception/AuthExceptions.kt` — AUTH_010, 403
-- AccountLockedException — `src/main/kotlin/com/ntt/authservice/shared/exception/AuthExceptions.kt` — AUTH_002, 403
-- InvalidCredentialsException — `src/main/kotlin/com/ntt/authservice/shared/exception/AuthExceptions.kt` — AUTH_001, 401
-- TokenExpiredException — `src/main/kotlin/com/ntt/authservice/shared/exception/AuthExceptions.kt` — AUTH_003, 401
-- PolicyEvaluationException — `src/main/kotlin/com/ntt/authservice/shared/exception/AuthExceptions.kt` — AUTH_009, 403
-- MfaCodeInvalidException — `src/main/kotlin/com/ntt/authservice/shared/exception/AuthCoreExceptions.kt` — AUTH_011, 401
-- MfaTokenExpiredException — `src/main/kotlin/com/ntt/authservice/shared/exception/AuthCoreExceptions.kt` — AUTH_012, 401
-- MfaMaxAttemptsException — `src/main/kotlin/com/ntt/authservice/shared/exception/AuthCoreExceptions.kt` — AUTH_013, 403
-- MfaAccountLockedException — `src/main/kotlin/com/ntt/authservice/shared/exception/AuthCoreExceptions.kt` — AUTH_019, 429
-- CaptchaRequiredException — `src/main/kotlin/com/ntt/authservice/shared/exception/AuthCoreExceptions.kt` — AUTH_007, 428
-- CaptchaFailedException — `src/main/kotlin/com/ntt/authservice/shared/exception/AuthCoreExceptions.kt` — AUTH_008, 400
-- SsoTokenInvalidException — `src/main/kotlin/com/ntt/authservice/shared/exception/AuthCoreExceptions.kt` — AUTH_014, 401
-- SsoUserNotProvisionedException — `src/main/kotlin/com/ntt/authservice/shared/exception/AuthCoreExceptions.kt` — AUTH_015, 403
-- SsoIdentityConflictException — `src/main/kotlin/com/ntt/authservice/shared/exception/AuthCoreExceptions.kt` — AUTH_016, 409
-- PasswordPolicyViolationException — `src/main/kotlin/com/ntt/authservice/shared/exception/AuthCoreExceptions.kt` — AUTH_017, 400
-- PasswordExpiredException — `src/main/kotlin/com/ntt/authservice/shared/exception/AuthCoreExceptions.kt` — AUTH_018, 403
-- RateLimitExceededException — `src/main/kotlin/com/ntt/authservice/shared/exception/AuthCoreExceptions.kt` — AUTH_020, 429
-- SessionLimitExceededException — `src/main/kotlin/com/ntt/authservice/shared/exception/AuthCoreExceptions.kt` — AUTH_021, 409
-- CipherTimeSkewException — `src/main/kotlin/com/ntt/authservice/shared/exception/CipherExceptions.kt` — AUTH_030, 400
-- CipherReplayDetectedException — `src/main/kotlin/com/ntt/authservice/shared/exception/CipherExceptions.kt` — AUTH_033, 409
-- CipherContextMismatchException — `src/main/kotlin/com/ntt/authservice/shared/exception/CipherExceptions.kt` — AUTH_032, 403
-- CipherVersionUnknownException — `src/main/kotlin/com/ntt/authservice/shared/exception/CipherExceptions.kt` — AUTH_031, 400
-- CipherVersionSunsetException — `src/main/kotlin/com/ntt/authservice/shared/exception/CipherExceptions.kt` — AUTH_034, 426
-- CipherDecryptFailedException — `src/main/kotlin/com/ntt/authservice/shared/exception/CipherExceptions.kt` — AUTH_035, 500
-- CipherKmsUnavailableException — `src/main/kotlin/com/ntt/authservice/shared/exception/CipherExceptions.kt` — AUTH_036, 503
-- CipherKeyExpiredException — `src/main/kotlin/com/ntt/authservice/shared/exception/CipherExceptions.kt` — AUTH_037, 401
-- CipherDeviceUnregisteredException — `src/main/kotlin/com/ntt/authservice/shared/exception/CipherExceptions.kt` — AUTH_038, 403
-- CipherMaxDevicesException — `src/main/kotlin/com/ntt/authservice/shared/exception/CipherExceptions.kt` — AUTH_039, 429
-- AnonymousSessionExpiredException — `src/main/kotlin/com/ntt/authservice/shared/exception/AnonymousExceptions.kt` — AUTH_040, 404
-- AnonymousDataLimitExceededException — `src/main/kotlin/com/ntt/authservice/shared/exception/AnonymousExceptions.kt` — AUTH_041, 413
-- AnonymousPromotionConflictException — `src/main/kotlin/com/ntt/authservice/shared/exception/AnonymousExceptions.kt` — AUTH_042, 409
-- AnonymousRateLimitedException — `src/main/kotlin/com/ntt/authservice/shared/exception/AnonymousExceptions.kt` — AUTH_043, 429
-- AnonymousMaxRenewalsException — `src/main/kotlin/com/ntt/authservice/shared/exception/AnonymousExceptions.kt` — AUTH_044, 429
+### Base Exception
+- `AuthException` — `src/main/kotlin/com/ntt/authservice/shared/exception/AuthExceptions.kt`
+  - extends: `BusinessException` (base-core)
+  - field: `authError: AuthErrorCode`, `httpStatus: HttpStatus`
+
+### Auth Core Exceptions (`AuthCoreExceptions.kt`)
+- `MfaCodeInvalidException` — `src/main/kotlin/com/ntt/authservice/shared/exception/AuthCoreExceptions.kt` — AuthErrorCode.MFA_CODE_INVALID
+- `MfaTokenExpiredException` — AuthErrorCode.MFA_TOKEN_EXPIRED
+- `MfaMaxAttemptsException` — AuthErrorCode.MFA_MAX_ATTEMPTS
+- `MfaRateLimitedException` — AuthErrorCode.MFA_RATE_LIMITED
+- `RecoveryCodeInvalidException` — AuthErrorCode.MFA_CODE_INVALID
+- `CaptchaRequiredException` — AuthErrorCode.CAPTCHA_REQUIRED
+- `CaptchaFailedException` — AuthErrorCode.CAPTCHA_FAILED
+- `SsoTokenInvalidException` — AuthErrorCode.SSO_TOKEN_INVALID
+- `SsoUserNotProvisionedException` — AuthErrorCode.SSO_USER_NOT_PROVISIONED
+- `SsoIdentityConflictException` — AuthErrorCode.SSO_IDENTITY_CONFLICT
+- `SsoProviderDisabledException` — AuthErrorCode.SSO_TOKEN_INVALID
+- `SsoInvalidStateException` — AuthErrorCode.SSO_TOKEN_INVALID
+- `PasswordPolicyViolationException` — AuthErrorCode.PASSWORD_POLICY_VIOLATION
+- `PasswordExpiredException` — AuthErrorCode.PASSWORD_EXPIRED
+- `PasswordReusedException` — AuthErrorCode.PASSWORD_POLICY_VIOLATION
+- `RateLimitExceededException` — AuthErrorCode.RATE_LIMITED
+- `SessionLimitExceededException` — AuthErrorCode.SESSION_LIMIT_EXCEEDED
+
+### Base Exceptions (`AuthExceptions.kt`)
+- `ResourceNotFoundException` — AuthErrorCode.RESOURCE_NOT_FOUND
+- `DuplicateResourceException` — AuthErrorCode.DUPLICATE_RESOURCE
+- `PermissionDeniedException` — AuthErrorCode.PERMISSION_DENIED
+- `WriteNotAllowedException` — AuthErrorCode.WRITE_NOT_ALLOWED
+- `AccountLockedException` — AuthErrorCode.ACCOUNT_LOCKED
+- `InvalidCredentialsException` — AuthErrorCode.INVALID_CREDENTIALS
+- `TokenExpiredException` — AuthErrorCode.TOKEN_EXPIRED
+- `PolicyEvaluationFailedException` — AuthErrorCode.POLICY_EVALUATION_FAILED
+- `EventStorePersistException` — AuthErrorCode.EVENT_STORE_PERSIST_FAILED
+- `EventNotFoundException` — AuthErrorCode.EVENT_NOT_FOUND
+
+### Cipher Exceptions (`CipherExceptions.kt`)
+- `TimeSkewException` — AuthErrorCode.E2EE_TIME_SKEW
+- `ReplayDetectedException` — AuthErrorCode.E2EE_REPLAY_DETECTED
+- `ContextMismatchException` — AuthErrorCode.E2EE_CONTEXT_MISMATCH
+- `CipherVersionUnknownException` — AuthErrorCode.E2EE_VERSION_UNKNOWN
+- `CipherVersionSunsetException` — AuthErrorCode.E2EE_VERSION_SUNSET
+- `DecryptionFailedException` — AuthErrorCode.E2EE_DECRYPT_FAILED
+- `KmsUnavailableException` — AuthErrorCode.E2EE_KMS_UNAVAILABLE
+- `KeyExpiredException` — AuthErrorCode.E2EE_KEY_EXPIRED
+- `DeviceUnregisteredException` — AuthErrorCode.E2EE_DEVICE_UNREGISTERED
+- `MaxDevicesExceededException` — AuthErrorCode.E2EE_MAX_DEVICES
+
+### Anonymous Exceptions (`AnonymousExceptions.kt`)
+- `AnonymousSessionExpiredException` — AuthErrorCode.ANONYMOUS_SESSION_EXPIRED
+- `AnonymousDataLimitExceededException` — AuthErrorCode.ANONYMOUS_DATA_LIMIT_EXCEEDED
+- `AnonymousPromotionConflictException` — AuthErrorCode.ANONYMOUS_PROMOTION_CONFLICT
+- `AnonymousRateLimitedException` — AuthErrorCode.ANONYMOUS_RATE_LIMITED
+- `AnonymousMaxRenewalsException` — AuthErrorCode.ANONYMOUS_MAX_RENEWALS
 
 ## Error Code Format
 
-- Pattern: `AUTH_XXX` (3-digit numeric, enum-based) — `AuthErrorCode.kt`
-- Example: `AUTH_001` (Invalid credentials), `AUTH_020` (Rate limited), `AUTH_044` (Anonymous max renewals)
-- Total codes: 44 (AUTH_001-AUTH_021, AUTH_030-AUTH_039, AUTH_040-AUTH_044)
-- msgCode convention: `auth.{snake_case_name}` (e.g., `auth.invalid_credentials`, `auth.rate_limited`)
-- Each AuthErrorCode maps to: errorCode (String), msgCode (String), description (String), httpStatus (HttpStatus)
-- Bridge to base-core: `toErrorCodeBase()` returns delegation wrapper
+- Pattern: `AUTH_XXX` (3-digit zero-padded)
+- Enum: `AuthErrorCode` — `src/main/kotlin/com/ntt/authservice/shared/exception/AuthErrorCode.kt`
+- Fields per code: `errorCode` (AUTH_001), `msgCode` (auth.invalid_credentials), `description`, `httpStatus`
+- Range: AUTH_001-AUTH_021 (core), AUTH_030-AUTH_039 (E2EE), AUTH_040-AUTH_044 (anonymous), AUTH_050-AUTH_053 (event sourcing), AUTH_060-AUTH_062 (inter-service)
+- Total: 62+ error codes
+- Bridge: `toErrorCodeBase()` delegates to base-core `ErrorCodeBase`
 
 ## Error Response Format
 
-- Format: RFC 9457 ProblemDetail
-- Handler: AuthControllerAdvice — `src/main/kotlin/com/ntt/authservice/shared/exception/GlobalExceptionHandler.kt`
-- Fields: `type` (URI), `title` (errorCode), `status` (HTTP), `detail` (i18n message), `errorCode` (machine-readable)
-- Extra properties per exception type: `retryAfterSeconds`, `dimension`, `maxSessions`, `lockedUntilAt`, etc.
-- Headers: `Content-Language` (locale), `Retry-After` (for rate-limit/lock exceptions)
-- i18n: MessageSource.getMessage(msgCode, args, defaultMessage, locale)
-- Content-Type: `application/problem+json`
+- **Error**: `ProblemDetail` (RFC 9457) — via `AuthControllerAdvice.handleAuthException()`
+  - Fields: `type`, `title`, `status`, `detail` (i18n), `errorCode` (machine-readable), extra properties per exception type
+  - Content-Type: `application/problem+json`
+  - `detail` field: localized via `MessageSource.getMessage(authError.msgCode, args, locale)`
+- **Success**: `Map<String, Any?>` or typed DTOs with `message` field (i18n)
+  - `message` field: localized via `messageSource.getMessage(key, args, defaultMsg, locale)`
 
-## Message Bundle (i18n)
+## i18n Error Message Resolution
 
-- File: `src/main/resources/messages/auth-messages.properties` (70 lines, English default)
-- File: `src/main/resources/messages/auth-messages_vi.properties` (70 lines, Vietnamese)
-- 44 error message keys + 11 success message keys = 55 total keys
-- All AuthErrorCode.msgCode values have corresponding entries in both bundles
+- `AuthControllerAdvice.resolveMessage()` — `GlobalExceptionHandler.kt:125`
+- `extractMessageArgs()` — maps exception properties to `MessageFormat {0}, {1}` placeholders — `GlobalExceptionHandler.kt:107-117`
+- Fallback: `ErrorCodeBase.description` as default message
 
 ## NOT DETECTED
 
-- Custom error response wrapper (uses Spring ProblemDetail directly)
-- Error code registry service (enum-based, no dynamic registry)
+- Custom error response wrapper (errors use ProblemDetail directly)
+- Error aggregation / multi-error response pattern

@@ -215,7 +215,29 @@ Không có câu hỏi mở. Các OQ từ research/archive đã được resolved
 Command — Cross-cutting concern (i18n message resolution), áp dụng cho tất cả endpoints. Không có OTP/confirmation flow.
 
 ### 10.3 Candidate Services
-- **auth-service**: Primary — `AuthControllerAdvice` (MessageSource-integrated), `CqrsAuthController` (5 endpoints i18n-done), `SessionController` (2 endpoints i18n-done), `AccountLifecycleController` (3 endpoints i18n-done), [CHANGED] `MfaController` (2 endpoints i18n-done — confirmTotp, regenerateRecoveryCodes), [CHANGED] `SsoController` (2 endpoints i18n-done — linkIdentity, unlinkIdentity), [CHANGED] `AdminSessionController` (1 endpoint i18n-done — forceRevokeUserSessions), [CHANGED] `RateLimitAdminControlilter.kt` (Content-Language header)
+- **auth-service**: Primary — `AuthControllerAdvice` (MessageSource-integrated), `CqrsAuthController` (5 endpoints i18n-done), `SessionController` (2 endpoints i18n-done), `AccountLifecycleController` (3 endpoints i18n-done), [CHANGED] `MfaController` (2 endpoints i18n-done — confirmTotp, regenerateRecoveryCodes), [CHANGED] `SsoController` (2 endpoints i18n-done — linkIdentity, unlinkIdentity), [CHANGED] `AdminSessionController` (1 endpoint i18n-done — forceRevokeUserSessions), [CHANGED] `RateLimitAdminController` (1 endpoint i18n-done — adminUnlock), [CHANGED] `TokenController` (1 endpoint i18n-done — revokeAllSessions), `LoginRateLimitFilter` (i18n-done — writeRateLimitResponse), `I18nConfig`, `DatabaseMessageSource`, `ClientMetadataFilter`, `ContentLanguageFilter`, message bundles (77 lines en+vi, 55+ keys). All action endpoints complete.
+- **admindashboard**: Frontend — `api.ts` cần inject headers, forms cần cleanup hardcoded error messages.
+- **base-core**: Reference — `ApiResponse`, `BaseControllerAdvice`, `ErrorCodeBase`. No changes needed — auth-service handles all advice.
+
+### Detection Evidence
+- Keyword: `MessageSource` → Module: `shared/exception` → File: `GlobalExceptionHandler.kt` (line 4, 33)
+- Keyword: `I18nConfig` → Module: `shared/config` → File: `I18nConfig.kt`
+- Keyword: `DatabaseMessageSource` → Module: `shared/i18n` → File: `DatabaseMessageSource.kt`
+- Keyword: `I18nMessageEntity` → Module: `shared/i18n` → File: `I18nMessageEntity.kt`
+- Keyword: `I18nMessageRepository` → Module: `shared/i18n` → File: `I18nMessageRepository.kt`
+- Keyword: `messageSource.getMessage` → Module: `auth/adapter/in/web` → File: `CqrsAuthController.kt` (lines 93, 193, 205, 213, 247)
+- Keyword: `messageSource.getMessage` → Module: `auth/adapter/in/web` → File: `SessionController.kt` (lines 44, 59)
+- Keyword: `messageSource.getMessage` → Module: `auth/adapter/in/web` → File: `AccountLifecycleController.kt` (lines 40, 58, 76)
+- [CHANGED] Keyword: `messageSource.getMessage` → Module: `auth/adapter/in/web` → File: `MfaController.kt` (lines 56, 118)
+- [CHANGED] Keyword: `messageSource.getMessage` → Module: `auth/adapter/in/web` → File: `SsoController.kt` (lines 48, 57)
+- [CHANGED] Keyword: `messageSource.getMessage` → Module: `auth/adapter/in/web` → File: `AdminSessionController.kt` (line 87)
+- [CHANGED] Keyword: `messageSource.getMessage` → Module: `auth/adapter/in/web` → File: `RateLimitAdminController.kt` (line 58)
+- [CHANGED] Keyword: `messageSource.getMessage` → Module: `auth/adapter/in/web` → File: `TokenController.kt` (line 63)
+- Keyword: `messageSource.getMessage` → Module: `auth/adapter/in/web/filter` → File: `LoginRateLimitFilter.kt` (line 127)
+- Keyword: `auth-messages` → Module: `resources/messages` → File: `auth-messages.properties` (77 lines), `auth-messages_vi.properties` (77 lines)
+- Keyword: `AuthErrorCode.msgCode` → Module: `shared/exception` → File: `AuthErrorCode.kt` (62+ error codes, AUTH_001-AUTH_062)
+- Keyword: `ClientMetadataFilter` → Module: `auth/adapter/in/web/filter` → File: `ClientMetadataFilter.kt` (MDC logging)
+- Keyword: `ContentLanguageFilter` → Module: `auth/adapter/in/web/filter` → File: `ContentLanguageFilter.kt` (Content-Language header)
 - Keyword: `AcceptHeaderLocaleResolver` → Module: `shared/config` → File: `I18nConfig.kt` (line 39-44)
 
 ### 10.4 External Integrations

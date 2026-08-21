@@ -1,62 +1,71 @@
 # Service Structure
 
-_Generated: 2026-08-25_
+_Generated: 2026-08-27_
 
 ## auth-service
 
 ### Detected Packages
 
-- `com.ntt.authservice.shared.config` — Configuration classes (I18nConfig, SecurityConfig, SecurityProperties)
-- `com.ntt.authservice.shared.exception` — Exception hierarchy (AuthException, AuthErrorCode, AuthControllerAdvice/GlobalExceptionHandler, AuthCoreExceptions, CipherExceptions, AnonymousExceptions)
-- `com.ntt.authservice.shared.i18n` — i18n infrastructure (DatabaseMessageSource, I18nMessageEntity, I18nMessageRepository)
-- `com.ntt.authservice.shared.security` — Security filters (JwtAuthFilter)
-- `com.ntt.authservice.shared.filter` — Cross-cutting filters (IdempotencyFilter)
-- `com.ntt.authservice.shared.cache` — Cache abstractions (AbstractTwoTierCache)
-- `com.ntt.authservice.shared.persistence` — Persistence utilities
-- `com.ntt.authservice.shared.audit` — Audit infrastructure
-- `com.ntt.authservice.auth.domain.model` — Domain models
-- `com.ntt.authservice.auth.domain.model.vo` — Value objects
-- `com.ntt.authservice.auth.domain.service` — Domain services
-- `com.ntt.authservice.auth.application` — Application services (AuthService, JwtService, MfaService, LoginSessionService, etc.)
-- `com.ntt.authservice.auth.application.command` — CQRS commands + handlers (LoginHandler, RegisterHandler, etc.)
-- `com.ntt.authservice.auth.application.query` — CQRS queries + handlers (BuildAuthResponseQuery/Handler)
-- `com.ntt.authservice.auth.application.event` — Domain events
-- `com.ntt.authservice.auth.application.cipher` — E2EE cipher services
-- `com.ntt.authservice.auth.application.port.out` — Output ports
-- `com.ntt.authservice.auth.adapter.in.web` — REST controllers (CqrsAuthController, SessionController, MfaController, etc.)
-- `com.ntt.authservice.auth.adapter.in.web.dto` — Request/Response DTOs
-- `com.ntt.authservice.auth.adapter.in.web.filter` — Web filters (LoginRateLimitFilter, ClientMetadataFilter, ContentLanguageFilter, ServiceAuthFilter)
-- `com.ntt.authservice.auth.adapter.in.kafka` — Kafka consumers
-- `com.ntt.authservice.auth.adapter.out.http` — HTTP clients (CaptchaClient, HttpCaptchaGateway)
-- `com.ntt.authservice.auth.adapter.out.sso` — SSO adapters (OAuth2TokenExchanger)
-- `com.ntt.authservice.auth.adapter.out.cipher` — Cipher adapters (RedisAntiReplayValidator, RedisCipherKeySessionResolver)
-- `com.ntt.authservice.auth.adapter.out.cache` — Cache adapters (MultiTierPermissionCache)
-- `com.ntt.authservice.auth.adapter.out.gateway` — External gateways
-- `com.ntt.authservice.auth.adapter.out.persistence` — JPA persistence
-- `com.ntt.authservice.auth.adapter.out.persistence.entity` — JPA entities
-- `com.ntt.authservice.auth.adapter.out.persistence.mapper` — Entity mappers
-- `com.ntt.authservice.auth.adapter.out.persistence.repository` — Spring Data repositories
-- `com.ntt.authservice.auth.adapter.out.event` — Event publishers
-- `com.ntt.authservice.rbac.domain.model` — RBAC domain models
-- `com.ntt.authservice.rbac.domain.service` — RBAC domain services
-- `com.ntt.authservice.rbac.application.query` — RBAC query handlers
-- `com.ntt.authservice.rbac.adapter.in.web` — RBAC REST controllers (RbacControllers, RolePermissionController)
-- `com.ntt.authservice.rbac.adapter.out.persistence` — RBAC persistence
-- `com.ntt.authservice.pbac.domain.model` — PBAC domain models
-- `com.ntt.authservice.pbac.adapter.in.web` — PBAC REST controllers (PolicyController)
-- `com.ntt.authservice.pbac.adapter.out.persistence` — PBAC persistence
+- `auth/adapter/in/web` — REST controllers (CqrsAuthController, SessionController, MfaController, SsoController, etc.)
+- `auth/adapter/in/web/dto` — Request/Response DTOs (AnonymousDtos, AuthResponse, MfaDtos, RequestDtos, SsoDtos, TokenDtos)
+- `auth/adapter/in/web/filter` — Servlet filters (LoginRateLimitFilter, ClientMetadataFilter, ContentLanguageFilter)
+- `auth/adapter/in/kafka` — Kafka consumers
+- `auth/adapter/out/persistence` — JPA repositories and entities
+- `auth/adapter/out/persistence/entity` — JPA entities
+- `auth/adapter/out/persistence/mapper` — Entity-to-domain mappers
+- `auth/adapter/out/persistence/repository` — Spring Data JPA repositories
+- `auth/adapter/out/event` — Event publishing adapters
+- `auth/adapter/out/cipher` — Encryption adapters
+- `auth/adapter/out/http` — HTTP client adapters
+- `auth/adapter/out/gateway` — External gateway adapters
+- `auth/adapter/out/cache` — Cache adapters
+- `auth/adapter/out/sso` — SSO provider adapters
+- `auth/application` — Application services (AuthService, MfaService, JwtService, LoginSessionService, etc.)
+- `auth/application/command` — CQRS command handlers
+- `auth/application/event` — Domain event handlers
+- `auth/application/cipher` — Cipher application services
+- `auth/application/query` — CQRS query handlers
+- `auth/application/port/out` — Output ports (interfaces)
+- `auth/domain/event` — Domain events
+- `auth/domain/model` — Domain model classes
+- `auth/domain/model/vo` — Value objects
+- `auth/domain/service` — Domain services
+- `shared/config` — Configuration classes (I18nConfig, SecurityConfig, etc.)
+- `shared/exception` — Exception classes and error codes (AuthControllerAdvice, AuthErrorCode, AuthException hierarchy)
+- `shared/i18n` — i18n infrastructure (DatabaseMessageSource, I18nMessageEntity, I18nMessageRepository)
+- `shared/security` — Security infrastructure
+- `shared/cache` — Cache configuration
+- `shared/persistence` — Shared persistence utilities
+- `shared/filter` — Shared servlet filters
+- `shared/audit` — Audit logging infrastructure
+- `rbac/domain/model` — RBAC domain models
+- `rbac/domain/service` — RBAC domain services
+- `rbac/application` — RBAC application services
+- `rbac/application/query` — RBAC query handlers
+- `rbac/adapter/out/persistence` — RBAC persistence layer
+- `rbac/adapter/in/web` — RBAC REST controllers (DomainController, RoleController, GroupController, etc.)
+- `pbac/application` — PBAC application services
+- `pbac/adapter/out/persistence` — PBAC persistence layer
+- `pbac/adapter/in/web` — PBAC REST controllers (PolicyController)
 
 ### Not Found
 
-- `com.ntt.authservice.auth.adapter.in.web.controller` — controllers are directly in `web/` package (not in sub-package)
+- `controller/` (standard) — controllers are at `adapter/in/web/` (Clean Architecture convention)
+- `handler/` (standard) — handlers embedded in `application/command/`
+- `factory/` — no factory layer detected
+- `model/` (standard) — models at `domain/model/`
+- `entity/` (standard) — entities at `adapter/out/persistence/entity/`
+- `repository/` (standard) — repositories at `adapter/out/persistence/repository/`
 
 ### Naming Convention
 
-- Controllers: `{Feature}Controller.kt` (e.g., `SessionController.kt`, `MfaController.kt`)
-- CQRS: `{Feature}Handler.kt` (command), `{Feature}Query.kt` / `{Feature}Handler.kt` (query)
-- Filters: `{Feature}Filter.kt` (e.g., `LoginRateLimitFilter.kt`, `ContentLanguageFilter.kt`)
-- DTOs: `{Feature}Dtos.kt` files containing multiple data classes (e.g., `MfaDtos.kt`, `AnonymousDtos.kt`)
-- Exceptions: `{Domain}Exceptions.kt` files (e.g., `AuthCoreExceptions.kt`, `CipherExceptions.kt`, `AnonymousExceptions.kt`)
-- Configuration: `{Feature}Config.kt` (e.g., `I18nConfig.kt`, `SecurityConfig.kt`)
-- Language: Kotlin (100%)
-- Architecture: Hexagonal (ports & adapters) with CQRS in auth module
+- Controllers: `*Controller.kt` (e.g., `CqrsAuthController`, `MfaController`, `SessionController`)
+- Services: `*Service.kt` (e.g., `AuthService`, `MfaService`, `JwtService`)
+- Handlers: `*Handler.kt` (e.g., `AnonymousSessionHandler`)
+- Filters: `*Filter.kt` (e.g., `LoginRateLimitFilter`, `ContentLanguageFilter`)
+- Entities: `*Entity.kt` (e.g., `I18nMessageEntity`)
+- Repositories: `*Repository.kt` (e.g., `I18nMessageRepository`)
+- DTOs: grouped in `*Dtos.kt` files (e.g., `MfaDtos.kt`, `SsoDtos.kt`)
+- Exception: `*Exception.kt` or grouped `*Exceptions.kt` (e.g., `AuthExceptions.kt`, `CipherExceptions.kt`)
+- Config: `*Config.kt` (e.g., `I18nConfig`)
+- Architecture: Clean Architecture / Hexagonal (adapter/in, adapter/out, application, domain)
