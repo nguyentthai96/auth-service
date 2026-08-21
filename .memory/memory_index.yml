@@ -91,6 +91,28 @@ lessons:
   frequency: 2
   id: L007
   type: failure_pattern
-total_failures: 32
-total_records: 100
-total_successes: 68
+- action: 'Mitigate ''MISSING_ARTIFACT'' errors in wf_openspec. Common errors: Output
+    validation failed: Required file missing: /home/nguyentthai96/Desktop/bigbang/boilerplate/ser;
+    Output validation failed: Required file missing: /home/nguyentthai96/Desktop/bigbang/boilerplate/ser'
+  description: 'Workflow ''wf_openspec'' fails with ''MISSING_ARTIFACT'' across features:
+    `jwt_token_issuance`, `user_login_event`'
+  fingerprint:
+  - wf_openspec
+  - MISSING_ARTIFACT
+  frequency: 2
+  id: L008
+  type: failure_pattern
+- action: 'Mitigate ''MISSING_ARTIFACT'' errors in wf_openspec_apply. Common errors:
+    Output validation failed: 36 tasks still uncompleted in tasks.md; Output validation
+    failed: tasks.md not found: /home/nguyentthai96/Desktop/bigbang/boilerplate/servic'
+  description: 'Workflow ''wf_openspec_apply'' fails with ''MISSING_ARTIFACT'' across
+    features: `user_registration_event`, `jwt_token_issuance`'
+  fingerprint:
+  - wf_openspec_apply
+  - MISSING_ARTIFACT
+  frequency: 2
+  id: L009
+  type: failure_pattern
+total_failures: 35
+total_records: 101
+total_successes: 66

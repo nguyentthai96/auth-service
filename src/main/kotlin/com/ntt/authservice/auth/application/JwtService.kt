@@ -77,17 +77,19 @@ class JwtService(
         activeDomain: String,
         roles: List<String>,
         permissions: List<String>,
-        groups: List<String>
+        groups: List<String>,
+        jti: String? = null  // Pre-generated JTI for event correlation (FR-007)
     ): String {
         val now = Date()
         val expiry = Date(now.time + securityProperties.jwt.accessTokenExpirationMs)
+        val resolvedJti = jti ?: UUID.randomUUID().toString()
 
         val builder = Jwts.builder()
             .subject(userId.toString())
             .issuer(securityProperties.jwt.issuer)
             .issuedAt(now)
             .expiration(expiry)
-            .id(UUID.randomUUID().toString())
+            .id(resolvedJti)
             .claim("username", username)
             .claim("domains", domains)
             .claim("active_domain", activeDomain)
@@ -101,16 +103,17 @@ class JwtService(
     /**
      * Generate refresh token (minimal claims).
      */
-    fun generateRefreshToken(userId: Long): String {
+    fun generateRefreshToken(userId: Long, jti: String? = null): String {
         val now = Date()
         val expiry = Date(now.time + securityProperties.jwt.refreshTokenExpirationMs)
+        val resolvedJti = jti ?: UUID.randomUUID().toString()
 
         val builder = Jwts.builder()
             .subject(userId.toString())
             .issuer(securityProperties.jwt.issuer)
             .issuedAt(now)
             .expiration(expiry)
-            .id(UUID.randomUUID().toString())
+            .id(resolvedJti)
             .claim("type", "refresh")
 
         return signToken(builder)

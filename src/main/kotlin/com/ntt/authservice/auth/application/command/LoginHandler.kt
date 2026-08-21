@@ -7,6 +7,8 @@ import com.ntt.authservice.auth.application.PromotionResult
 import com.ntt.authservice.auth.application.SessionPolicyService
 import com.ntt.authservice.auth.application.SessionPromotionService
 import com.ntt.authservice.auth.application.port.out.*
+import com.ntt.authservice.auth.domain.event.IssuanceContext
+import com.ntt.authservice.auth.domain.model.TokenIssuanceMetadata
 import com.ntt.authservice.auth.domain.model.UserStatus
 import com.ntt.authservice.auth.domain.service.TokenHasher
 import com.ntt.authservice.rbac.application.query.GetUserRolesHandler
@@ -138,7 +140,12 @@ class LoginHandler(
         sessionPolicyService.enforcePolicy(user.id.value, roles)
 
         // Generate tokens
-        val authToken = tokenGenerator.generateAuthResponse(user, domainCode)
+        val metadata = TokenIssuanceMetadata(
+            issuanceContext = IssuanceContext.LOGIN,
+            ipAddress = command.ipAddress,
+            userAgent = command.userAgent
+        )
+        val authToken = tokenGenerator.generateAuthResponse(user, domainCode, metadata)
 
         // Record login session
         loginSessionService.recordLogin(

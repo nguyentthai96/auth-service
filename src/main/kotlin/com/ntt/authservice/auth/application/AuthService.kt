@@ -8,6 +8,9 @@ import com.ntt.authservice.rbac.application.RbacEngine
 import com.ntt.authservice.shared.config.SecurityProperties
 import com.ntt.authservice.shared.audit.AuditAction
 import com.ntt.authservice.shared.audit.AuditLogService
+import com.ntt.authservice.auth.application.event.TokenEventRecorder
+import com.ntt.authservice.auth.domain.event.RevocationType
+import com.ntt.authservice.auth.domain.event.TokenRevokedEvent
 import com.ntt.authservice.shared.exception.*
 import org.slf4j.LoggerFactory
 import org.springframework.security.crypto.password.PasswordEncoder
@@ -34,7 +37,8 @@ class AuthService(
     private val captchaVerifier: CaptchaVerifier,
     private val mfaService: MfaService,
     private val passwordPolicyService: PasswordPolicyService,
-    private val auditLogService: AuditLogService
+    private val auditLogService: AuditLogService,
+    private val tokenEventRecorder: TokenEventRecorder
 ) {
 
     private val log = LoggerFactory.getLogger(AuthService::class.java)
@@ -288,7 +292,19 @@ class AuthService(
         // 1. Revoke all active refresh tokens
         val revokedCount = refreshTokenRepository.revokeAllByUserId(userId)
 
-        // 2. Access tokens expire naturally (max 15min) — industry standard for JWT
+        // 2. Record bulk revocation event (FR-010)
+        tokenEventRecorder.recordRevocation(
+            event = TokenRevokedEvent(
+                userId = userId,
+                revocationType = RevocationType.BULK_REVOKE,
+                revokedCount = revokedCount,
+                reason = "All sessions revoked"
+            ),
+            userId = userId,
+            correlationId = null
+        )
+
+        // 3. Access tokens expire naturally (max 15min) — industry standard for JWT
         // No per-token JTI blacklisting for bulk revoke
 
         auditLogService.logEvent(userId, AuditAction.SESSION_REVOKED,

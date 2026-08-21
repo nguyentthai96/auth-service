@@ -1,0 +1,16 @@
+{
+  "feature": "`jwt_token_issuance`",
+  "workflow": "wf_openspec_apply",
+  "outcome": "failure",
+  "timestamp": "2026-08-21T12:10:29.507726+00:00",
+  "duration_seconds": 543,
+  "tokens_used": 0,
+  "prompt_layer_tokens": {},
+  "output_artifacts": [],
+  "errors": [
+    "Output validation failed: tasks.md not found: /home/nguyentthai96/Desktop/bigbang/boilerplate/services/auth-service/openspec/changes/`jwt_token_issuance`/tasks.md",
+    "Output validation failed: tasks.md not found: /home/nguyentthai96/Desktop/bigbang/boilerplate/services/auth-service/openspec/changes/`jwt_token_issuance`/tasks.md"
+  ],
+  "lesson_extracted": null,
+  "recovery_pattern": null
+}

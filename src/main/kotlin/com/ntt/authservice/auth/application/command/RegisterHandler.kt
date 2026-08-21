@@ -5,7 +5,9 @@ import com.ntt.authservice.auth.application.RegisterResult
 import com.ntt.authservice.auth.application.SessionPromotionService
 import com.ntt.authservice.auth.application.event.EventService
 import com.ntt.authservice.auth.application.port.out.*
+import com.ntt.authservice.auth.domain.event.IssuanceContext
 import com.ntt.authservice.auth.domain.event.UserRegisteredEvent
+import com.ntt.authservice.auth.domain.model.TokenIssuanceMetadata
 import com.ntt.authservice.auth.domain.model.User
 import com.ntt.authservice.auth.domain.model.UserStatus
 import com.ntt.authservice.auth.domain.model.vo.Email
@@ -102,8 +104,14 @@ class RegisterHandler(
 
         log.info("User registered: {} in domain: {}", savedUser.username, command.domainCode)
 
-        // Generate auth tokens
-        val authToken = tokenGenerator.generateAuthResponse(savedUser, command.domainCode)
+        // Generate auth tokens (FR-011: pass issuance metadata)
+        val metadata = TokenIssuanceMetadata(
+            issuanceContext = IssuanceContext.REGISTRATION,
+            ipAddress = command.ipAddress,
+            userAgent = command.userAgent,
+            correlationId = command.correlationId
+        )
+        val authToken = tokenGenerator.generateAuthResponse(savedUser, command.domainCode, metadata)
         log.debug("REGISTER_TOKEN_GENERATED userId={}", savedUser.id.value)
 
         // Anonymous session promotion (best-effort — DD-006, DD-007)
