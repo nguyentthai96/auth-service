@@ -1,0 +1,22 @@
+{
+  "feature": "`jwt_token_validation`",
+  "workflow": "wf_feature_research",
+  "outcome": "success",
+  "timestamp": "2026-08-21T12:39:46.394411+00:00",
+  "duration_seconds": 1650,
+  "tokens_used": 0,
+  "prompt_layer_tokens": {},
+  "output_artifacts": [
+    "/home/nguyentthai96/Desktop/bigbang/boilerplate/services/auth-service/openspec/research/`jwt_token_validation`/research_brief.md",
+    "/home/nguyentthai96/Desktop/bigbang/boilerplate/services/auth-service/openspec/research/`jwt_token_validation`/business_analysis.md",
+    "/home/nguyentthai96/Desktop/bigbang/boilerplate/services/auth-service/openspec/research/`jwt_token_validation`/technical_spec.md",
+    "/home/nguyentthai96/Desktop/bigbang/boilerplate/services/auth-service/openspec/research/`jwt_token_validation`/opensource_findings.md",
+    "/home/nguyentthai96/Desktop/bigbang/boilerplate/services/auth-service/openspec/research/`jwt_token_validation`/web_research.md",
+    "/home/nguyentthai96/Desktop/bigbang/boilerplate/services/auth-service/openspec/research/`jwt_token_validation`/comparison_analysis.md",
+    "/home/nguyentthai96/Desktop/bigbang/boilerplate/services/auth-service/openspec/research/`jwt_token_validation`/validation_report.md",
+    "/home/nguyentthai96/Desktop/bigbang/boilerplate/services/auth-service/openspec/research/`jwt_token_validation`/handoff_summary.md"
+  ],
+  "errors": [],
+  "lesson_extracted": null,
+  "recovery_pattern": null
+}
