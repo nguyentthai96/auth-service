@@ -11,8 +11,8 @@
 | **Tính năng** | Auth Core Features (FR-001 MFA, FR-002 SSO, FR-003 Token RS256, FR-004 Password Policy) |
 | **Ngày phân tích** | 2026-08-22 |
 | **Recommendation** | **Build from scratch** (using battle-tested open source libraries for core primitives) |
-| **Rationale** | Tất cả libraries cần thiết đã available (totp 1.7.1, Passay 1.6.4, Spring OAuth2 native, JJWT). Custom code cho orchestration layer (MfaService, SsoAdapter) và data layer. Auth là core business logic — không nên delegate cho external IdP hoàn toàn. ~95% code đã implemented, V2+V10 migrations đã applied. |
-| **Confidence** | **HIGH** — All libraries đã integrate thành công trong codebase, V2+V10 migrations deployed, all services functional |
+| **Rationale** | Tất cả libraries cần thiết đã available (totp 1.7.1, Passay 1.6.4, Spring OAuth2 native, JJWT). Custom code cho orchestration layer (MfaService, SsoAdapter) và data layer. Auth là core business logic — không nên delegate cho external IdP hoàn toàn. ~95% code đã implemented, V2+V10+V13 migrations đã applied, event sourcing (V11) + audit (V14) + branding (V15) deployed. |
+| **Confidence** | **HIGH** — All libraries đã integrate thành công trong codebase, 15 Flyway migrations deployed, all services functional |
 
 ---
 

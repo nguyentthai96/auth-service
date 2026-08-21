@@ -9,7 +9,7 @@
 | Mục | Nội dung |
 |-----|----------|
 | **Feature** | Auth Core Features (FR-001 → FR-004) |
-| **Ngày hoàn thành** | 2026-08-20 |
+| **Ngày hoàn thành** | 2026-08-22 |
 | **Recommendation** | build (using open source libraries for primitives) |
 | **Research directory** | `openspec/research/auth-core-features/` |
 | **Status** | complete |
@@ -18,7 +18,7 @@
 
 ## 1. Recommendation
 
-**BUILD from scratch** sử dụng battle-tested open source libraries (dev.samstevens.totp, Passay, Spring OAuth2, JJWT). Auth là core business logic — custom code chỉ cần cho orchestration layer (MfaService, SsoAdapter, PasswordPolicyService). ~90% code đã implemented, V2 database migration đã applied.
+**BUILD from scratch** sử dụng battle-tested open source libraries (dev.samstevens.totp, Passay, Spring OAuth2, JJWT). Auth là core business logic — custom code chỉ cần cho orchestration layer (MfaService, SsoAdapter, PasswordPolicyService). ~95% code đã implemented, V2+V10+V13 database migrations đã applied. Event sourcing tables (V11), audit logs (V14), and domain branding (V15) also deployed.
 
 ---
 
@@ -29,7 +29,7 @@
 | Open Source | Top libraries: Spring OAuth2 (10.0/10), JJWT (9.7/10), Passay (8.65/10), dev.samstevens.totp (8.1/10) — all adopted, all integrated | [opensource_findings.md](./opensource_findings.md) |
 | Web Research | Two-phase MFA login pattern (Spring Boot 3.x), RS256 dual-key migration, Passay factory pattern — 9 unique sources across 4 iterations | [web_research.md](./web_research.md) |
 | Gap Coverage | 10/10 gaps addressed: MFA done, SSO done, RS256 done, introspection done, password policy done. 1 partial: `revokeAllSessions()` TODO | [comparison_analysis.md](./comparison_analysis.md) |
-| Current System | Hexagonal architecture, Snowflake IDs, CQRS pattern, Redis integration, 9 Flyway migrations. All auth-core entities/services already exist. | [research_brief.md](./research_brief.md) |
+| Current System | Hexagonal architecture, Snowflake IDs, CQRS pattern, Redis integration, 15 Flyway migrations (V1..V15). All auth-core entities/services already exist. Event sourcing, audit logs, MFA recovery codes tables deployed. | [research_brief.md](./research_brief.md) |
 
 ---
 

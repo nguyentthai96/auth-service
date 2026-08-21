@@ -96,7 +96,7 @@ graph TB
 |-------|-----------|---------|---------|
 | Language | Kotlin | 1.9+ | Coroutines-ready |
 | Framework | Spring Boot | 3.2+ | Spring Security 6+ |
-| Database | PostgreSQL | 17 | Flyway migrations V1..V9 |
+| Database | PostgreSQL | 17 | Flyway migrations V1..V15 |
 | Cache | Redis | Latest | OTP, rate limiting, session |
 | Cache (L1) | Caffeine | Latest | Permission cache, password validator cache |
 | JWT | JJWT | 0.12+ | RS256 primary, HMAC fallback |

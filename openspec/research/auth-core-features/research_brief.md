@@ -106,10 +106,13 @@ Hệ thống ERP IAM hiện tại cần bảo vệ tài khoản người dùng b
 | Session Policy Service | `auth.application.SessionPolicyService` | Medium | Session policy enforcement |
 | JWT Auth Filter | `shared.security.JwtAuthFilter` | Medium | Token validation filter with jti blacklist check |
 | RBAC Engine | `rbac.application.RbacEngine` | Medium | Provides roles/permissions for JWT claims |
-| Audit Log Service | `shared.audit.AuditLogService` | Low | Immutable audit trail for security events |
+| Audit Log Service | `shared.audit.AuditLogService` | Low | Immutable audit trail for security events (V14 migration — `audit_logs` table with UPDATE/DELETE rules) |
 | OAuth2 Token Exchanger | `auth.adapter.out.sso.OAuth2TokenExchanger` | High | Config-driven code exchange with Google/Microsoft/Keycloak |
 | Event Publisher (Port) | `auth.application.port.out.EventPublisher` | Medium | Port interface for domain events (SSO provisioned) |
+| Event Service | `auth.application.event.EventService` | Medium | Event sourcing orchestration (V11 migration — `event_store`, `event_outbox`, `processed_events`) |
+| Token Event Recorder | `auth.application.event.TokenEventRecorder` | Medium | Records token issuance/revocation events to event store |
 | Service Token Service | `auth.application.ServiceTokenService` | Low | Service-to-service token management |
+| MFA Recovery Codes | `auth.application.MfaService` | High | SHA-256 hashed single-use recovery codes (V13 migration — `mfa_recovery_codes` table) |
 
 ### 4.2 Existing Code Patterns
 
@@ -140,7 +143,8 @@ Hệ thống ERP IAM hiện tại cần bảo vệ tài khoản người dùng b
 - Kafka: `spring-kafka` (runtime dependency for SSO events)
 - E2EE: Google Tink 1.15.0
 - Build: Gradle Kotlin DSL
-- Base: `com.ntt:platform`, `base-web-starter`, `base-data-starter`, `base-security-starter`, `base-observability-starter`, `common-log`, `eventsourcing-utils`
+- Base: `com.ntt:platform`, `base-web-starter`, `base-data-starter`, `base-security-starter`, `base-observability-starter`, `base-cache-starter`, `common-log`, `eventsourcing-utils`
+- Resilience: `resilience4j-spring-boot3` 2.2.0 (circuit breaker for external service calls)
 
 ### 4.4 Integration Points
 
@@ -153,11 +157,15 @@ Hệ thống ERP IAM hiện tại cần bảo vệ tài khoản người dùng b
 | OAuth2 Token Exchanger | Adapter | `auth.adapter.out.sso.OAuth2TokenExchanger` | Exchange auth code with IdP (Google, Microsoft, Keycloak) |
 | HTTP CAPTCHA Gateway | Adapter | `auth.adapter.out.http.HttpCaptchaGateway` | Alternative CAPTCHA verification via gateway pattern |
 | HTTP SSO Gateway | Adapter | `auth.adapter.out.http.HttpSsoGateway` | Alternative SSO flow via gateway pattern |
-| Domains Table | Table | `domains` | Multi-domain config — password policy FK, SSO config per domain |
+| Domains Table | Table | `domains` | Multi-domain config — password policy FK, SSO config per domain, branding (V15: logo_url, primary_color, favicon_url, login_page_config) |
 | Users Table | Table | `users` | Core user table — MFA fields, password tracking fields, trusted_device_set_at (V10) |
 | UserIdentities Table | Table | `user_identities` | SSO identity linking (provider + sub) |
 | PasswordPolicies Table | Table | `password_policies` | Per-domain password rules |
 | PasswordHistory Table | Table | `password_history` | Recent password hashes for reuse prevention |
+| MfaRecoveryCodes Table | Table | `mfa_recovery_codes` | SHA-256 hashed single-use backup MFA codes (V13) |
+| EventStore Table | Table | `event_store` | Append-only immutable event log (V11) |
+| EventOutbox Table | Table | `event_outbox` | Transactional outbox for reliable Kafka publishing (V11) |
+| AuditLogs Table | Table | `audit_logs` | Immutable security audit trail with DB-level UPDATE/DELETE prevention rules (V14) |
 
 ## 5. Research Questions
 

@@ -9,7 +9,7 @@
 | Mục | Nội dung |
 |-----|----------|
 | **Feature** | Auth Core Features (FR-001 → FR-004) |
-| **Ngày review** | 2026-08-20 |
+| **Ngày review** | 2026-08-22 |
 | **Lần review thứ** | 1 / 3 |
 | **Kết quả tổng** | ✅ PASS |
 
@@ -74,8 +74,8 @@
 | Tech spec feasible with current stack? | ✅ | Kotlin 1.9+, Spring Boot 3.2+, PostgreSQL 17 — all compatible |
 | Dependencies available and maintained? | ✅ | All dependencies on Maven Central: totp 1.7.1, Passay 1.6.4, JJWT 0.12+, Spring OAuth2 |
 | Integration points validated? | ✅ | Redis config verified in application.yml, OAuth2 client registrations configured, Kafka compileOnly |
-| Code already implemented? | ✅ | ~90% of code already exists: MfaService, OtpService, TotpService, SsoAdapter, PasswordPolicyService, JwtService (RS256), TokenController, MfaController, SsoController |
-| DB schema already migrated? | ✅ | V2__auth_core_features.sql already applied — all tables and columns exist |
+| Code already implemented? | ✅ | ~95% of code already exists: MfaService, OtpService, TotpService, SsoAdapter, PasswordPolicyService, JwtService (RS256), TokenController, MfaController, SsoController, AuditLogService, EventService, TokenEventRecorder |
+| DB schema already migrated? | ✅ | V1..V15 — all tables and columns exist, including event_store (V11), mfa_recovery_codes (V13), audit_logs (V14), domain branding (V15) |
 | Entities match schema? | ✅ | UserEntity, UserIdentityEntity, PasswordPolicyEntity, PasswordHistoryEntity all verified against source code |
 
 ---
