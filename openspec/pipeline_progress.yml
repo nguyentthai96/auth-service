@@ -1,5 +1,5 @@
 current_feature: '`jwt_token_validation`'
-current_workflow: wf_pre_openspec
+current_workflow: wf_brainstorm_openspec
 features:
   '`jwt_token_issuance`':
     workflows:
@@ -75,15 +75,20 @@ features:
         tokens: 0
   '`jwt_token_validation`':
     workflows:
+      wf_brainstorm_openspec:
+        duration: 0
+        started_at: '2026-08-21T12:49:57.130817+00:00'
+        status: in_progress
+        strike_count: 0
+        tokens: 0
       wf_feature_research:
         duration: 1650
         status: success
         strike_count: 0
         tokens: 0
       wf_pre_openspec:
-        duration: 0
-        started_at: '2026-08-21T12:39:46.425293+00:00'
-        status: in_progress
+        duration: 610
+        status: success
         strike_count: 0
         tokens: 0
   '`user_login_event`':
@@ -298,8 +303,8 @@ stats:
   partial_features: 3
   remaining_features: 0
   skipped_features: 0
-  total_duration: 5019
+  total_duration: 5629
   total_features: 5
   total_tokens: 0
 status: running
-updated_at: '2026-08-21T12:39:46.425276+00:00'
+updated_at: '2026-08-21T12:49:57.130801+00:00'
