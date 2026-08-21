@@ -1,5 +1,5 @@
-current_feature: api-response-i18n-standard
-current_workflow: wf_archive
+current_feature: auth-core-features
+current_workflow: wf_pre_openspec
 features:
   anonymous-login-optimization:
     workflows:
@@ -36,9 +36,8 @@ features:
   api-response-i18n-standard:
     workflows:
       wf_archive:
-        duration: 0
-        started_at: '2026-08-21T12:59:58.919752+00:00'
-        status: in_progress
+        duration: 150
+        status: success
         strike_count: 0
         tokens: 0
       wf_brainstorm_openspec:
@@ -66,15 +65,28 @@ features:
         status: success
         strike_count: 0
         tokens: 0
+  auth-core-features:
+    workflows:
+      wf_feature_research:
+        duration: 240
+        status: success
+        strike_count: 0
+        tokens: 0
+      wf_pre_openspec:
+        duration: 0
+        started_at: '2026-08-21T13:06:30.120314+00:00'
+        status: in_progress
+        strike_count: 0
+        tokens: 0
 started_at: '2026-08-21T11:41:07.477168+00:00'
 stats:
-  completed_features: 2
+  completed_features: 3
   failed_features: 0
   partial_features: 0
   remaining_features: 0
   skipped_features: 0
-  total_duration: 4724
-  total_features: 2
+  total_duration: 5114
+  total_features: 3
   total_tokens: 0
 status: running
-updated_at: '2026-08-21T12:59:58.919735+00:00'
+updated_at: '2026-08-21T13:06:30.120292+00:00'

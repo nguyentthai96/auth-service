@@ -1,0 +1,35 @@
+primary: jwt_token_validation
+environment: kotlin
+rules:
+  - spring-boot
+  - error-handling
+  - testing
+  - api-security
+  - clean-architecture
+skills:
+  - wf_openspec
+  - spring-boot
+  - architecture
+artifacts:
+  - id: proposal
+    type: markdown
+    status: pending
+    dependencies: []
+  - id: srs
+    type: markdown
+    status: pending
+    dependencies: [proposal]
+  - id: design
+    type: markdown
+    status: pending
+    dependencies: [srs]
+  - id: impact_analysis
+    type: markdown
+    status: pending
+    dependencies: [design]
+  - id: tasks
+    type: markdown
+    status: pending
+    dependencies: [design, srs, impact_analysis]
+applyRequires:
+  - tasks

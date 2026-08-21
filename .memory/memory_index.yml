@@ -5,7 +5,7 @@ features:
   '`user_registration_event`': in_progress
   anonymous-login-optimization: completed
   api-response-i18n-standard: completed
-  auth-core-features: failed
+  auth-core-features: completed
   erp-iam-system: in_progress
 lessons:
 - action: 'Mitigate ''PROXY_DOWN'' errors in wf_brainstorm_openspec. Common errors:
@@ -92,5 +92,5 @@ lessons:
   id: L007
   type: failure_pattern
 total_failures: 32
-total_records: 109
-total_successes: 77
+total_records: 111
+total_successes: 79
