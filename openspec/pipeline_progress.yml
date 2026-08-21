@@ -1,310 +1,80 @@
-current_feature: '`jwt_token_validation`'
-current_workflow: wf_brainstorm_openspec
+current_feature: api-response-i18n-standard
+current_workflow: wf_archive
 features:
-  '`jwt_token_issuance`':
+  anonymous-login-optimization:
     workflows:
       wf_archive:
-        duration: 105
+        duration: 151
         status: success
         strike_count: 0
         tokens: 0
       wf_brainstorm_openspec:
-        duration: 922
-        errors:
-        - 'Error code: 502 - {''type'': ''error'', ''error'': {''type'': ''api_error'',
-          ''message'': ''All upstream endpoints failed''}}'
-        - 'Error code: 502 - {''type'': ''error'', ''error'': {''type'': ''api_error'',
-          ''message'': ''All upstream endpoints failed''}}'
-        - 'Error code: 502 - {''type'': ''error'', ''error'': {''type'': ''api_error'',
-          ''message'': ''All upstream endpoints failed''}}'
-        - 'Output validation failed: Required file missing: /home/nguyentthai96/Desktop/bigbang/boilerplate/services/auth-service/openspec/changes/`jwt_token_issuance`/brainstorm_notes.md'
-        status: failed
-        strike_count: 4
+        duration: 430
+        status: success
+        strike_count: 0
         tokens: 0
       wf_feature_research:
-        duration: 1155
-        errors:
-        - 'Error code: 502 - {''type'': ''error'', ''error'': {''type'': ''api_error'',
-          ''message'': ''All upstream endpoints failed''}}'
-        - 'Error code: 502 - {''type'': ''error'', ''error'': {''type'': ''api_error'',
-          ''message'': ''All upstream endpoints failed''}}'
-        - 'Error code: 502 - {''type'': ''error'', ''error'': {''type'': ''api_error'',
-          ''message'': ''All upstream endpoints failed''}}'
-        - 'Error code: 502 - {''type'': ''error'', ''error'': {''type'': ''api_error'',
-          ''message'': ''All upstream endpoints failed''}}'
-        - 'Error code: 502 - {''type'': ''error'', ''error'': {''type'': ''api_error'',
-          ''message'': ''All upstream endpoints failed''}}'
-        status: failed
-        strike_count: 5
+        duration: 457
+        status: success
+        strike_count: 0
         tokens: 0
       wf_openspec:
-        duration: 879
-        errors:
-        - 'Output validation failed: Required file missing: /home/nguyentthai96/Desktop/bigbang/boilerplate/services/auth-service/openspec/changes/`jwt_token_issuance`/proposal.md;
-          Required file missing: /home/nguyentthai96/Desktop/bigbang/boilerplate/services/auth-service/openspec/changes/`jwt_token_issuance`/design.md;
-          Required file missing: /home/nguyentthai96/Desktop/bigbang/boilerplate/services/auth-service/openspec/changes/`jwt_token_issuance`/tasks.md'
-        - 'Output validation failed: Required file missing: /home/nguyentthai96/Desktop/bigbang/boilerplate/services/auth-service/openspec/changes/`jwt_token_issuance`/proposal.md;
-          Required file missing: /home/nguyentthai96/Desktop/bigbang/boilerplate/services/auth-service/openspec/changes/`jwt_token_issuance`/design.md;
-          Required file missing: /home/nguyentthai96/Desktop/bigbang/boilerplate/services/auth-service/openspec/changes/`jwt_token_issuance`/tasks.md'
-        status: failed
-        strike_count: 2
+        duration: 414
+        status: success
+        strike_count: 0
         tokens: 0
       wf_openspec_apply:
-        duration: 543
-        errors:
-        - 'Output validation failed: tasks.md not found: /home/nguyentthai96/Desktop/bigbang/boilerplate/services/auth-service/openspec/changes/`jwt_token_issuance`/tasks.md'
-        - 'Output validation failed: tasks.md not found: /home/nguyentthai96/Desktop/bigbang/boilerplate/services/auth-service/openspec/changes/`jwt_token_issuance`/tasks.md'
-        status: failed
-        strike_count: 2
+        duration: 304
+        status: success
+        strike_count: 0
         tokens: 0
       wf_pre_openspec:
-        duration: 1189
-        errors:
-        - 'Error code: 502 - {''type'': ''error'', ''error'': {''type'': ''api_error'',
-          ''message'': ''All upstream endpoints failed''}}'
-        - 'Error code: 502 - {''type'': ''error'', ''error'': {''type'': ''api_error'',
-          ''message'': ''All upstream endpoints failed''}}'
-        - 'Error code: 502 - {''type'': ''error'', ''error'': {''type'': ''api_error'',
-          ''message'': ''All upstream endpoints failed''}}'
-        - 'Error code: 502 - {''type'': ''error'', ''error'': {''type'': ''api_error'',
-          ''message'': ''All upstream endpoints failed''}}'
-        - 'Error code: 502 - {''type'': ''error'', ''error'': {''type'': ''api_error'',
-          ''message'': ''All upstream endpoints failed''}}'
-        status: failed
-        strike_count: 5
+        duration: 479
+        status: success
+        strike_count: 0
         tokens: 0
-  '`jwt_token_validation`':
+  api-response-i18n-standard:
     workflows:
-      wf_brainstorm_openspec:
+      wf_archive:
         duration: 0
-        started_at: '2026-08-21T12:49:57.130817+00:00'
+        started_at: '2026-08-21T12:59:58.919752+00:00'
         status: in_progress
         strike_count: 0
         tokens: 0
-      wf_feature_research:
-        duration: 1650
-        status: success
-        strike_count: 0
-        tokens: 0
-      wf_pre_openspec:
-        duration: 610
-        status: success
-        strike_count: 0
-        tokens: 0
-  '`user_login_event`':
-    workflows:
-      wf_archive:
-        duration: 189
-        status: success
-        strike_count: 0
-        tokens: 0
       wf_brainstorm_openspec:
-        duration: 438
+        duration: 261
         status: success
         strike_count: 0
         tokens: 0
       wf_feature_research:
-        duration: 872
-        errors:
-        - 'Output validation failed: Required file missing: /home/nguyentthai96/Desktop/bigbang/boilerplate/services/auth-service/openspec/research/`user_login_event`/research_brief.md;
-          Required file missing: /home/nguyentthai96/Desktop/bigbang/boilerplate/services/auth-service/openspec/research/`user_login_event`/business_analysis.md;
-          Required file missing: /home/nguyentthai96/Desktop/bigbang/boilerplate/services/auth-service/openspec/research/`user_login_event`/technical_spec.md;
-          Required file missing: /home/nguyentthai96/Desktop/bigbang/boilerplate/services/auth-service/openspec/research/`user_login_event`/opensource_findings.md;
-          Required file missing: /home/nguyentthai96/Desktop/bigbang/boilerplate/services/auth-service/openspec/research/`user_login_event`/web_research.md;
-          Required file missing: /home/nguyentthai96/Desktop/bigbang/boilerplate/services/auth-service/openspec/research/`user_login_event`/comparison_analysis.md;
-          Required file missing: /home/nguyentthai96/Desktop/bigbang/boilerplate/services/auth-service/openspec/research/`user_login_event`/validation_report.md;
-          Required file missing: /home/nguyentthai96/Desktop/bigbang/boilerplate/services/auth-service/openspec/research/`user_login_event`/handoff_summary.md'
-        - 'Output validation failed: Required file missing: /home/nguyentthai96/Desktop/bigbang/boilerplate/services/auth-service/openspec/research/`user_login_event`/handoff_summary.md'
-        status: failed
-        strike_count: 2
+        duration: 278
+        status: success
+        strike_count: 0
         tokens: 0
       wf_openspec:
-        duration: 322
-        errors:
-        - 'Error code: 502 - {''type'': ''error'', ''error'': {''type'': ''api_error'',
-          ''message'': ''All upstream endpoints failed''}}'
-        - 'Error code: 502 - {''type'': ''error'', ''error'': {''type'': ''api_error'',
-          ''message'': ''All upstream endpoints failed''}}'
-        - 'Output validation failed: Required file missing: /home/nguyentthai96/Desktop/bigbang/boilerplate/services/auth-service/openspec/changes/`user_login_event`/proposal.md;
-          Required file missing: /home/nguyentthai96/Desktop/bigbang/boilerplate/services/auth-service/openspec/changes/`user_login_event`/design.md;
-          Required file missing: /home/nguyentthai96/Desktop/bigbang/boilerplate/services/auth-service/openspec/changes/`user_login_event`/tasks.md'
-        status: failed
-        strike_count: 3
-        tokens: 0
-      wf_openspec_apply:
-        duration: 1123
-        errors:
-        - 'Error code: 502 - {''type'': ''error'', ''error'': {''type'': ''api_error'',
-          ''message'': ''All upstream endpoints failed''}}'
-        - 'Error code: 502 - {''type'': ''error'', ''error'': {''type'': ''api_error'',
-          ''message'': ''All upstream endpoints failed''}}'
-        - 'Error code: 502 - {''type'': ''error'', ''error'': {''type'': ''api_error'',
-          ''message'': ''All upstream endpoints failed''}}'
-        - 'Error code: 502 - {''type'': ''error'', ''error'': {''type'': ''api_error'',
-          ''message'': ''All upstream endpoints failed''}}'
-        - 'Error code: 502 - {''type'': ''error'', ''error'': {''type'': ''api_error'',
-          ''message'': ''All upstream endpoints failed''}}'
-        status: failed
-        strike_count: 5
-        tokens: 0
-      wf_pre_openspec:
-        duration: 626
-        status: success
-        strike_count: 0
-        tokens: 0
-  '`user_logout_event`':
-    workflows:
-      wf_archive:
-        duration: 1148
-        errors:
-        - 'Error code: 502 - {''type'': ''error'', ''error'': {''type'': ''api_error'',
-          ''message'': ''All upstream endpoints failed''}}'
-        - 'Error code: 502 - {''type'': ''error'', ''error'': {''type'': ''api_error'',
-          ''message'': ''All upstream endpoints failed''}}'
-        - 'Error code: 502 - {''type'': ''error'', ''error'': {''type'': ''api_error'',
-          ''message'': ''All upstream endpoints failed''}}'
-        - 'Error code: 502 - {''type'': ''error'', ''error'': {''type'': ''api_error'',
-          ''message'': ''All upstream endpoints failed''}}'
-        - 'Error code: 502 - {''type'': ''error'', ''error'': {''type'': ''api_error'',
-          ''message'': ''All upstream endpoints failed''}}'
-        status: failed
-        strike_count: 5
-        tokens: 0
-      wf_brainstorm_openspec:
-        duration: 1115
-        errors:
-        - 'Error code: 502 - {''type'': ''error'', ''error'': {''type'': ''api_error'',
-          ''message'': ''All upstream endpoints failed''}}'
-        - 'Error code: 502 - {''type'': ''error'', ''error'': {''type'': ''api_error'',
-          ''message'': ''All upstream endpoints failed''}}'
-        - 'Error code: 502 - {''type'': ''error'', ''error'': {''type'': ''api_error'',
-          ''message'': ''All upstream endpoints failed''}}'
-        - 'Error code: 502 - {''type'': ''error'', ''error'': {''type'': ''api_error'',
-          ''message'': ''All upstream endpoints failed''}}'
-        - 'Error code: 502 - {''type'': ''error'', ''error'': {''type'': ''api_error'',
-          ''message'': ''All upstream endpoints failed''}}'
-        status: failed
-        strike_count: 5
-        tokens: 0
-      wf_feature_research:
-        duration: 1150
-        errors:
-        - 'Error code: 502 - {''type'': ''error'', ''error'': {''type'': ''api_error'',
-          ''message'': ''All upstream endpoints failed''}}'
-        - 'Error code: 502 - {''type'': ''error'', ''error'': {''type'': ''api_error'',
-          ''message'': ''All upstream endpoints failed''}}'
-        - 'Error code: 502 - {''type'': ''error'', ''error'': {''type'': ''api_error'',
-          ''message'': ''All upstream endpoints failed''}}'
-        - 'Error code: 502 - {''type'': ''error'', ''error'': {''type'': ''api_error'',
-          ''message'': ''All upstream endpoints failed''}}'
-        - 'Error code: 502 - {''type'': ''error'', ''error'': {''type'': ''api_error'',
-          ''message'': ''All upstream endpoints failed''}}'
-        status: failed
-        strike_count: 5
-        tokens: 0
-      wf_openspec:
-        duration: 1128
-        errors:
-        - 'Error code: 502 - {''type'': ''error'', ''error'': {''type'': ''api_error'',
-          ''message'': ''All upstream endpoints failed''}}'
-        - 'Error code: 502 - {''type'': ''error'', ''error'': {''type'': ''api_error'',
-          ''message'': ''All upstream endpoints failed''}}'
-        - 'Error code: 502 - {''type'': ''error'', ''error'': {''type'': ''api_error'',
-          ''message'': ''All upstream endpoints failed''}}'
-        - 'Error code: 502 - {''type'': ''error'', ''error'': {''type'': ''api_error'',
-          ''message'': ''All upstream endpoints failed''}}'
-        - 'Error code: 502 - {''type'': ''error'', ''error'': {''type'': ''api_error'',
-          ''message'': ''All upstream endpoints failed''}}'
-        status: failed
-        strike_count: 5
-        tokens: 0
-      wf_openspec_apply:
-        duration: 1150
-        errors:
-        - 'Error code: 502 - {''type'': ''error'', ''error'': {''type'': ''api_error'',
-          ''message'': ''All upstream endpoints failed''}}'
-        - 'Error code: 502 - {''type'': ''error'', ''error'': {''type'': ''api_error'',
-          ''message'': ''All upstream endpoints failed''}}'
-        - 'Error code: 502 - {''type'': ''error'', ''error'': {''type'': ''api_error'',
-          ''message'': ''All upstream endpoints failed''}}'
-        - 'Error code: 502 - {''type'': ''error'', ''error'': {''type'': ''api_error'',
-          ''message'': ''All upstream endpoints failed''}}'
-        - 'Error code: 502 - {''type'': ''error'', ''error'': {''type'': ''api_error'',
-          ''message'': ''All upstream endpoints failed''}}'
-        status: failed
-        strike_count: 5
-        tokens: 0
-      wf_pre_openspec:
-        duration: 1138
-        errors:
-        - 'Error code: 502 - {''type'': ''error'', ''error'': {''type'': ''api_error'',
-          ''message'': ''All upstream endpoints failed''}}'
-        - 'Error code: 502 - {''type'': ''error'', ''error'': {''type'': ''api_error'',
-          ''message'': ''All upstream endpoints failed''}}'
-        - 'Error code: 502 - {''type'': ''error'', ''error'': {''type'': ''api_error'',
-          ''message'': ''All upstream endpoints failed''}}'
-        - 'Error code: 502 - {''type'': ''error'', ''error'': {''type'': ''api_error'',
-          ''message'': ''All upstream endpoints failed''}}'
-        - 'Error code: 502 - {''type'': ''error'', ''error'': {''type'': ''api_error'',
-          ''message'': ''All upstream endpoints failed''}}'
-        status: failed
-        strike_count: 5
-        tokens: 0
-  '`user_registration_event`':
-    workflows:
-      wf_archive:
-        duration: 77
-        status: success
-        strike_count: 0
-        tokens: 0
-      wf_brainstorm_openspec:
-        duration: 428
-        status: success
-        strike_count: 0
-        tokens: 0
-      wf_feature_research:
-        duration: 1796
-        errors:
-        - 'Output validation failed: Required file missing: /home/nguyentthai96/Desktop/bigbang/boilerplate/services/auth-service/openspec/research/`user_registration_event`/research_brief.md;
-          Required file missing: /home/nguyentthai96/Desktop/bigbang/boilerplate/services/auth-service/openspec/research/`user_registration_event`/business_analysis.md;
-          Required file missing: /home/nguyentthai96/Desktop/bigbang/boilerplate/services/auth-service/openspec/research/`user_registration_event`/technical_spec.md;
-          Required file missing: /home/nguyentthai96/Desktop/bigbang/boilerplate/services/auth-service/openspec/research/`user_registration_event`/opensource_findings.md;
-          Required file missing: /home/nguyentthai96/Desktop/bigbang/boilerplate/services/auth-service/openspec/research/`user_registration_event`/web_research.md;
-          Required file missing: /home/nguyentthai96/Desktop/bigbang/boilerplate/services/auth-service/openspec/research/`user_registration_event`/comparison_analysis.md;
-          Required file missing: /home/nguyentthai96/Desktop/bigbang/boilerplate/services/auth-service/openspec/research/`user_registration_event`/validation_report.md;
-          Required file missing: /home/nguyentthai96/Desktop/bigbang/boilerplate/services/auth-service/openspec/research/`user_registration_event`/handoff_summary.md'
-        - 'Output validation failed: Required file missing: /home/nguyentthai96/Desktop/bigbang/boilerplate/services/auth-service/openspec/research/`user_registration_event`/validation_report.md;
-          Required file missing: /home/nguyentthai96/Desktop/bigbang/boilerplate/services/auth-service/openspec/research/`user_registration_event`/handoff_summary.md'
-        status: failed
-        strike_count: 2
-        tokens: 0
-      wf_openspec:
-        duration: 778
+        duration: 850
         status: success
         strike_count: 0
         tokens: 0
       wf_openspec_apply:
-        duration: 493
-        errors:
-        - 'Output validation failed: 36 tasks still uncompleted in tasks.md'
-        - 'Output validation failed: 36 tasks still uncompleted in tasks.md'
-        status: failed
-        strike_count: 2
-        tokens: 0
-      wf_pre_openspec:
-        duration: 728
+        duration: 452
         status: success
         strike_count: 0
         tokens: 0
-started_at: '2026-08-21T06:47:08.762570+00:00'
+      wf_pre_openspec:
+        duration: 648
+        status: success
+        strike_count: 0
+        tokens: 0
+started_at: '2026-08-21T11:41:07.477168+00:00'
 stats:
-  completed_features: 1
-  failed_features: 1
-  partial_features: 3
+  completed_features: 2
+  failed_features: 0
+  partial_features: 0
   remaining_features: 0
   skipped_features: 0
-  total_duration: 5629
-  total_features: 5
+  total_duration: 4724
+  total_features: 2
   total_tokens: 0
 status: running
-updated_at: '2026-08-21T12:49:57.130801+00:00'
+updated_at: '2026-08-21T12:59:58.919735+00:00'

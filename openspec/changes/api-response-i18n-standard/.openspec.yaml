@@ -7,31 +7,31 @@ updated: 2026-08-27
 artifacts:
   - id: impact_analysis
     type: markdown
-    status: pending
+    status: done
     dependencies: []
   - id: proposal
     type: markdown
-    status: pending
+    status: done
     dependencies: []
   - id: srs
     type: markdown
-    status: pending
+    status: done
     dependencies: [proposal]
   - id: design
     type: markdown
-    status: pending
+    status: done
     dependencies: [srs]
   - id: tasks
     type: markdown
-    status: pending
+    status: done
     dependencies: [design, srs, impact_analysis]
   - id: api_contract
     type: markdown
-    status: pending
+    status: done
     dependencies: [srs, design]
   - id: fe_tasks
     type: markdown
-    status: pending
+    status: done
     dependencies: [api_contract, tasks]
 applyRequires:
   - tasks
