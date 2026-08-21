@@ -1,0 +1,13 @@
+{
+  "feature": "`jwt_token_issuance`",
+  "workflow": "wf_archive",
+  "outcome": "success",
+  "timestamp": "2026-08-21T12:12:15.405644+00:00",
+  "duration_seconds": 105,
+  "tokens_used": 0,
+  "prompt_layer_tokens": {},
+  "output_artifacts": [],
+  "errors": [],
+  "lesson_extracted": null,
+  "recovery_pattern": null
+}
