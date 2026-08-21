@@ -51,9 +51,9 @@ lessons:
   fingerprint:
   - wf_openspec_apply
   - PROXY_DOWN
-  frequency: 2
+  frequency: 3
   id: L004
   type: failure_pattern
-total_failures: 27
-total_records: 93
+total_failures: 29
+total_records: 95
 total_successes: 66
