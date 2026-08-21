@@ -1,114 +1,108 @@
-# Integration Map
+# Integration Map — auth-core-features
 
-_Generated: 2026-08-25_
+> Generated: 2026-08-26
+> Scope: `auth-service` (primary candidate service)
+> Source: Code scan — grep patterns for REST/Cache/MQ/DB integration points
 
-## Redis (Cache/Session/RateLimit)
+---
 
-- Client: `StringRedisTemplate` — Spring Data Redis (auto-configured)
-- Protocol: Redis (TCP, default port 6379)
-- Config: `RedisConfig.kt` — `src/main/kotlin/com/ntt/authservice/shared/config/RedisConfig.kt`
-  - `RedisTemplate<String, Any>` with Jackson JSON serialization
-  - `StringRedisTemplate` auto-configured
-- Usage locations:
-  - `OtpService.kt` — OTP storage (`otp:{userId}:{channel}`, TTL 300s)
-  - `MfaService.kt` — MFA session state
-  - `MfaRateLimitService.kt` — MFA rate limiting (`mfa:ratelimit:*`, Lua scripts)
-  - `LoginRateLimitService.kt` — Login rate limiting
-  - `AnonymousRateLimitService.kt` — Anonymous rate limiting
-  - `AnonymousSessionHandler.kt` — Anonymous session management
-  - `RenewAnonymousTokenHandler.kt` — Anonymous token renewal
-  - `AnonymousSessionDataService.kt` — Session data storage
-  - `SessionPromotionService.kt` — Session promotion
-  - `DecryptionVaultService.kt` — Vault decryption state
-  - `RedisAntiReplayValidator.kt` — Anti-replay nonce tracking
-  - `RedisCipherKeySessionResolver.kt` — Cipher key session resolution
-  - `MultiTierPermissionCache.kt` — L2 permission cache
-  - `AbstractTwoTierCache.kt` — Two-tier cache base
-  - `IdempotencyFilter.kt` — Idempotency cache (`idempotency:auth-service:*`, TTL 24h)
+## 1. Redis (Cache / Session Store)
 
-## Kafka (Event Bus)
+| Class | Path | Protocol | Usage |
+|-------|------|----------|-------|
+| `RedisConfig` | `shared/config/RedisConfig.kt` | Redis | `RedisTemplate<String, Any>` (JSON serialization) + `StringRedisTemplate` |
+| `RedisLuaScriptConfig` | `shared/config/RedisLuaScriptConfig.kt` | Redis | [NEW] Lua script registration for atomic Redis operations |
+| `OtpService` | `auth/application/OtpService.kt` | Redis | OTP storage: `otp:{userId}:{channel}`, TTL 300s |
+| `MfaService` | `auth/application/MfaService.kt` | Redis | MFA pending setup: `mfa:setup:{userId}`, TOTP secret temp storage |
+| `MfaRateLimitService` | `auth/application/MfaRateLimitService.kt` | Redis | Rate limiting: `mfa:ratelimit:*`, sliding window |
+| `LoginRateLimitService` | `auth/application/LoginRateLimitService.kt` | Redis | Login rate limiting |
+| `AnonymousRateLimitService` | `auth/application/AnonymousRateLimitService.kt` | Redis | Anonymous token rate limiting |
+| `AnonymousSessionHandler` | `auth/application/command/AnonymousSessionHandler.kt` | Redis | Anonymous session data storage |
+| `RenewAnonymousTokenHandler` | `auth/application/command/RenewAnonymousTokenHandler.kt` | Redis | Anonymous token renewal tracking |
+| `AnonymousSessionDataService` | `auth/application/AnonymousSessionDataService.kt` | Redis | Anonymous session data CRUD |
+| `SessionPromotionService` | `auth/application/SessionPromotionService.kt` | Redis | Session promotion data transfer |
+| `DecryptionVaultService` | `auth/application/cipher/DecryptionVaultService.kt` | Redis | E2EE vault key storage |
+| `RedisAntiReplayValidator` | `auth/adapter/out/cipher/RedisAntiReplayValidator.kt` | Redis | Anti-replay nonce tracking |
+| `RedisCipherKeySessionResolver` | `auth/adapter/out/cipher/RedisCipherKeySessionResolver.kt` | Redis | Cipher key session resolution |
+| `IdempotencyFilter` | `shared/filter/IdempotencyFilter.kt` | Redis | Idempotency: `idempotency:auth-service:*`, TTL 24h |
 
-### Consumer
-- Client: `PermissionChangedConsumer.kt` — `src/main/kotlin/com/ntt/authservice/auth/adapter/in/kafka/PermissionChangedConsumer.kt`
-- Protocol: Kafka
-- Topic: `iam.permission.changed`
-- Group ID: `auth-service`
-- Config: `KafkaConfig.kt` — `src/main/kotlin/com/ntt/authservice/shared/config/KafkaConfig.kt`
-  - DLQ via `DeadLetterPublishingRecoverer`
+## 2. Kafka (Message Queue)
 
-### Producer
-- Client: `KafkaEventPublisher.kt` — `src/main/kotlin/com/ntt/authservice/auth/adapter/out/event/KafkaEventPublisher.kt`
-- Protocol: Kafka
-- Topic prefix: `iam.`
-- Implements: `EventPublisher` port
-- Activation: `@ConditionalOnProperty("spring.kafka.bootstrap-servers")`
-- `@Primary` — overrides `SpringEventPublisher` when Kafka available
-- Retry: 3 attempts, exponential backoff (1s, 2s, 4s), max 8s
-- Fallback: `SpringEventPublisher.kt` — `src/main/kotlin/com/ntt/authservice/auth/adapter/out/event/SpringEventPublisher.kt` (in-process `ApplicationEventPublisher`)
+### Consumers
 
-## OAuth2 IdPs (REST/OIDC)
+| Class | Path | Topic | Group ID | Notes |
+|-------|------|-------|----------|-------|
+| `PermissionChangedConsumer` | `auth/adapter/in/kafka/PermissionChangedConsumer.kt` | `iam.permission.changed` | `auth-service` | Cache invalidation |
 
-### Google
-- Client chain: `SsoGateway` → `HttpSsoGateway` → `SsoProviderClient`
-  - `HttpSsoGateway.kt` — `src/main/kotlin/com/ntt/authservice/auth/adapter/out/http/HttpSsoGateway.kt`
-  - `SsoProviderClient.kt` — `src/main/kotlin/com/ntt/authservice/auth/adapter/out/http/SsoProviderClient.kt`
-- Token exchange: `OAuth2TokenExchanger.kt` — `src/main/kotlin/com/ntt/authservice/auth/adapter/out/sso/OAuth2TokenExchanger.kt`
-- Protocol: OAuth2/OIDC authorization code flow
-- Config: `app.security.sso.providers.google.*`
+### Producers
 
-### Microsoft
-- Same client chain as Google
-- Config: `app.security.sso.providers.microsoft.*`
+| Class | Path | Condition | Notes |
+|-------|------|-----------|-------|
+| `KafkaEventPublisher` | `auth/adapter/out/event/KafkaEventPublisher.kt` | `@ConditionalOnProperty("spring.kafka.bootstrap-servers")` | `@Primary`, retry 3 attempts, exponential backoff. Publishes domain events to topic-prefixed channels. |
+| `SpringEventPublisher` | `auth/adapter/out/event/SpringEventPublisher.kt` | Fallback when Kafka not configured | In-process `ApplicationEventPublisher` |
+| `OutboxPoller` | `auth/adapter/out/event/OutboxPoller.kt` | `@ConditionalOnProperty("spring.kafka.bootstrap-servers")` | [NEW] Transactional outbox relay — SELECT FOR UPDATE SKIP LOCKED, batch=50, poll=100ms. Timeout handling (no retry count increment), confirmed failure handling (retry count increment, max 3). |
 
-### Keycloak
-- ⚠️ NOT YET in `OAuth2TokenExchanger.getTokenEndpoint()` — only Google + Microsoft endpoints hardcoded
-- `SsoProviderClient` interface supports pluggable implementation
+### Kafka Topics (Known)
 
-## CAPTCHA (REST)
+| Topic | Direction | Source/Consumer |
+|-------|-----------|----------------|
+| `iam.permission.changed` | IN | `PermissionChangedConsumer` |
+| `iam.user.sso_provisioned` | OUT | `KafkaEventPublisher` / `OutboxPoller` |
+| `iam.token.issued` | OUT | `OutboxPoller` (via `TokenEventRecorder`) |
+| `iam.token.revoked` | OUT | `OutboxPoller` (via `TokenEventRecorder`) |
+| `iam.account.deactivated` | OUT | `KafkaEventPublisher` |
+| `iam.account.deleted` | OUT | `KafkaEventPublisher` |
+| `iam.audit.event` | OUT | `KafkaEventPublisher` |
 
-- Port: `CaptchaGateway` — `src/main/kotlin/com/ntt/authservice/auth/application/port/out/CaptchaGateway.kt`
-- Adapter chain: `CaptchaVerifier` → `CaptchaGateway` → `CaptchaGatewayAdapter` → `HttpCaptchaGateway` → `CaptchaClient`
-  - `CaptchaVerifier.kt` — `src/main/kotlin/com/ntt/authservice/auth/application/CaptchaVerifier.kt`
-  - `AltchaCaptchaVerifier.kt` — `src/main/kotlin/com/ntt/authservice/auth/application/AltchaCaptchaVerifier.kt`
-  - `CaptchaGatewayAdapter.kt` — `src/main/kotlin/com/ntt/authservice/auth/adapter/out/gateway/CaptchaGatewayAdapter.kt`
-  - `HttpCaptchaGateway.kt` — `src/main/kotlin/com/ntt/authservice/auth/adapter/out/http/HttpCaptchaGateway.kt`
-  - `CaptchaClient.kt` — `src/main/kotlin/com/ntt/authservice/auth/adapter/out/http/CaptchaClient.kt`
-- Protocol: REST (HTTP)
-- Provider: ALTCHA
+### Kafka Config
 
-## PostgreSQL (JPA/Hibernate)
+| Class | Path | Notes |
+|-------|------|-------|
+| `KafkaConfig` | `shared/config/KafkaConfig.kt` | DLQ via `DeadLetterPublishingRecoverer`, consumer factory, producer factory |
+| `OutboxProperties` | `shared/config/OutboxProperties.kt` | [NEW] Outbox poller config: pollIntervalMs=100, batchSize=50, maxRetries=3, kafkaTimeoutMs=5000 |
 
-- Protocol: JDBC/JPA
-- Driver: PostgreSQL 17
-- Migrations: Flyway V1-V10
-  - V1: `V1__init_auth_rbac_pbac.sql`
-  - V2: `V2__auth_core_features.sql`
-  - V3: `V3__add_version_column.sql`
-  - V4: `V4__create_login_sessions.sql`
-  - V5: `V5__create_i18n_messages.sql`
-  - V6: `V6__seed_i18n_messages.sql`
-  - V7: `V7__create_cipher_key_session.sql`
-  - V8: `V8__create_e2ee_audit_tables.sql`
-  - V9: `V9__account_lifecycle.sql`
-  - V10: `V10__trusted_device_ttl.sql`
-- Tables: `users`, `user_identities`, `password_policies`, `password_history`, `refresh_tokens`, `token_blacklist`, `login_sessions`, `cipher_key_sessions`, `vault_access_logs`, `account_deletion_requests`, `account_data_exports`, `domains`, `user_domains`, `groups`, `user_groups`, `domain_roles`, `group_roles`, `actions`, `domain_resources`, `permissions`, `role_permissions`, `policies`, `policy_conditions`, `i18n_messages`
+## 3. OAuth2 / SSO (HTTP Clients)
 
-## Caffeine (In-Memory Cache)
+| Class | Path | Protocol | Target |
+|-------|------|----------|--------|
+| `OAuth2TokenExchanger` | `auth/adapter/out/sso/OAuth2TokenExchanger.kt` | HTTPS (OAuth2) | Google + Microsoft token/userinfo endpoints |
+| `SsoProviderClient` | `auth/adapter/out/http/SsoProviderClient.kt` | HTTPS | SSO provider HTTP client |
+| `HttpSsoGateway` | `auth/adapter/out/http/HttpSsoGateway.kt` | HTTPS | SSO gateway implementation |
 
-- Client: `CaffeinePermissionCache.kt` — `src/main/kotlin/com/ntt/authservice/auth/adapter/out/cache/CaffeinePermissionCache.kt`
-- Protocol: In-process (L1 cache)
-- Wrapper: `MultiTierPermissionCache.kt` — `src/main/kotlin/com/ntt/authservice/auth/adapter/out/cache/MultiTierPermissionCache.kt`
-- Port: `PermissionCache` — `src/main/kotlin/com/ntt/authservice/auth/application/port/out/PermissionCache.kt`
+## 4. CAPTCHA (HTTP Client)
 
-## Google Tink (E2EE)
+| Class | Path | Protocol | Target |
+|-------|------|----------|--------|
+| `CaptchaClient` | `auth/adapter/out/http/CaptchaClient.kt` | HTTPS | ALTCHA verification endpoint |
+| `HttpCaptchaGateway` | `auth/adapter/out/http/HttpCaptchaGateway.kt` | HTTPS | CAPTCHA gateway implementation |
+| `CaptchaGatewayAdapter` | `auth/adapter/out/gateway/CaptchaGatewayAdapter.kt` | — | Port adapter bridge |
 
-- Client: `TinkCipherAlgorithmFactory.kt` — `src/main/kotlin/com/ntt/authservice/auth/adapter/out/cipher/TinkCipherAlgorithmFactory.kt`
-- Protocol: In-process library
-- Usage: AES-GCM encryption, X25519 key exchange
-- Key exchange: `X25519KeyExchangeServiceImpl.kt` — `src/main/kotlin/com/ntt/authservice/auth/application/cipher/X25519KeyExchangeServiceImpl.kt`
+## 5. PostgreSQL (Database / JPA)
 
-## NOT DETECTED
+| Adapter | Path | Purpose |
+|---------|------|---------|
+| `UserPersistenceAdapter` | `auth/adapter/out/persistence/UserPersistenceAdapter.kt` | User CRUD via `UserPort` |
+| `TokenStorePersistenceAdapter` | `auth/adapter/out/persistence/TokenStorePersistenceAdapter.kt` | Token store via `TokenStore` |
+| `DomainPersistenceAdapter` | `auth/adapter/out/persistence/DomainPersistenceAdapter.kt` | Domain lookup via `DomainPort` |
+| `EventStorePersistenceAdapter` | `auth/adapter/out/persistence/EventStorePersistenceAdapter.kt` | [NEW] Event store via `EventStorePort` |
+| `OutboxPersistenceAdapter` | `auth/adapter/out/persistence/OutboxPersistenceAdapter.kt` | [NEW] Outbox via `OutboxPort` |
 
-- WebClient (not used — HTTP calls via `RestTemplate` or custom clients)
-- FeignClient (not used)
-- gRPC (not used)
+## 6. In-Process Libraries
+
+| Library | Version | Usage | Class |
+|---------|---------|-------|-------|
+| `dev.samstevens.totp` | 1.7.1 | TOTP generation/verification | `TotpService.kt` |
+| `org.passay` | 1.6.4 | Password policy validation | `PasswordPolicyService.kt` |
+| Google Tink | — | AES-GCM encryption, X25519 key exchange | `TinkCipherAlgorithmFactory.kt`, `X25519KeyExchangeServiceImpl.kt` |
+
+## 7. HTTP Client Config
+
+| Class | Path | Notes |
+|-------|------|-------|
+| `HttpClientConfig` | `shared/config/HttpClientConfig.kt` | WebClient/RestTemplate configuration — timeouts, retry, connection pooling |
+
+## 8. Observability
+
+| Class | Path | Notes |
+|-------|------|-------|
+| `ObservabilityConfig` | `shared/config/ObservabilityConfig.kt` | [NEW] Observability/tracing configuration |
