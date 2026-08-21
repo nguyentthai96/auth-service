@@ -1,11 +1,12 @@
 features:
-  '`jwt_token_issuance`': failed
+  '`jwt_token_issuance`': in_progress
+  '`jwt_token_validation`': in_progress
   '`user_login_event`': in_progress
   '`user_logout_event`': failed
   '`user_registration_event`': in_progress
   anonymous-login-optimization: completed
   api-response-i18n-standard: completed
-  auth-core-features: completed
+  auth-core-features: failed
   erp-iam-system: in_progress
 lessons:
 - action: 'Mitigate ''PROXY_DOWN'' errors in wf_brainstorm_openspec. Common errors:
@@ -91,6 +92,28 @@ lessons:
   frequency: 2
   id: L007
   type: failure_pattern
-total_failures: 32
-total_records: 112
-total_successes: 80
+- action: 'Mitigate ''MISSING_ARTIFACT'' errors in wf_openspec. Common errors: Output
+    validation failed: Required file missing: /home/nguyentthai96/Desktop/bigbang/boilerplate/ser;
+    Output validation failed: Required file missing: /home/nguyentthai96/Desktop/bigbang/boilerplate/ser'
+  description: 'Workflow ''wf_openspec'' fails with ''MISSING_ARTIFACT'' across features:
+    `jwt_token_issuance`, `user_login_event`'
+  fingerprint:
+  - wf_openspec
+  - MISSING_ARTIFACT
+  frequency: 3
+  id: L008
+  type: failure_pattern
+- action: 'Mitigate ''MISSING_ARTIFACT'' errors in wf_openspec_apply. Common errors:
+    Output validation failed: 36 tasks still uncompleted in tasks.md; Output validation
+    failed: tasks.md not found: /home/nguyentthai96/Desktop/bigbang/boilerplate/servic'
+  description: 'Workflow ''wf_openspec_apply'' fails with ''MISSING_ARTIFACT'' across
+    features: `user_registration_event`, `jwt_token_issuance`'
+  fingerprint:
+  - wf_openspec_apply
+  - MISSING_ARTIFACT
+  frequency: 3
+  id: L009
+  type: failure_pattern
+total_failures: 37
+total_records: 108
+total_successes: 71

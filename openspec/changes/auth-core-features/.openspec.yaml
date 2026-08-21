@@ -1,0 +1,34 @@
+primary: auth-core-features
+environment: kotlin
+rules:
+  - spring-boot
+  - error-handling
+  - testing
+  - api-security
+skills:
+  - wf_openspec
+  - spring-boot
+  - architecture
+artifacts:
+  - id: proposal
+    type: markdown
+    status: done
+    dependencies: []
+  - id: srs
+    type: markdown
+    status: done
+    dependencies: [proposal]
+  - id: design
+    type: markdown
+    status: done
+    dependencies: [srs]
+  - id: impact_analysis
+    type: markdown
+    status: pending
+    dependencies: [design]
+  - id: tasks
+    type: markdown
+    status: pending
+    dependencies: [design, srs, impact_analysis]
+applyRequires:
+  - tasks
