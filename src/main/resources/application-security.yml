@@ -1,0 +1,126 @@
+spring:
+  security:
+    oauth2:
+      client:
+        registration:
+          google:
+            client-id: ${GOOGLE_CLIENT_ID:placeholder-google-client-id}
+            client-secret: ${GOOGLE_CLIENT_SECRET:placeholder-google-secret}
+            scope: openid,email,profile
+            redirect-uri: "{baseUrl}/login/oauth2/code/{registrationId}"
+          microsoft:
+            client-id: ${MICROSOFT_CLIENT_ID:placeholder-microsoft-client-id}
+            client-secret: ${MICROSOFT_CLIENT_SECRET:placeholder-microsoft-secret}
+            scope: openid,email,profile
+            authorization-grant-type: authorization_code
+            redirect-uri: "{baseUrl}/login/oauth2/code/{registrationId}"
+            client-name: Microsoft
+        provider:
+          microsoft:
+            authorization-uri: https://login.microsoftonline.com/common/oauth2/v2.0/authorize
+            token-uri: https://login.microsoftonline.com/common/oauth2/v2.0/token
+            user-info-uri: https://graph.microsoft.com/oidc/userinfo
+            jwk-set-uri: https://login.microsoftonline.com/common/discovery/v2.0/keys
+
+app:
+  cors:
+    allowed-origins: ${CORS_ALLOWED_ORIGINS:http://localhost:3000}
+  event:
+    source: auth-service
+    outbox:
+      poll-interval-ms: 100
+      batch-size: 50
+      max-retries: 3
+      kafka-timeout-ms: 5000
+  security:
+    enabled: true
+    jwt:
+      secret-key: ${JWT_SECRET_KEY:your-256-bit-secret-key-change-in-production}
+      algorithm: ${JWT_ALGORITHM:RS256}
+      private-key-path: ${JWT_PRIVATE_KEY_PATH:}
+      public-key-path: ${JWT_PUBLIC_KEY_PATH:}
+      key-id: ${JWT_KEY_ID:auth-service-key-1}
+      access-token-expiration-ms: 900000     # 15 minutes (sliding window)
+      refresh-token-expiration-ms: 604800000 # 7 days
+      absolute-ceiling-ms: 36000000          # 10 hours absolute session limit
+      issuer: "auth-service"
+    password:
+      bcrypt-strength: 12
+      max-failed-attempts: 3
+      lock-duration-minutes: 15
+    mfa:
+      otp-ttl-seconds: 300         # 5 minutes
+      max-attempts: 3
+      totp-window: 1               # ±1 step drift tolerance
+      mfa-token-ttl-seconds: 300   # MFA challenge token TTL
+      trusted-device-ttl-days: 30
+      rate-limit:
+        otp:
+          max-attempts: 5
+          window-seconds: 900
+          lock-seconds: 1800
+        login:
+          max-attempts: 10
+          window-seconds: 3600
+          lock-seconds: 3600
+        redis-timeout-ms: 500
+    captcha:
+      provider: ${CAPTCHA_PROVIDER:noop}
+      secret-key: ${CAPTCHA_SECRET_KEY:}
+      site-key: ${CAPTCHA_SITE_KEY:}
+      verify-url: ${CAPTCHA_VERIFY_URL:}
+      altcha:
+        hmac-key: ${ALTCHA_HMAC_KEY:change-this-in-production-min-32-chars}
+        difficulty: 50000
+        challenge-ttl-seconds: 300
+    sso:
+      enabled: ${SSO_ENABLED:false}
+      auto-provision-enabled: ${SSO_AUTO_PROVISION:false}
+      default-domain-code: ${SSO_DEFAULT_DOMAIN:default}
+      timeout-ms: 10000
+      providers:
+        google:
+          token-endpoint: https://oauth2.googleapis.com/token
+          user-info-endpoint: https://openidconnect.googleapis.com/v1/userinfo
+        microsoft:
+          token-endpoint: https://login.microsoftonline.com/common/oauth2/v2.0/token
+          user-info-endpoint: https://graph.microsoft.com/oidc/userinfo
+        keycloak:
+          token-endpoint: ${KEYCLOAK_TOKEN_ENDPOINT:http://localhost:8080/realms/master/protocol/openid-connect/token}
+          user-info-endpoint: ${KEYCLOAK_USERINFO_ENDPOINT:http://localhost:8080/realms/master/protocol/openid-connect/userinfo}
+    login-rate-limit:
+      ip:
+        max-attempts: 5
+        window-seconds: 60
+        lock-seconds: 300
+      username:
+        max-attempts: 3
+        window-seconds: 900
+        lock-seconds: 1800
+      device:
+        max-attempts: 10
+        window-seconds: 3600
+        lock-seconds: 3600
+      redis-timeout-ms: 500
+    session:
+      max-sessions: 3
+      max-devices: 3
+      on-exceed: REVOKE_OLDEST
+      inactivity-timeout-minutes: 30
+      cleanup-cron-expression: "0 */5 * * * *"
+      role-overrides:
+        SUPER_ADMIN:
+          max-sessions: 1
+          on-exceed: REVOKE_ALL
+    anonymous:
+      token-ttl-seconds: ${ANON_TOKEN_TTL:3600}
+      session-ttl-seconds: ${ANON_SESSION_TTL:86400}
+      max-data-size-bytes: ${ANON_MAX_DATA_SIZE:65536}
+      max-renewals: ${ANON_MAX_RENEWALS:24}
+      promoted-data-ttl-seconds: ${ANON_PROMOTED_TTL:604800}
+      rate-limit:
+        max-attempts: 5
+        window-seconds: 3600
+        lock-seconds: 0
+    cqrs:
+      enabled: ${CQRS_ENABLED:true}

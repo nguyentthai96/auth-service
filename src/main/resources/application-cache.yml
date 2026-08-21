@@ -1,0 +1,15 @@
+spring:
+  data:
+    redis:
+      host: ${REDIS_HOST:localhost}
+      port: ${REDIS_PORT:6379}
+      password: ${REDIS_PASSWORD:}
+      timeout: 2000ms
+
+app:
+  cache:
+    permission:
+      l1-ttl-seconds: 30       # Caffeine local cache
+      l1-max-size: 10000
+      l2-ttl-seconds: 1800     # Redis distributed cache (30 min)
+      l2-key-prefix: "auth:perm:"
