@@ -2,6 +2,7 @@ package com.ntt.authservice.auth.application.event
 
 import com.ntt.authservice.auth.domain.event.TokenIssuedEvent
 import com.ntt.authservice.auth.domain.event.TokenRevokedEvent
+import com.ntt.authservice.auth.domain.event.TokenValidationFailedEvent
 import org.slf4j.LoggerFactory
 import org.springframework.stereotype.Component
 
@@ -69,6 +70,35 @@ class TokenEventRecorder(
             log.warn(
                 "Failed to record token revocation event: userId={}, type={}, error={}",
                 userId, event.revocationType, e.message, e
+            )
+        }
+    }
+
+    /**
+     * Record a token validation failure event (FR-012).
+     * Called from JwtAuthFilter on suspicious validation failures (blacklisted, signature, claim mismatch).
+     * Uses aggregateId=0L because validation failures have no authenticated user context.
+     *
+     * Error handling: failure to record does NOT affect the filter chain — fail-safe.
+     */
+    fun recordValidationFailure(event: TokenValidationFailedEvent, correlationId: String?) {
+        try {
+            eventService.record(
+                aggregateType = "Token",
+                aggregateId = 0L,
+                event = event,
+                topic = "iam.token.validation-failed",
+                partitionKey = event.tokenJti ?: "unknown",
+                correlationId = correlationId
+            )
+            log.debug(
+                "Token validation failure event recorded: reason={}, jti={}, validator={}, correlationId={}",
+                event.reason, event.tokenJti, event.validatorName, correlationId
+            )
+        } catch (e: Exception) {
+            log.warn(
+                "Failed to record token validation failure event: reason={}, jti={}, error={}",
+                event.reason, event.tokenJti, e.message, e
             )
         }
     }

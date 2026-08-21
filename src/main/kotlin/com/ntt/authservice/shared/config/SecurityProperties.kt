@@ -26,7 +26,11 @@ data class SecurityProperties(
     val sso: SsoProperties = SsoProperties(),
     val loginRateLimit: LoginRateLimitProperties = LoginRateLimitProperties(),
     val session: SessionProperties = SessionProperties(),
-    val anonymous: AnonymousProperties = AnonymousProperties()
+    val anonymous: AnonymousProperties = AnonymousProperties(),
+    /** Token blacklist cache configuration (L1 Caffeine + L2 Redis). */
+    val blacklist: BlacklistCacheProperties = BlacklistCacheProperties(),
+    /** Validation event recording configuration. */
+    val validationEvent: ValidationEventProperties = ValidationEventProperties()
 ) {
     /**
      * JWT signing and token lifetime configuration.
@@ -49,7 +53,15 @@ data class SecurityProperties(
         val accessTokenExpirationMs: Long = 900_000,       // 15 min (sliding window)
         val refreshTokenExpirationMs: Long = 604_800_000,   // 7 days
         val absoluteCeilingMs: Long = 36_000_000,            // 10 hours
-        val issuer: String = "auth-service"
+        val issuer: String = "auth-service",
+        /** Clock skew tolerance in seconds for exp/nbf validation (RFC 8725). Default 60s. */
+        val clockSkewSeconds: Long = 60,
+        /** Audience claim value. Empty = disabled (no aud validation). Non-empty = validated + added to generated tokens. */
+        val audience: String = "",
+        /** Path to previous RSA public key PEM file for key rotation overlap period. Empty = single key. */
+        val previousPublicKeyPath: String = "",
+        /** Key ID for previous RSA key (used during key rotation overlap). */
+        val previousKeyId: String = ""
     )
 
     /**
@@ -203,5 +215,32 @@ data class SecurityProperties(
         val slidingWindowEnabled: Boolean = true,
         /** SCAN batch size for Redis key iteration (e.g., data transfer, cleanup). Tunable for large sessions. */
         val scanCount: Int = 100
+    )
+
+    /**
+     * Token blacklist cache configuration (FR-001, FR-015, FR-016).
+     * L1 Caffeine (in-process) + L2 Redis (distributed) + DB fallback.
+     */
+    data class BlacklistCacheProperties(
+        /** L1 Caffeine cache TTL in seconds. Default 30s — max acceptance window for revoked token. */
+        val caffeineTtlSeconds: Long = 30,
+        /** L1 Caffeine cache maximum entries. */
+        val caffeineMaxSize: Long = 10_000,
+        /** Redis operation timeout in milliseconds. */
+        val redisTimeoutMs: Long = 200,
+        /** Redis key prefix for blacklisted token JTIs. */
+        val redisKeyPrefix: String = "token:blacklist:",
+        /** Number of consecutive Redis failures before circuit breaker opens. */
+        val circuitBreakerThreshold: Int = 5,
+        /** Circuit breaker reset duration in seconds after opening. */
+        val circuitBreakerResetSeconds: Long = 30
+    )
+
+    /**
+     * Validation event recording configuration (FR-012).
+     */
+    data class ValidationEventProperties(
+        /** Whether to record events for expired tokens (routine). Default false — only suspicious patterns. */
+        val recordExpiredEvents: Boolean = false
     )
 }

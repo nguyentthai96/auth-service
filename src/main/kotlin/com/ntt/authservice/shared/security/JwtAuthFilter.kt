@@ -1,7 +1,15 @@
 package com.ntt.authservice.shared.security
 
+import com.ntt.authservice.auth.application.ClaimValidationException
+import com.ntt.authservice.auth.application.ClaimValidatorChain
 import com.ntt.authservice.auth.application.JwtService
-import com.ntt.authservice.rbac.adapter.out.persistence.repository.TokenBlacklistRepository
+import com.ntt.authservice.auth.application.TokenBlacklistCacheService
+import com.ntt.authservice.auth.application.event.TokenEventRecorder
+import com.ntt.authservice.auth.domain.event.TokenValidationFailedEvent
+import com.ntt.authservice.auth.domain.event.ValidationFailureReason
+import com.ntt.authservice.shared.config.SecurityProperties
+import io.jsonwebtoken.Claims
+import io.jsonwebtoken.security.SignatureException
 import jakarta.servlet.FilterChain
 import jakarta.servlet.http.HttpServletRequest
 import jakarta.servlet.http.HttpServletResponse
@@ -14,14 +22,22 @@ import org.springframework.web.filter.OncePerRequestFilter
 
 /**
  * JWT Authentication Filter — Stage 1 PEP (Policy Enforcement Point).
- * Validates JWT, checks blacklist, and sets SecurityContext with roles/permissions.
+ * Validates JWT, checks blacklist (cache-based), runs claim validation chain,
+ * and sets SecurityContext with roles/permissions.
  *
+ * FR-003: Cache-based blacklist check (TokenBlacklistCacheService).
+ * FR-009: ClaimValidatorChain integration (fail-fast mode).
  * FR-011: Recognizes anonymous tokens (type=anonymous) and sets ROLE_ANONYMOUS authority.
+ * FR-012: Validation failure event recording for suspicious patterns.
+ * FR-014: Structured logging with reason categorization.
  */
 @Component
 class JwtAuthFilter(
     private val jwtService: JwtService,
-    private val tokenBlacklistRepository: TokenBlacklistRepository
+    private val tokenBlacklistCacheService: TokenBlacklistCacheService,
+    private val claimValidatorChain: ClaimValidatorChain,
+    private val tokenEventRecorder: TokenEventRecorder,
+    private val securityProperties: SecurityProperties
 ) : OncePerRequestFilter() {
 
     private val log = LoggerFactory.getLogger(JwtAuthFilter::class.java)
@@ -41,13 +57,55 @@ class JwtAuthFilter(
         val token = authHeader.substring(7)
 
         try {
-            val claims = jwtService.parseToken(token)
+            val claims: Claims
+            try {
+                claims = jwtService.parseToken(token)
+            } catch (e: io.jsonwebtoken.security.SignatureException) {
+                // FR-012 + FR-014: Signature failure — suspicious, record event
+                log.warn("JWT signature verification failed: ip={}", request.remoteAddr)
+                recordValidationFailure(
+                    reason = ValidationFailureReason.SIGNATURE_INVALID,
+                    tokenJti = null,
+                    validatorName = null,
+                    request = request
+                )
+                filterChain.doFilter(request, response)
+                return
+            }
 
-            // Check token blacklist (SM-05 fix from flow-logic-review)
+            // FR-003: Cache-based blacklist check
             val jti = claims.id
-            if (jti != null && tokenBlacklistRepository.existsByTokenJti(jti)) {
-                log.debug("Token {} is blacklisted", jti)
+            if (jti != null && tokenBlacklistCacheService.isBlacklisted(jti)) {
+                log.warn("Blacklisted token used: jti={}, ip={}", jti, request.remoteAddr)
+                // FR-012: Record blacklisted token usage event
+                recordValidationFailure(
+                    reason = ValidationFailureReason.BLACKLISTED,
+                    tokenJti = jti,
+                    validatorName = null,
+                    request = request
+                )
                 response.status = HttpServletResponse.SC_UNAUTHORIZED
+                return
+            }
+
+            // FR-009: Claim validation chain (fail-fast)
+            try {
+                claimValidatorChain.validateOrThrow(claims)
+            } catch (e: ClaimValidationException) {
+                log.warn(
+                    "Claim validation failed: validator={}, reason={}, jti={}, ip={}",
+                    e.validatorName, e.message, jti, request.remoteAddr
+                )
+                // FR-012: Record claim validation failure event
+                val reason = mapValidatorToReason(e.validatorName)
+                recordValidationFailure(
+                    reason = reason,
+                    tokenJti = jti,
+                    validatorName = e.validatorName,
+                    request = request
+                )
+                // Continue without authentication — secured endpoints will reject
+                filterChain.doFilter(request, response)
                 return
             }
 
@@ -87,10 +145,46 @@ class JwtAuthFilter(
             SecurityContextHolder.getContext().authentication = authentication
 
         } catch (e: Exception) {
+            // FR-014: Structured logging — categorize failure
             log.debug("JWT validation failed: {}", e.message)
             // Continue without authentication — secured endpoints will reject
         }
 
         filterChain.doFilter(request, response)
+    }
+
+    /**
+     * Record a validation failure event via TokenEventRecorder (FR-012).
+     * Fail-safe: recording failure does NOT affect the filter chain.
+     */
+    private fun recordValidationFailure(
+        reason: ValidationFailureReason,
+        tokenJti: String?,
+        validatorName: String?,
+        request: HttpServletRequest
+    ) {
+        try {
+            val event = TokenValidationFailedEvent(
+                reason = reason,
+                tokenJti = tokenJti,
+                ipAddress = request.remoteAddr,
+                userAgent = request.getHeader("User-Agent"),
+                validatorName = validatorName
+            )
+            tokenEventRecorder.recordValidationFailure(event, correlationId = null)
+        } catch (e: Exception) {
+            log.debug("Failed to record validation failure event: {}", e.message)
+        }
+    }
+
+    /**
+     * Map validator name to ValidationFailureReason for event recording.
+     */
+    private fun mapValidatorToReason(validatorName: String): ValidationFailureReason {
+        return when (validatorName) {
+            "AudienceClaimValidator" -> ValidationFailureReason.AUDIENCE_MISMATCH
+            "TokenTypeClaimValidator" -> ValidationFailureReason.TYPE_REJECTED
+            else -> ValidationFailureReason.SIGNATURE_INVALID
+        }
     }
 }

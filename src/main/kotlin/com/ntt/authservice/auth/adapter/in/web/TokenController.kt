@@ -1,25 +1,35 @@
 package com.ntt.authservice.auth.adapter.`in`.web
 
 import com.ntt.authservice.auth.adapter.`in`.web.dto.*
-import com.ntt.authservice.auth.application.AuthService
+import com.ntt.authservice.auth.application.ClaimValidationStatus
+import com.ntt.authservice.auth.application.ClaimValidatorChain
 import com.ntt.authservice.auth.application.JwtService
-import com.ntt.authservice.rbac.adapter.out.persistence.repository.TokenBlacklistRepository
+import com.ntt.authservice.auth.application.TokenBlacklistCacheService
+import com.ntt.authservice.auth.application.AuthService
+import jakarta.servlet.http.HttpServletRequest
 import jakarta.validation.Valid
 import org.springframework.context.MessageSource
 import org.springframework.context.i18n.LocaleContextHolder
 import org.springframework.http.CacheControl
 import org.springframework.http.ResponseEntity
 import org.springframework.web.bind.annotation.*
+import java.security.MessageDigest
 import java.time.Duration
+import java.util.*
 
 /**
  * Token management endpoints — introspection (RFC 7662), JWKS, session revocation.
+ *
+ * FR-007: RFC 7662 compliant introspection with token_type, scope, client_id.
+ * FR-008: JWKS endpoint with ETag support for conditional requests.
+ * FR-011: Cache-based blacklist check (TokenBlacklistCacheService).
  */
 @RestController
 class TokenController(
     private val jwtService: JwtService,
     private val authService: AuthService,
-    private val tokenBlacklistRepository: TokenBlacklistRepository,
+    private val tokenBlacklistCacheService: TokenBlacklistCacheService,
+    private val claimValidatorChain: ClaimValidatorChain,
     private val messageSource: MessageSource
 ) {
 
@@ -28,19 +38,33 @@ class TokenController(
         return try {
             val claims = jwtService.parseToken(request.token)
             val jti = claims.id
-            val isBlacklisted = jti != null && tokenBlacklistRepository.existsByTokenJti(jti)
+
+            // FR-011: Cache-based blacklist check
+            val isBlacklisted = jti != null && tokenBlacklistCacheService.isBlacklisted(jti)
+
+            // FR-007: Claim validation via chain (collect-all mode for diagnostic)
+            val validationResults = claimValidatorChain.validateAll(claims)
+            val hasClaimFailure = validationResults.any { it.status == ClaimValidationStatus.FAIL }
+
+            val isActive = !isBlacklisted && !hasClaimFailure
+
+            // FR-007: RFC 7662 fields — only populated when active=true
+            val permissions = claims["permissions"] as? List<String>
 
             ResponseEntity.ok(
                 IntrospectionResponse(
-                    active = !isBlacklisted,
+                    active = isActive,
                     sub = claims.subject,
                     username = claims["username"] as? String,
                     roles = claims["roles"] as? List<String>,
-                    permissions = claims["permissions"] as? List<String>,
+                    permissions = permissions,
                     exp = claims.expiration?.time?.div(1000),
                     iat = claims.issuedAt?.time?.div(1000),
                     iss = claims.issuer,
-                    jti = jti
+                    jti = jti,
+                    tokenType = if (isActive) "Bearer" else null,
+                    scope = if (isActive) permissions?.joinToString(" ") else null,
+                    clientId = if (isActive) claims.audience?.firstOrNull() else null
                 )
             )
         } catch (e: Exception) {
@@ -48,10 +72,34 @@ class TokenController(
         }
     }
 
+    /**
+     * JWKS endpoint with ETag support (FR-008).
+     * ETag is computed from kid(s) SHA-256 hash — changes on key rotation.
+     */
     @GetMapping("/.well-known/jwks.json")
-    fun jwks(): ResponseEntity<Map<String, Any>> {
+    fun jwks(request: HttpServletRequest): ResponseEntity<Map<String, Any>> {
         val jwks = jwtService.getJwks()
+
+        // FR-008: Compute ETag from kid(s)
+        val keys = jwks["keys"] as? List<*> ?: emptyList<Any>()
+        val kidString = keys
+            .filterIsInstance<Map<*, *>>()
+            .mapNotNull { it["kid"] as? String }
+            .sorted()
+            .joinToString(",")
+        val etag = "\"${sha256(kidString)}\""
+
+        // Conditional request support — If-None-Match → 304
+        val ifNoneMatch = request.getHeader("If-None-Match")
+        if (ifNoneMatch != null && ifNoneMatch == etag) {
+            return ResponseEntity.status(304)
+                .eTag(etag)
+                .cacheControl(CacheControl.maxAge(Duration.ofHours(24)).cachePublic())
+                .build()
+        }
+
         return ResponseEntity.ok()
+            .eTag(etag)
             .cacheControl(CacheControl.maxAge(Duration.ofHours(24)).cachePublic())
             .body(jwks)
     }
@@ -62,5 +110,14 @@ class TokenController(
         val locale = LocaleContextHolder.getLocale()
         val message = messageSource.getMessage("auth.sessions_revoked_all", null, "All sessions revoked", locale)
         return ResponseEntity.ok(mapOf("revokedCount" to count, "userId" to userId, "message" to message))
+    }
+
+    /**
+     * Compute SHA-256 hex string (for ETag generation).
+     */
+    private fun sha256(input: String): String {
+        val digest = MessageDigest.getInstance("SHA-256")
+        val hash = digest.digest(input.toByteArray())
+        return Base64.getUrlEncoder().withoutPadding().encodeToString(hash)
     }
 }
