@@ -1,64 +1,69 @@
 # Integration Map
 
-_Generated: 2025-07-15_
+_Generated: 2025-07-15 (REUSE — updated scan)_
 
-## Redis (Cache — Primary Integration)
+## Redis (Cache/Session Store)
 
-- Client: `StringRedisTemplate` — auto-configured Spring bean
-- Protocol: Redis (Lettuce driver, Spring Data Redis)
-- Used by:
-  - `AnonymousSessionHandler` — `src/main/kotlin/com/ntt/authservice/auth/application/command/AnonymousSessionHandler.kt` — opsForHash().putAll(), expire()
-  - `AnonymousSessionDataService` — `src/main/kotlin/com/ntt/authservice/auth/application/AnonymousSessionDataService.kt` — opsForValue().set/get(), execute() with SCAN, hasKey(), delete(), getExpire()
-  - `AnonymousRateLimitService` — `src/main/kotlin/com/ntt/authservice/auth/application/AnonymousRateLimitService.kt` — opsForValue().increment(), expire(), getExpire()
-  - `SessionPromotionService` — `src/main/kotlin/com/ntt/authservice/auth/application/SessionPromotionService.kt` — opsForValue().setIfAbsent(), delete()
-  - `RenewAnonymousTokenHandler` — `src/main/kotlin/com/ntt/authservice/auth/application/command/RenewAnonymousTokenHandler.kt` — hasKey(), opsForHash().get/put(), expire()
-  - `LoginRateLimitService` — `src/main/kotlin/com/ntt/authservice/auth/application/LoginRateLimitService.kt` — same INCR+EXPIRE pattern
-  - `MfaRateLimitService` — `src/main/kotlin/com/ntt/authservice/auth/application/MfaRateLimitService.kt` — same StringRedisTemplate usage
-  - `OtpService` — `src/main/kotlin/com/ntt/authservice/auth/application/OtpService.kt`
-  - `MfaService` — `src/main/kotlin/com/ntt/authservice/auth/application/MfaService.kt`
-  - `DecryptionVaultService` — `src/main/kotlin/com/ntt/authservice/auth/application/cipher/DecryptionVaultService.kt`
-  - `RedisAntiReplayValidator` — `src/main/kotlin/com/ntt/authservice/auth/adapter/out/cipher/RedisAntiReplayValidator.kt`
-  - `RedisCipherKeySessionResolver` — `src/main/kotlin/com/ntt/authservice/auth/adapter/out/cipher/RedisCipherKeySessionResolver.kt`
-  - `MultiTierPermissionCache` — `src/main/kotlin/com/ntt/authservice/auth/adapter/out/cache/MultiTierPermissionCache.kt`
-  - `AbstractTwoTierCache` — `src/main/kotlin/com/ntt/authservice/shared/cache/AbstractTwoTierCache.kt`
-  - `IdempotencyFilter` — `src/main/kotlin/com/ntt/authservice/shared/filter/IdempotencyFilter.kt`
+- Client: `StringRedisTemplate` — auto-configured Spring Bean (Lettuce driver)
+- Protocol: Redis protocol via Lettuce
+- Config: `RedisConfig` — `src/main/kotlin/com/ntt/authservice/shared/config/RedisConfig.kt`
+- Operations used by anonymous features:
+  - `opsForValue()`: GET, SET, SETEX, SETNX, INCREMENT, SIZE
+  - `opsForHash<String, String>()`: PUTALL, GET, INCREMENT
+  - `executePipelined(RedisCallback)`: Batch HSET+EXPIRE, batch GET, batch SETEX
+  - `execute(DefaultRedisScript<Long>, keys, args)`: Lua EVAL (3 scripts)
+  - `execute(RedisCallback)`: Raw connection for SCAN
+  - `delete(key)`, `expire(key, duration)`, `getExpire(key)`, `hasKey(key)`
 
-### Optimization-Specific Redis APIs (NEW — to be introduced)
+### Lua Script Integration
 
-- `executePipelined(RedisCallback)` — NOT DETECTED in current codebase. Will be used for:
-  - AnonymousSessionHandler: pipeline HSET+EXPIRE
-  - AnonymousSessionDataService: pipeline MGET+MSET in transferData()
-- `execute(RedisScript<T>, keys, args)` — NOT DETECTED in current codebase. Will be used for:
-  - AnonymousRateLimitService: sliding window Lua script
-  - SessionPromotionService: safe lock release Lua script
-  - AnonymousSessionDataService: atomic check-and-set (TOCTOU fix)
-- `DefaultRedisScript<Long>` — NOT DETECTED in current codebase. Will be configured in new RedisLuaScriptConfig.
+- `slidingWindowRateLimitScript` — `src/main/resources/redis/sliding_window_rate_limit.lua` (35 lines)
+  - Caller: `AnonymousRateLimitService.checkSlidingWindow()` — `src/main/kotlin/.../AnonymousRateLimitService.kt`
+  - KEYS: `anon:rate:{ip}:{currentWindow}`, `anon:rate:{ip}:{prevWindow}`
+  - ARGV: maxAttempts, windowSeconds, elapsedSeconds
+  - Returns: -1 (denied) or weighted count
+
+- `safeLockReleaseScript` — `src/main/resources/redis/safe_lock_release.lua` (11 lines)
+  - Caller: `SessionPromotionService.releaseLock()` — `src/main/kotlin/.../SessionPromotionService.kt`
+  - KEYS: `anon:lock:{sessionId}`
+  - ARGV: ownerUUID
+  - Returns: 1 (released) or 0 (not owner)
+
+- `atomicDataStoreScript` — `src/main/resources/redis/atomic_data_store.lua` (26 lines)
+  - Caller: `AnonymousSessionDataService.storeData()` — `src/main/kotlin/.../AnonymousSessionDataService.kt`
+  - KEYS: `anon:session:{id}` (session hash), `anon:data:{id}:{ns}:{key}` (data key)
+  - ARGV: maxDataSizeBytes, value, ttlSeconds
+  - Returns: -1 (limit exceeded) or new total data size
+
+### Pipeline Integration
+
+- `AnonymousSessionHandler.handle()` — pipeline HSET+EXPIRE for session creation (line 69)
+- `AnonymousSessionDataService.transferData()` — pipeline GET all keys (line 142), pipeline SET all user keys (line 163)
 
 ## PostgreSQL (Database)
 
-- Client: JPA repositories (Spring Data JPA)
-- Protocol: JDBC / Hibernate
-- Used by:
-  - `TokenBlacklistRepository` — `src/main/kotlin/com/ntt/authservice/rbac/adapter/out/persistence/repository/Repositories.kt` — save() for blacklisting tokens during promotion/renewal
-  - `TokenBlacklistEntity` — `src/main/kotlin/com/ntt/authservice/rbac/adapter/out/persistence/entity/PermissionEntities.kt` — entity with fields: tokenJti, userId, reason, expiresAt, revokedAt
-  - **OPTIMIZATION**: SessionCleanupScheduler to be extended with DELETE FROM token_blacklist WHERE expires_at < NOW()
+- Client: JPA/Hibernate via Spring Data JPA
+- Protocol: JDBC (PostgreSQL driver)
+- Repository: `TokenBlacklistRepository` — `src/main/kotlin/com/ntt/authservice/rbac/adapter/out/persistence/repository/Repositories.kt`
+  - Used by: `SessionPromotionService` (save blacklist entry during promotion)
+  - Used by: `SessionCleanupScheduler` (delete expired entries every 6 hours)
+- Migrations: Flyway — `src/main/resources/db/`
 
-## CAPTCHA (External HTTP)
+## Micrometer (Metrics)
 
-- Client: `CaptchaGateway` (interface) — `src/main/kotlin/com/ntt/authservice/auth/application/port/out/CaptchaGateway.kt`
-- Implementation: `HttpCaptchaGateway` — `src/main/kotlin/com/ntt/authservice/auth/adapter/out/http/HttpCaptchaGateway.kt`
-- Protocol: HTTP REST
-- Not directly related to optimization — used for optional abuse prevention.
-
-## Micrometer (Metrics/Observability)
-
-- Client: `MeterRegistry` — auto-configured Spring bean
-- Protocol: In-memory registry → exporters
-- Used by: All anonymous services (counters, timers)
-- **OPTIMIZATION**: Add `Observation.createNotStarted()` for tracing spans
+- Client: `MeterRegistry` — auto-configured Spring Bean
+- Protocol: Micrometer API (Counter, Timer)
+- Metrics defined in anonymous services:
+  - `auth.anonymous.sessions.created` — Counter (AnonymousSessionHandler)
+  - `auth.anonymous.rate_limited` — Counter (AnonymousRateLimitService)
+  - `auth.anonymous.data.stored` — Counter (AnonymousSessionDataService)
+  - `auth.anonymous.data.size_exceeded` — Counter (AnonymousSessionDataService)
+  - `auth.anonymous.sessions.promoted` — Counter with status tag (SessionPromotionService)
+  - `auth.anonymous.promotion.duration` — Timer (SessionPromotionService)
+  - `auth.anonymous.token.generation.duration` — Timer (AnonymousSessionHandler)
 
 ## NOT DETECTED
 
-- Kafka integration for anonymous services (not used)
-- External HTTP calls from anonymous services (except CAPTCHA — optional)
-- Message queue integration for anonymous services
+- REST/gRPC external integrations — anonymous login operates entirely within auth-service
+- Kafka — `KafkaConfig` exists but not used by anonymous features
+- External API clients — no outbound HTTP calls in anonymous flow
