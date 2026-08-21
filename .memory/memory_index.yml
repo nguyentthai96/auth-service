@@ -1,4 +1,5 @@
 features:
+  '`jwt_token_issuance`': failed
   '`user_login_event`': in_progress
   '`user_logout_event`': failed
   '`user_registration_event`': in_progress
@@ -66,6 +67,18 @@ lessons:
   frequency: 2
   id: L005
   type: failure_pattern
-total_failures: 30
-total_records: 96
+- action: 'Mitigate ''PROXY_DOWN'' errors in wf_feature_research. Common errors: Error
+    code: 502 - {''type'': ''error'', ''error'': {''type'': ''api_error'', ''message'':
+    ''All upstream endpoint; Error code: 502 - {''type'': ''error'', ''error'': {''type'':
+    ''api_error'', ''message'': ''All upstream endpoint'
+  description: 'Workflow ''wf_feature_research'' fails with ''PROXY_DOWN'' across
+    features: `jwt_token_issuance`, `user_logout_event`'
+  fingerprint:
+  - wf_feature_research
+  - PROXY_DOWN
+  frequency: 2
+  id: L006
+  type: failure_pattern
+total_failures: 31
+total_records: 97
 total_successes: 66

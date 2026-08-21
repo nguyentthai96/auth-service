@@ -1,11 +1,27 @@
 current_feature: '`jwt_token_issuance`'
-current_workflow: wf_feature_research
+current_workflow: wf_pre_openspec
 features:
   '`jwt_token_issuance`':
     workflows:
       wf_feature_research:
+        duration: 1155
+        errors:
+        - 'Error code: 502 - {''type'': ''error'', ''error'': {''type'': ''api_error'',
+          ''message'': ''All upstream endpoints failed''}}'
+        - 'Error code: 502 - {''type'': ''error'', ''error'': {''type'': ''api_error'',
+          ''message'': ''All upstream endpoints failed''}}'
+        - 'Error code: 502 - {''type'': ''error'', ''error'': {''type'': ''api_error'',
+          ''message'': ''All upstream endpoints failed''}}'
+        - 'Error code: 502 - {''type'': ''error'', ''error'': {''type'': ''api_error'',
+          ''message'': ''All upstream endpoints failed''}}'
+        - 'Error code: 502 - {''type'': ''error'', ''error'': {''type'': ''api_error'',
+          ''message'': ''All upstream endpoints failed''}}'
+        status: failed
+        strike_count: 5
+        tokens: 0
+      wf_pre_openspec:
         duration: 0
-        started_at: '2026-08-21T10:52:18.203282+00:00'
+        started_at: '2026-08-21T11:11:34.051891+00:00'
         status: in_progress
         strike_count: 0
         tokens: 0
@@ -217,12 +233,12 @@ features:
 started_at: '2026-08-21T06:47:08.762570+00:00'
 stats:
   completed_features: 0
-  failed_features: 1
+  failed_features: 2
   partial_features: 2
   remaining_features: 0
   skipped_features: 0
   total_duration: 3264
-  total_features: 3
+  total_features: 4
   total_tokens: 0
 status: running
-updated_at: '2026-08-21T10:52:18.203261+00:00'
+updated_at: '2026-08-21T11:11:34.051872+00:00'
