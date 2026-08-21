@@ -79,6 +79,18 @@ lessons:
   frequency: 2
   id: L006
   type: failure_pattern
-total_failures: 31
-total_records: 97
+- action: 'Mitigate ''PROXY_DOWN'' errors in wf_pre_openspec. Common errors: Error
+    code: 502 - {''type'': ''error'', ''error'': {''type'': ''api_error'', ''message'':
+    ''All upstream endpoint; Error code: 502 - {''type'': ''error'', ''error'': {''type'':
+    ''api_error'', ''message'': ''All upstream endpoint'
+  description: 'Workflow ''wf_pre_openspec'' fails with ''PROXY_DOWN'' across features:
+    `jwt_token_issuance`, `user_logout_event`'
+  fingerprint:
+  - wf_pre_openspec
+  - PROXY_DOWN
+  frequency: 2
+  id: L007
+  type: failure_pattern
+total_failures: 32
+total_records: 98
 total_successes: 66

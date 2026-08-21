@@ -1,8 +1,14 @@
 current_feature: '`jwt_token_issuance`'
-current_workflow: wf_pre_openspec
+current_workflow: wf_brainstorm_openspec
 features:
   '`jwt_token_issuance`':
     workflows:
+      wf_brainstorm_openspec:
+        duration: 0
+        started_at: '2026-08-21T11:31:23.531962+00:00'
+        status: in_progress
+        strike_count: 0
+        tokens: 0
       wf_feature_research:
         duration: 1155
         errors:
@@ -20,10 +26,20 @@ features:
         strike_count: 5
         tokens: 0
       wf_pre_openspec:
-        duration: 0
-        started_at: '2026-08-21T11:11:34.051891+00:00'
-        status: in_progress
-        strike_count: 0
+        duration: 1189
+        errors:
+        - 'Error code: 502 - {''type'': ''error'', ''error'': {''type'': ''api_error'',
+          ''message'': ''All upstream endpoints failed''}}'
+        - 'Error code: 502 - {''type'': ''error'', ''error'': {''type'': ''api_error'',
+          ''message'': ''All upstream endpoints failed''}}'
+        - 'Error code: 502 - {''type'': ''error'', ''error'': {''type'': ''api_error'',
+          ''message'': ''All upstream endpoints failed''}}'
+        - 'Error code: 502 - {''type'': ''error'', ''error'': {''type'': ''api_error'',
+          ''message'': ''All upstream endpoints failed''}}'
+        - 'Error code: 502 - {''type'': ''error'', ''error'': {''type'': ''api_error'',
+          ''message'': ''All upstream endpoints failed''}}'
+        status: failed
+        strike_count: 5
         tokens: 0
   '`user_login_event`':
     workflows:
@@ -241,4 +257,4 @@ stats:
   total_features: 4
   total_tokens: 0
 status: running
-updated_at: '2026-08-21T11:11:34.051872+00:00'
+updated_at: '2026-08-21T11:31:23.531939+00:00'
