@@ -1,5 +1,5 @@
 current_feature: api-response-i18n-standard
-current_workflow: wf_feature_research
+current_workflow: wf_pre_openspec
 features:
   anonymous-login-optimization:
     workflows:
@@ -36,20 +36,25 @@ features:
   api-response-i18n-standard:
     workflows:
       wf_feature_research:
+        duration: 278
+        status: success
+        strike_count: 0
+        tokens: 0
+      wf_pre_openspec:
         duration: 0
-        started_at: '2026-08-21T12:18:27.287776+00:00'
+        started_at: '2026-08-21T12:23:05.904690+00:00'
         status: in_progress
         strike_count: 0
         tokens: 0
 started_at: '2026-08-21T11:41:07.477168+00:00'
 stats:
-  completed_features: 1
+  completed_features: 2
   failed_features: 0
   partial_features: 0
   remaining_features: 0
   skipped_features: 0
-  total_duration: 2235
-  total_features: 1
+  total_duration: 2513
+  total_features: 2
   total_tokens: 0
 status: running
-updated_at: '2026-08-21T12:18:27.287760+00:00'
+updated_at: '2026-08-21T12:23:05.904675+00:00'

@@ -7,89 +7,79 @@
 | Mục | Nội dung |
 |-----|----------|
 | **Tên tính năng** | JWT Token Validation |
-| **Ngày tạo** | 2025-07-11 |
-| **Input source** | Name + enriched description |
-| **Input content** | Build production-grade JWT token validation subsystem within the auth-service, covering signature verification (RS256 primary, HMAC fallback), claims validation, token introspection (RFC 7662), blacklist checking, JWKS endpoint, and inter-service token validation. |
-| **Người yêu cầu** | Pipeline (auto) |
+| **Ngày tạo** | 2026-08-26 |
+| **Input source** | name + enriched description |
+| **Input content** | Build production-grade JWT token validation within an Event Sourcing-based Authentication Service — covering RS256/HMAC signing, token introspection (RFC 7662), JWKS endpoint, blacklist checking, two-tier caching (Caffeine L1 + Redis L2), and refresh token rotation. |
+| **Người yêu cầu** | System (pipeline) |
 
 ## 2. Mô tả tính năng
 
 ### 2.1 Bối cảnh (Context)
 
-The auth-service already has a `JwtService` class that handles JWT generation and parsing using the `jjwt` (io.jsonwebtoken) library. It supports RS256 asymmetric signing (primary) with HMAC-SHA256 fallback for legacy migration. However, the current validation layer needs formalization and hardening:
-
-1. **Token validation is spread across multiple components** — `JwtAuthFilter`, `ServiceAuthFilter`, `TokenController` (introspection), and individual service methods all perform token parsing/validation independently.
-2. **Blacklist checking** is done in `JwtAuthFilter` via direct `TokenBlacklistRepository` calls, but not consistently in all validation paths.
-3. **Claims validation** (issuer, audience, expiration, type) is partially implemented — type checking exists for MFA and anonymous tokens but not systematically enforced.
-4. **JWKS endpoint** exists (`/.well-known/jwks.json`) but key rotation strategy is not fully documented or automated.
-5. **Inter-service token validation** uses a separate `ServiceTokenService` with HMAC-based signing, creating a dual-key management concern.
-
-The goal is to research best practices for JWT token validation, evaluate existing open-source solutions, and formalize the validation architecture within the Event Sourcing context of this auth-service.
+The auth-service already implements JWT token generation and basic validation via `JwtService` and `JwtAuthFilter`. However, the current validation pipeline needs comprehensive research to ensure production-grade hardening: proper claim validation (iss, aud, exp, nbf, jti), blacklist performance at scale (currently DB-backed `TokenBlacklistRepository`), JWKS key rotation strategy, caching of hot validation data (public keys, blacklist lookups), and alignment with RFC 7519 / RFC 7662 / JWT BCP (RFC 8725) best practices.
 
 ### 2.2 Mục tiêu (Objectives)
-
-- [x] Objective 1: Research JWT validation best practices (RFC 7519, RFC 7662, OWASP guidelines)
-- [x] Objective 2: Evaluate open-source JWT libraries and their validation capabilities against project needs
-- [x] Objective 3: Define a unified validation pipeline (signature → claims → blacklist → context-specific checks)
-- [x] Objective 4: Research token revocation strategies (blacklist, short-lived tokens, token binding)
-- [x] Objective 5: Analyze JWKS key rotation patterns for zero-downtime key changes
-- [x] Objective 6: Evaluate caching strategies for validation metadata (public keys, blacklist, permissions)
+- [x] Objective 1: Evaluate current JWT validation implementation against industry best practices (RFC 7519, RFC 8725)
+- [x] Objective 2: Research optimal token blacklist/revocation strategies for high-throughput scenarios
+- [x] Objective 3: Identify caching strategies for JWT public keys and blacklist lookups (Caffeine L1 + Redis L2)
+- [x] Objective 4: Research JWKS key rotation patterns and kid-based key selection
+- [x] Objective 5: Evaluate open source JWT libraries and validation frameworks for Kotlin/Spring Boot
+- [x] Objective 6: Design token introspection endpoint aligned with RFC 7662
 
 ### 2.3 Phạm vi ban đầu (Initial Scope)
 
 | In Scope | Out of Scope |
 |----------|-------------|
-| JWT signature verification (RS256, HMAC fallback) | OAuth2 authorization code flow implementation |
-| Claims validation pipeline (iss, exp, iat, jti, type) | User registration flow |
-| Token introspection endpoint (RFC 7662) | Password management |
-| Token blacklist checking (JTI-based) | MFA flow implementation |
-| JWKS endpoint and key rotation | SSO provider integration |
-| Inter-service token validation | E2EE key exchange |
-| Token type discrimination (access, refresh, mfa, anonymous, service) | Anonymous session lifecycle |
-| Cache optimization for validation (Caffeine L1 + Redis L2) | Event sourcing core infrastructure |
-| Event sourcing for token lifecycle events | RBAC/PBAC policy engine |
+| JWT access token validation (RS256 + HMAC fallback) | OAuth2 authorization server implementation |
+| Token blacklist checking (JTI-based) | Full OIDC Discovery protocol |
+| JWKS endpoint and key rotation | User registration/login flows |
+| Token introspection (RFC 7662) | MFA verification logic |
+| Refresh token rotation validation | SSO/OAuth2 provider integration |
+| Two-tier cache for validation hot data | Frontend token storage strategy |
+| Claim validation (iss, aud, exp, nbf, jti) | Password policy management |
+| Anonymous token type validation | Session management UI |
+| Service-to-service token validation | Account lifecycle management |
 
 ## 3. Keywords & Search Terms
 
 ### 3.1 Primary Keywords
 - `JWT token validation`
-- `JSON Web Token verification`
-- `RS256 signature verification`
-- `JWKS endpoint`
+- `JWT best practices production`
+- `token blacklist revocation`
+- `JWKS key rotation`
+- `RFC 7519 JWT`
+- `RFC 8725 JWT BCP`
 - `token introspection RFC 7662`
-- `token blacklist`
-- `token revocation`
 
 ### 3.2 Secondary Keywords
-- `JWT security best practices`
-- `asymmetric JWT signing`
-- `key rotation strategy`
-- `token binding`
-- `claim validation`
-- `jjwt library`
-- `nimbus-jose-jwt`
-- `Spring Security JWT`
+- `RS256 asymmetric JWT signing`
+- `JWT claim validation`
+- `token revocation at scale`
+- `JWT caching strategy`
+- `Spring Security JWT filter`
+- `JJWT library Kotlin`
 
 ### 3.3 Domain-Specific Terms
-- `JTI (JWT ID)`: Unique identifier for each token, used for blacklist/revocation tracking
-- `JWKS (JSON Web Key Set)`: Standard format for publishing public keys used for JWT signature verification
-- `Token Introspection (RFC 7662)`: Protocol for querying the authorization server about the state of a token
-- `Token Rotation`: Strategy where each refresh cycle invalidates the previous token and issues a new one
-- `Claims`: Assertions made about a subject in a JWT payload (registered, public, private)
-- `kid (Key ID)`: Header parameter identifying which key was used to sign the JWT
+- `JTI (JWT ID)`: Unique identifier for each JWT, used for blacklist/revocation tracking
+- `kid (Key ID)`: JWT header parameter identifying the key used for signing, enables key rotation
+- `JWKS (JSON Web Key Set)`: Endpoint exposing public keys for JWT signature verification
+- `Token introspection`: Server-side validation of token state (active/revoked) per RFC 7662
+- `Token rotation`: Pattern where refresh token is replaced on each use, preventing reuse
+- `Blacklist/Blocklist`: Registry of revoked JTI values, checked during validation
+- `Claims`: JWT payload assertions (iss, sub, aud, exp, nbf, iat, jti)
 
 ### 3.4 Search Queries (pre-defined)
 
 | # | Query | Target | Priority |
 |---|-------|--------|----------|
-| 1 | `"JWT token validation best practices 2024"` | General | High |
-| 2 | `"jjwt vs nimbus-jose-jwt Java JWT library"` | Library comparison | High |
-| 3 | `"JWKS key rotation strategy zero downtime"` | Architecture | High |
-| 4 | `"JWT blacklist Redis token revocation microservices"` | Revocation strategy | High |
-| 5 | `"RFC 7662 token introspection Spring Boot"` | Standard compliance | Medium |
-| 6 | `"Spring Security resource server JWT validation"` | Framework integration | Medium |
-| 7 | `"JWT validation pipeline architecture"` | Design pattern | Medium |
-| 8 | `"OWASP JWT security cheat sheet"` | Security guidelines | High |
+| 1 | `"JWT token validation best practices production 2024"` | General | High |
+| 2 | `"JWT blacklist revocation Redis high throughput"` | Architecture | High |
+| 3 | `"JWKS key rotation Spring Boot"` | Integration | High |
+| 4 | `"RFC 8725 JWT best current practices"` | Standards | High |
+| 5 | `"JWT validation open source Java Kotlin library"` | Open Source | Medium |
+| 6 | `"token introspection endpoint RFC 7662 implementation"` | Standards | Medium |
+| 7 | `"JWT caching Caffeine Redis two-tier"` | Architecture | Medium |
+| 8 | `"JJWT vs Nimbus JOSE vs Auth0 JWT comparison"` | Comparison | Medium |
 
 ## 4. Current System Analysis
 
@@ -97,101 +87,100 @@ The goal is to research best practices for JWT token validation, evaluate existi
 
 | Feature | Module/Package | Relevance | Notes |
 |---------|---------------|-----------|-------|
-| JwtService | `auth.application.JwtService` | High | Core JWT generation & parsing — RS256 + HMAC fallback |
-| JwtAuthFilter | `shared.security.JwtAuthFilter` | High | Stage 1 PEP — validates JWT, checks blacklist, sets SecurityContext |
-| ServiceAuthFilter | `auth.adapter.in.web.filter.ServiceAuthFilter` | High | Validates service JWT for /api/internal/ endpoints |
-| ServiceTokenService | `auth.application.ServiceTokenService` | High | Issues/validates JWTs for inter-service auth (FR-021) |
-| TokenController | `auth.adapter.in.web.TokenController` | High | Introspection (RFC 7662), JWKS, session revocation |
-| TokenStorePersistenceAdapter | `auth.adapter.out.persistence.TokenStorePersistenceAdapter` | Medium | JPA adapter for refresh token + blacklist storage |
-| RefreshTokenHandler | `auth.application.command.RefreshTokenHandler` | Medium | Token rotation with revocation events |
-| SecurityProperties | `shared.config.SecurityProperties` | High | JWT config: key paths, TTLs, issuer, keyId |
-| SecurityConfig | `shared.config.SecurityConfig` | High | Spring Security filter chain configuration |
-| TokenIssuedEvent | `auth.domain.event.TokenIssuedEvent` | Medium | Domain event for audit trail |
-| TokenBlacklistEntity | `rbac.adapter.out.persistence.entity` | Medium | JPA entity for blacklisted JTIs |
+| JwtService | `auth.application.JwtService` | High | Core JWT generation/parsing — RS256 primary, HMAC fallback. Methods: generateAccessToken, generateRefreshToken, generateMfaToken, generateAnonymousToken, parseToken, getJwks |
+| JwtAuthFilter | `shared.security.JwtAuthFilter` | High | Spring Security filter — validates Bearer token, checks blacklist via TokenBlacklistRepository, sets SecurityContext |
+| TokenController | `auth.adapter.in.web.TokenController` | High | Introspection endpoint (POST /api/auth/introspect), JWKS endpoint (GET /.well-known/jwks.json), session revocation |
+| TokenGenerator | `auth.application.command.TokenGenerator` | High | Shared token generation for Login/Register/Refresh — generates access + refresh tokens, stores hash, records events |
+| RefreshTokenHandler | `auth.application.command.RefreshTokenHandler` | High | Token rotation — revokes old refresh token, generates new pair, records TokenRevokedEvent |
+| TokenStore (port) | `auth.application.port.out.TokenStore` | High | Outbound port for refresh token persistence — save, find, revoke, blacklist operations |
+| TokenBlacklistRepository | `rbac.adapter.out.persistence.repository` | High | JPA repository for blacklisted tokens — existsByTokenJti() used in filter |
+| SecurityConfig | `shared.config.SecurityConfig` | High | Configures filter chain, CORS, stateless sessions, endpoint authorization |
+| SecurityProperties | `shared.config.SecurityProperties` | High | JWT config: RS256 keys, token TTLs (access 15min, refresh 7d, ceiling 10h), issuer |
+| TokenHasher | `auth.domain.service.TokenHasher` | Medium | SHA-256 hashing for refresh token storage |
+| AbstractTwoTierCache | `shared.cache.AbstractTwoTierCache` | Medium | L1 (Caffeine) + L2 (Redis) cache base class — available for validation caching |
+| PermissionCache (port) | `auth.application.port.out.PermissionCache` | Medium | Multi-tier cache for permissions — pattern reference for token cache |
 
 ### 4.2 Existing Code Patterns
 
-**Architecture**: Clean Architecture (Hexagonal) with CQRS + Event Sourcing
-- **Adapters (in)**: Controllers, Kafka listeners, Filters (web layer)
-- **Adapters (out)**: Persistence adapters, HTTP clients, Event publishers
-- **Application**: Services, Command/Query handlers, Ports
-- **Domain**: Events, Models, Value objects
+**JWT Validation Pipeline (current)**:
+1. `JwtAuthFilter.doFilterInternal()` extracts Bearer token from Authorization header
+2. Calls `JwtService.parseToken()` — tries RS256 first, falls back to HMAC
+3. Checks JTI against `TokenBlacklistRepository.existsByTokenJti()` (DB query)
+4. Extracts claims (type, roles, permissions) and sets `SecurityContextHolder`
+5. Anonymous tokens (type=anonymous) get `ROLE_ANONYMOUS` authority
 
-**JWT Validation Pattern** (current):
-1. `JwtAuthFilter` extracts Bearer token from Authorization header
-2. Calls `JwtService.parseToken()` — tries RS256 first, HMAC fallback
-3. Checks blacklist via `TokenBlacklistRepository.existsByTokenJti(jti)`
-4. Discriminates token type (anonymous vs authenticated) via `type` claim
-5. Sets `SecurityContextHolder` with authorities
+**Token Signing Strategy**:
+- Primary: RS256 asymmetric (RSA private key signing, public key verification)
+- Fallback: HMAC-SHA256 for 7-day migration window
+- Key ID (`kid`) header for JWKS key selection
+- Key pair loaded lazily from PEM files
 
-**Token Types** in system:
-- `access` (implicit, no type claim) — user access token with roles/permissions
-- `refresh` (type="refresh") — minimal claims, used for rotation
-- `mfa` (type="mfa") — short-lived challenge token (5 min)
-- `anonymous` (type="anonymous") — ephemeral session token (1 hour)
-- `service` (type="service") — inter-service communication token (1 hour)
+**Token Types Supported**:
+- Access token (roles, permissions, domains, groups claims)
+- Refresh token (type=refresh, minimal claims)
+- MFA challenge token (type=mfa, method claim, 5min TTL)
+- Anonymous session token (type=anonymous, sessionId subject)
 
-**Signing**:
-- Primary: RS256 (RSA 2048-bit, PKCS8 private key, X509 public key)
-- Fallback: HMAC-SHA256 (7-day migration window)
-- Service tokens: HMAC-SHA256 only (derived from main secret + ":service")
+**Error Handling**:
+- `TokenExpiredException` (AUTH_003, 401) for expired/invalid tokens
+- `GlobalExceptionHandler` maps to RFC 7807 ProblemDetail
+
+**Event Sourcing Integration**:
+- `TokenIssuedEvent` recorded via `TokenEventRecorder` on token generation
+- `TokenRevokedEvent` recorded on rotation/revocation
+- Correlation IDs link rotation chains
 
 ### 4.3 Tech Stack Constraints
-
-- Language: Kotlin 2.x
-- Framework: Spring Boot 3.x + Spring Security 6.x
-- Database: PostgreSQL (primary), H2 (testing)
-- Cache: Caffeine (L1 in-process) + Redis (L2 distributed) via `base-cache-starter`
-- JWT Library: io.jsonwebtoken:jjwt (0.12.x API)
-- Build tool: Gradle (Kotlin DSL) with version catalogs
-- Base module: `base-core` (auto-config for cache, security, data, observability)
-- Event Store: PostgreSQL JSONB via `eventsourcing-utils`
-- Message Broker: Apache Kafka (outbox pattern)
+- Language: Kotlin (JVM)
+- Framework: Spring Boot 3.x with Spring Security
+- Database: PostgreSQL (via JPA/Hibernate, Flyway migrations)
+- Cache: Caffeine (L1 local) + Redis (L2 distributed) — `base-cache-starter`
+- JWT Library: JJWT (io.jsonwebtoken) — jjwt-api, jjwt-impl, jjwt-jackson
+- Build tool: Gradle (Kotlin DSL)
+- Event Sourcing: `eventsourcing-utils` library (custom)
+- Base module: `base-core` (base-web-starter, base-data-starter, base-security-starter, base-cache-starter)
+- Message broker: Kafka (spring-kafka)
+- Resilience: Resilience4j circuit breaker
 
 ### 4.4 Integration Points
 
 | Integration Point | Type | Module/File | Notes |
 |-------------------|------|-------------|-------|
-| `JwtService` | Application Service | `auth.application.JwtService` | Central JWT operations — all token types |
-| `JwtAuthFilter` | Web Filter | `shared.security.JwtAuthFilter` | Spring Security filter chain — OncePerRequestFilter |
-| `ServiceAuthFilter` | Web Filter | `auth.adapter.in.web.filter.ServiceAuthFilter` | Internal API auth |
-| `TokenBlacklistRepository` | JPA Repository | `rbac.adapter.out.persistence.repository` | JTI-based blacklist queries |
-| `SecurityProperties` | Config | `shared.config.SecurityProperties` | JWT, password, MFA, SSO, session configs |
-| `TokenStore` | Port (out) | `auth.application.port.out.TokenStore` | Refresh token + blacklist operations |
-| `EventStorePort` | Port (out) | `auth.application.port.out.EventStorePort` | Event sourcing — persist domain events |
-| `base-security-starter` | Base Module | `com.ntt:base-security-starter` | Auto-configured security beans |
-| `base-cache-starter` | Base Module | `com.ntt:base-cache-starter` | Two-level cache (Caffeine + Redis) |
-| `TwoLevelCacheManager` | Cache | `shared.config.SecurityConfig` | Custom cache manager bean |
+| JwtAuthFilter → JwtService | Internal API | `shared.security.JwtAuthFilter` → `auth.application.JwtService` | parseToken() call on every request |
+| JwtAuthFilter → TokenBlacklistRepository | DB Query | Filter → JPA Repository | existsByTokenJti() — DB hit per request |
+| TokenController → JwtService | Internal API | Controller → Service | introspect() and jwks() endpoints |
+| TokenGenerator → JwtService | Internal API | Command → Service | generateAccessToken(), generateRefreshToken() |
+| RefreshTokenHandler → TokenStore | Outbound Port | Command → Port | findValidRefreshToken(), revokeToken() |
+| SecurityConfig → JwtAuthFilter | Filter Chain | Config → Filter | addFilterBefore(UsernamePasswordAuthenticationFilter) |
+| base-cache-starter | Library | `com.ntt:base-cache-starter` | TwoLevelCacheManager, CacheInvalidationPublisher |
+| base-security-starter | Library | `com.ntt:base-security-starter` | Base security configurations |
+| PermissionChangedConsumer | Kafka | `auth.adapter.in.kafka` | Listens for permission changes to invalidate cache |
 
 ## 5. Research Questions
 
 ### 5.1 Câu hỏi cần trả lời
-
-- [x] Q1: What is the optimal JWT validation pipeline order (signature → claims → blacklist → context)?
-- [x] Q2: Should we use jjwt alone or consider nimbus-jose-jwt for validation?
-- [x] Q3: How to implement JWKS key rotation with zero downtime?
-- [x] Q4: What caching strategy is optimal for token blacklist checks (Redis vs in-memory bloom filter)?
-- [x] Q5: How to unify token validation across different token types (access, refresh, mfa, anonymous, service)?
-- [x] Q6: Is RFC 7662 introspection sufficient for microservice token validation, or should services validate locally?
-- [x] Q7: How to implement token binding to prevent token theft/relay attacks?
-- [x] Q8: What Event Sourcing events should be emitted for validation failures (security monitoring)?
+- [x] Q1: Should token blacklist checking move from DB (JPA) to Redis for sub-millisecond lookups?
+- [x] Q2: What is the optimal JWKS key rotation strategy (dual-key, kid-based selection)?
+- [x] Q3: How should the two-tier cache (Caffeine + Redis) be applied to token validation hot paths?
+- [x] Q4: Is the current RS256 + HMAC fallback approach aligned with RFC 8725 best practices?
+- [x] Q5: Should the introspection endpoint support OAuth2 token introspection (RFC 7662) format?
+- [x] Q6: How to handle clock skew in distributed JWT validation?
+- [x] Q7: What is the blast radius of adding audience (aud) claim validation?
 
 ### 5.2 Assumptions cần verify
-
-- [x] A1: RS256 is sufficient for production — no need for RS384/RS512 or EdDSA
-- [x] A2: jjwt library handles all required validation scenarios (exp, nbf, iss, aud checks)
-- [x] A3: PostgreSQL-based blacklist with Redis cache is adequate for < 10K concurrent sessions
-- [x] A4: HMAC fallback can be safely removed after 7-day migration window
+- [x] A1: Current DB-backed blacklist (TokenBlacklistRepository) is a bottleneck at >1000 req/s — needs verification via load test
+- [x] A2: JJWT library handles all RFC 7519 claim validation automatically — needs verification
+- [x] A3: base-cache-starter's TwoLevelCacheManager can be reused for blacklist caching — needs API check
 
 ## 6. Success Criteria
 
 | Tiêu chí | Định nghĩa | Measurement |
 |----------|-----------|-------------|
-| Research coverage | Comprehensive analysis of JWT validation patterns | ≥ 5 unique sources |
-| Open source options | Evaluated JWT libraries and auth frameworks | ≥ 3 repos evaluated |
-| Gap analysis | Identify gaps between current implementation and best practices | All critical gaps identified |
-| Business analysis | All validation use cases documented with flows | All UCs documented |
-| Technical spec | Validation pipeline design ready for implementation | Agent-ready for implementation |
+| Research coverage | Comprehensive JWT validation landscape | ≥ 5 sources |
+| Open source options | JWT libraries and validation frameworks evaluated | ≥ 3 repos evaluated |
+| Gap analysis | Current system vs best practices gaps identified | All critical gaps identified |
+| Business analysis | All validation use cases documented | All UCs documented |
+| Technical spec | Agent-ready for implementation | Complete API + data model + diagrams |
 
 ---
 
