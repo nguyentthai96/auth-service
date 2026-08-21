@@ -9,7 +9,7 @@ import com.ntt.basecore.autoconfigure.security.cipher.key.CipherKeySessionReposi
 import com.ntt.basecore.autoconfigure.security.cipher.key.KeyExchangeRequest
 import com.ntt.basecore.autoconfigure.security.cipher.key.KeyExchangeResponse
 import com.ntt.basecore.autoconfigure.security.cipher.key.KeyExchangeService
-import com.ntt.basecore.autoconfigure.security.cipher.model.CipherProperties
+import com.ntt.basecore.autoconfigure.security.cipher.CipherProperties
 import org.slf4j.LoggerFactory
 import org.springframework.stereotype.Service
 import java.security.KeyFactory
@@ -93,7 +93,7 @@ class X25519KeyExchangeServiceImpl(
             val s2cKey = hkdfSha256(sharedSecret, salt, "cipher-s2c".toByteArray(), 32)
 
             val now = System.currentTimeMillis()
-            val sessionTtl = cipherProperties.keyExchange.sessionTtl
+            val sessionTtl = cipherProperties.keyExchange.sessionTtl.toMillis()
             val keyId = UUID.randomUUID().toString()
 
             val session = CipherKeySession(

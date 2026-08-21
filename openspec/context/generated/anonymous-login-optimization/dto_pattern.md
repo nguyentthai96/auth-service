@@ -1,87 +1,50 @@
 # DTO Pattern
 
-_Generated: 2025-01-20_
+_Generated: 2025-07-15_
 
 ## Request DTO
 
-### Anonymous Feature DTOs
-
-- `CreateAnonymousSessionRequest` — `src/main/kotlin/com/ntt/authservice/auth/adapter/in/web/dto/AnonymousDtos.kt`
-  - Fields: `deviceFingerprint: String? = null`
-  - Annotations: none (all fields optional)
-  - Pattern: Kotlin data class with default values
-
-- `StoreSessionDataRequest` — `src/main/kotlin/com/ntt/authservice/auth/adapter/in/web/dto/AnonymousDtos.kt`
-  - Fields: `namespace: String`, `key: String`, `value: Any`
-  - Annotations: `@field:NotBlank` (namespace, key), `@field:NotNull` (value)
-  - Pattern: Kotlin data class with Jakarta validation
-
-- `RenewAnonymousTokenCommand` — `src/main/kotlin/com/ntt/authservice/auth/application/command/RenewAnonymousTokenCommand.kt`
-  - Fields: `currentToken: String`
-  - Pattern: CQRS Command (implements `Command<AnonymousSessionResult>`)
-
-- `CreateAnonymousSessionCommand` — `src/main/kotlin/com/ntt/authservice/auth/application/command/CreateAnonymousSessionCommand.kt`
-  - Fields: `ipAddress: String`, `deviceFingerprint: String? = null`
-  - Pattern: CQRS Command (implements `Command<AnonymousSessionResult>`)
-
-### Auth DTOs (modified for anonymous)
-
-- `LoginRequestDto` — `src/main/kotlin/com/ntt/authservice/auth/adapter/in/web/dto/RequestDtos.kt`
-  - Anonymous fields: `anonymousSessionId: String? = null`, `anonymousToken: String? = null`
-  - Other fields: `username`, `password`, `domainCode?`, `captchaToken?`, `trustedDeviceHash?`, `deviceFingerprint?`, `captchaPayload?`
-  - Annotations: `@field:NotBlank` (username, password)
-
-- `RegisterRequestDto` — `src/main/kotlin/com/ntt/authservice/auth/adapter/in/web/dto/RequestDtos.kt`
-  - Anonymous fields: `anonymousSessionId: String? = null`, `anonymousToken: String? = null`
-  - Other fields: `username`, `email`, `password`, `fullName`, `phone?`, `domainCode`
-  - Annotations: `@field:NotBlank`, `@field:Email`, `@field:Size(min=8, max=100)`
+- `CreateAnonymousSessionRequest` — `src/main/kotlin/com/ntt/authservice/auth/adapter/in/web/dto/AnonymousDtos.kt` — fields: `deviceFingerprint: String?` (optional). No validation annotations.
+- `StoreSessionDataRequest` — `src/main/kotlin/com/ntt/authservice/auth/adapter/in/web/dto/AnonymousDtos.kt` — fields: `namespace: @NotBlank String`, `key: @NotBlank String`, `value: @NotNull Any`. Annotations: `@field:NotBlank`, `@field:NotNull`.
+- `CreateAnonymousSessionCommand` — `src/main/kotlin/com/ntt/authservice/auth/application/command/CreateAnonymousSessionCommand.kt` — CQRS command: `ipAddress: String`, `deviceFingerprint: String?`
+- `RenewAnonymousTokenCommand` — `src/main/kotlin/com/ntt/authservice/auth/application/command/RenewAnonymousTokenCommand.kt` — CQRS command: `currentToken: String`
 
 ## Response DTO
 
-### Anonymous Feature DTOs
+- `AnonymousTokenResponse` — `src/main/kotlin/com/ntt/authservice/auth/adapter/in/web/dto/AnonymousDtos.kt` — fields: `token: String`, `sessionId: String`, `expiresIn: Long`, `tokenType: String = "Bearer"`
+- `SessionDataResponse` — `src/main/kotlin/com/ntt/authservice/auth/adapter/in/web/dto/AnonymousDtos.kt` — fields: `namespace: String`, `key: String`, `value: Any?`
+- `DataTransferredInfo` — `src/main/kotlin/com/ntt/authservice/auth/adapter/in/web/dto/AnonymousDtos.kt` — fields: `itemCount: Int`, `namespaces: List<String>`, `status: String`
 
-- `AnonymousTokenResponse` — `src/main/kotlin/com/ntt/authservice/auth/adapter/in/web/dto/AnonymousDtos.kt`
-  - Fields: `token: String`, `sessionId: String`, `expiresIn: Long`, `tokenType: String = "Bearer"`
-  - Pattern: Kotlin data class
+## Result DTO (Application Layer)
 
-- `SessionDataResponse` — `src/main/kotlin/com/ntt/authservice/auth/adapter/in/web/dto/AnonymousDtos.kt`
-  - Fields: `namespace: String`, `key: String`, `value: Any?`
-  - Pattern: Kotlin data class
+- `AnonymousSessionResult` — `src/main/kotlin/com/ntt/authservice/auth/application/AnonymousSessionResult.kt` — fields: `token: String`, `sessionId: String`, `expiresIn: Long`
+- `PromotionResult` — `src/main/kotlin/com/ntt/authservice/auth/application/PromotionResult.kt` — fields: `status: Status`, `itemCount: Int`, `namespaces: List<String>`. Status enum: SUCCESS, PARTIAL, FAILED, CONFLICT, SKIPPED.
+- `DataTransferResult` (nested in AnonymousSessionDataService) — `src/main/kotlin/com/ntt/authservice/auth/application/AnonymousSessionDataService.kt` — fields: `itemCount: Int`, `namespaces: List<String>`, `partial: Boolean`
 
-- `DataTransferredInfo` — `src/main/kotlin/com/ntt/authservice/auth/adapter/in/web/dto/AnonymousDtos.kt`
-  - Fields: `itemCount: Int`, `namespaces: List<String>`, `status: String`
-  - Pattern: Kotlin data class, included in AuthResponse when promotion occurs
+## Configuration DTO
 
-### Auth DTOs (extended for anonymous)
+- `SecurityProperties.AnonymousProperties` — `src/main/kotlin/com/ntt/authservice/shared/config/SecurityProperties.kt` line 191 — data class with fields:
+  - `tokenTtlSeconds: Long = 3600` (1 hour)
+  - `sessionTtlSeconds: Long = 86400` (24 hours)
+  - `maxDataSizeBytes: Long = 65536` (64KB)
+  - `maxRenewals: Int = 24`
+  - `promotedDataTtlSeconds: Long = 604800` (7 days)
+  - `rateLimit: MfaProperties.LimitConfig` (maxAttempts=5, windowSeconds=3600, lockSeconds=0)
+  - **TO ADD**: `slidingWindowEnabled: Boolean = true` (feature flag)
+  - **TO ADD**: `scanCount: Int = 100` (SCAN batch size, tunable)
 
-- `AuthResponse` — `src/main/kotlin/com/ntt/authservice/auth/adapter/in/web/dto/AuthResponse.kt`
-  - Anonymous fields: `promotedFromAnonymous: Boolean = false`, `dataTransferred: DataTransferredInfo? = null`
-  - Companion: `from(AuthToken)` factory method
-  - JsonInclude: `@JsonInclude(Include.NON_NULL)` on `message` field
+## DTO Pattern Summary
 
-## Domain Result Types
-
-- `AnonymousSessionResult` — `src/main/kotlin/com/ntt/authservice/auth/application/AnonymousSessionResult.kt`
-  - Fields: `token: String`, `sessionId: String`, `expiresIn: Long`
-
-- `PromotionResult` — `src/main/kotlin/com/ntt/authservice/auth/application/PromotionResult.kt`
-  - Fields: `status: Status`, `itemCount: Int = 0`, `namespaces: List<String> = emptyList()`
-  - Status enum: `SUCCESS`, `PARTIAL`, `FAILED`, `CONFLICT`, `SKIPPED`
-
-- `LoginResult` (sealed class) — `src/main/kotlin/com/ntt/authservice/auth/application/LoginResult.kt`
-  - `Success(response: AuthResponse, promotionResult: PromotionResult? = null)`
-  - `MfaRequired(mfaToken: String, method: String, expiresIn: Long)`
-
-## Validation Annotations Used
-
-- `@field:NotBlank` — Required non-empty string fields
-- `@field:NotNull` — Required non-null fields
-- `@field:Email` — Email format validation
-- `@field:Size(min, max)` — Length constraints
-- `@Valid` — Controller-level validation trigger
+- All DTOs are Kotlin `data class` — no inheritance, no builders
+- Validation uses Jakarta Bean Validation: `@field:NotBlank`, `@field:NotNull`
+- Request DTOs at adapter layer (`auth.adapter.in.web.dto`)
+- Command DTOs at application layer (`auth.application.command`)
+- Result DTOs at application layer (`auth.application`)
+- Configuration DTOs as nested data classes in `SecurityProperties`
+- No Base*Request or Base*Response classes — flat DTO hierarchy
 
 ## NOT DETECTED
 
-- No `extends Base*Request` pattern (Kotlin data classes, no base request DTO)
-- No `@Getter`, `@Builder`, `@SuperBuilder` (Lombok not used — pure Kotlin data classes)
-- No `Filter` DTOs for anonymous feature
+- DTO base classes (no `BaseRequest`, `BaseResponse`)
+- `@Getter`, `@Builder`, `@SuperBuilder` annotations (Kotlin data classes used instead)
+- Filter DTOs

@@ -5,6 +5,8 @@ import com.ntt.authservice.auth.application.AuthService
 import com.ntt.authservice.auth.application.JwtService
 import com.ntt.authservice.rbac.adapter.out.persistence.repository.TokenBlacklistRepository
 import jakarta.validation.Valid
+import org.springframework.context.MessageSource
+import org.springframework.context.i18n.LocaleContextHolder
 import org.springframework.http.CacheControl
 import org.springframework.http.ResponseEntity
 import org.springframework.web.bind.annotation.*
@@ -17,7 +19,8 @@ import java.time.Duration
 class TokenController(
     private val jwtService: JwtService,
     private val authService: AuthService,
-    private val tokenBlacklistRepository: TokenBlacklistRepository
+    private val tokenBlacklistRepository: TokenBlacklistRepository,
+    private val messageSource: MessageSource
 ) {
 
     @PostMapping("/api/auth/introspect")
@@ -54,8 +57,10 @@ class TokenController(
     }
 
     @PostMapping("/api/auth/sessions/{userId}/revoke-all")
-    fun revokeAllSessions(@PathVariable userId: Long): ResponseEntity<RevokeSessionsResponse> {
+    fun revokeAllSessions(@PathVariable userId: Long): ResponseEntity<Map<String, Any?>> {
         val count = authService.revokeAllSessions(userId)
-        return ResponseEntity.ok(RevokeSessionsResponse(revokedCount = count, userId = userId))
+        val locale = LocaleContextHolder.getLocale()
+        val message = messageSource.getMessage("auth.sessions_revoked_all", null, "All sessions revoked", locale)
+        return ResponseEntity.ok(mapOf("revokedCount" to count, "userId" to userId, "message" to message))
     }
 }

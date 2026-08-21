@@ -33,7 +33,7 @@ class AccountLifecycleController(
      * Deactivate own account — user-initiated.
      */
     @PostMapping("/deactivate")
-    fun deactivateAccount(): ResponseEntity<Map<String, String>> {
+    fun deactivateAccount(): ResponseEntity<Map<String, String?>> {
         val userId = getCurrentUserId()
         accountLifecycleService.deactivateAccount(userId)
         val locale = LocaleContextHolder.getLocale()
@@ -51,7 +51,7 @@ class AccountLifecycleController(
     @PostMapping("/deletion-request")
     fun requestDeletion(
         @Valid @RequestBody request: DeletionRequest?
-    ): ResponseEntity<Map<String, Any>> {
+    ): ResponseEntity<Map<String, Any?>> {
         val userId = getCurrentUserId()
         val result = accountLifecycleService.requestDeletion(userId, request?.reason)
         val locale = LocaleContextHolder.getLocale()
@@ -69,7 +69,7 @@ class AccountLifecycleController(
      * Cancel a pending deletion request.
      */
     @DeleteMapping("/deletion-request")
-    fun cancelDeletion(): ResponseEntity<Map<String, String>> {
+    fun cancelDeletion(): ResponseEntity<Map<String, String?>> {
         val userId = getCurrentUserId()
         accountLifecycleService.cancelDeletion(userId)
         val locale = LocaleContextHolder.getLocale()

@@ -1,76 +1,73 @@
 # Base Class Map
 
-_Generated: 2026-08-20 | Services: auth-service_
-
-## Controller
-
-- `AuthController` — `src/main/kotlin/com/ntt/authservice/auth/adapter/in/web/AuthController.kt` — @RestController
-- `CqrsAuthController` — `src/main/kotlin/com/ntt/authservice/auth/adapter/in/web/CqrsAuthController.kt` — @RestController
-- `MfaController` — `src/main/kotlin/com/ntt/authservice/auth/adapter/in/web/MfaController.kt` — @RestController
-- `SsoController` — `src/main/kotlin/com/ntt/authservice/auth/adapter/in/web/SsoController.kt` — @RestController
-- `TokenController` — `src/main/kotlin/com/ntt/authservice/auth/adapter/in/web/TokenController.kt` — @RestController
-- `CaptchaController` — `src/main/kotlin/com/ntt/authservice/auth/adapter/in/web/CaptchaController.kt` — @RestController
-- `AnonymousAuthController` — `src/main/kotlin/com/ntt/authservice/auth/adapter/in/web/AnonymousAuthController.kt` — @RestController
-- `SessionController` — `src/main/kotlin/com/ntt/authservice/auth/adapter/in/web/SessionController.kt` — @RestController
-- `AdminSessionController` — `src/main/kotlin/com/ntt/authservice/auth/adapter/in/web/AdminSessionController.kt` — @RestController
-- `AccountLifecycleController` — `src/main/kotlin/com/ntt/authservice/auth/adapter/in/web/AccountLifecycleController.kt` — @RestController
-- `KeyExchangeController` — `src/main/kotlin/com/ntt/authservice/auth/adapter/in/web/KeyExchangeController.kt` — @RestController
-- `RateLimitAdminController` — `src/main/kotlin/com/ntt/authservice/auth/adapter/in/web/RateLimitAdminController.kt` — @RestController
-- `PolicyController` — `src/main/kotlin/com/ntt/authservice/pbac/adapter/in/web/PolicyController.kt` — @RestController
-- `RbacControllers` — `src/main/kotlin/com/ntt/authservice/rbac/adapter/in/web/RbacControllers.kt` — @RestController (5 controllers in 1 file)
-- `RolePermissionController` — `src/main/kotlin/com/ntt/authservice/rbac/adapter/in/web/RolePermissionController.kt` — @RestController
-
-## Handler (CQRS Command Handlers)
-
-- `LoginHandler` — `src/main/kotlin/com/ntt/authservice/auth/application/command/LoginHandler.kt` — @Service, handles `LoginCommand`
-- `RegisterHandler` — `src/main/kotlin/com/ntt/authservice/auth/application/command/RegisterHandler.kt` — @Service, handles `RegisterCommand`
-- `RefreshTokenHandler` — `src/main/kotlin/com/ntt/authservice/auth/application/command/RefreshTokenHandler.kt` — @Service, handles `RefreshTokenCommand`
-- `SwitchDomainHandler` — `src/main/kotlin/com/ntt/authservice/auth/application/command/SwitchDomainHandler.kt` — @Service, handles `SwitchDomainCommand`
-- `RevokeSessionsHandler` — `src/main/kotlin/com/ntt/authservice/auth/application/command/RevokeSessionsHandler.kt` — @Service, handles `RevokeSessionsCommand`
-- `AnonymousSessionHandler` — `src/main/kotlin/com/ntt/authservice/auth/application/command/AnonymousSessionHandler.kt` — @Service, handles `CreateAnonymousSessionCommand`
-- `RenewAnonymousTokenHandler` — `src/main/kotlin/com/ntt/authservice/auth/application/command/RenewAnonymousTokenHandler.kt` — @Service, handles `RenewAnonymousTokenCommand`
-- `TokenGenerator` — `src/main/kotlin/com/ntt/authservice/auth/application/command/TokenGenerator.kt` — @Service, JWT token generation
-- `BuildAuthResponseHandler` — `src/main/kotlin/com/ntt/authservice/auth/application/query/BuildAuthResponseHandler.kt` — @Service, handles `BuildAuthResponseQuery`
+_Generated: 2026-08-25 | Services: auth-service_
 
 ## Entity Base Classes
 
-- `SnowflakePersistentAuditableEntity` — `com.ntt.basecore.model.id.SnowflakePersistentAuditableEntity` (base-core dependency) — Snowflake ID + audit fields (createdAt, updatedAt, active)
-- `SnowflakeBaseEntity` — `com.ntt.basecore.model.id.SnowflakeBaseEntity` (base-core dependency) — Snowflake ID only
-- `VersionedAuditableEntity` — `src/main/kotlin/com/ntt/authservice/shared/persistence/VersionedAuditableEntity.kt` — extends `SnowflakePersistentAuditableEntity` + `@Version` for optimistic locking
+- `SnowflakePersistentAuditableEntity` — `com.ntt.basecore.model.id.SnowflakePersistentAuditableEntity` (base-core library — Snowflake ID + audit fields + soft-delete via `active`)
+  - Used by: `UserEntity`, `LoginSessionEntity`, `DomainEntity`, `UserDomainEntity`, `GroupEntity`, `UserGroupEntity`, `DomainRoleEntity`, `GroupRoleEntity`, `DomainResourceEntity`, `RolePermissionEntity`, `PolicyEntity`
+- `SnowflakeBaseEntity` — `com.ntt.basecore.model.id.SnowflakeBaseEntity` (base-core library — Snowflake ID only)
+  - Used by: `UserIdentityEntity`, `PasswordPolicyEntity`, `PasswordHistoryEntity`, `ActionEntity`, `PermissionEntity`, `RefreshTokenEntity`, `TokenBlacklistEntity`, `PolicyConditionEntity`
+- `VersionedAuditableEntity` — `src/main/kotlin/com/ntt/authservice/shared/persistence/VersionedAuditableEntity.kt`
+  - Extends `SnowflakePersistentAuditableEntity` + `@Version` for optimistic locking
+  - Local extension in auth-service
+
+## Controller (13 @RestController classes)
+
+- `AuthController` — `src/main/kotlin/com/ntt/authservice/auth/adapter/in/web/AuthController.kt`
+- `CqrsAuthController` — `src/main/kotlin/com/ntt/authservice/auth/adapter/in/web/CqrsAuthController.kt`
+- `MfaController` — `src/main/kotlin/com/ntt/authservice/auth/adapter/in/web/MfaController.kt`
+- `SsoController` — `src/main/kotlin/com/ntt/authservice/auth/adapter/in/web/SsoController.kt`
+- `TokenController` — `src/main/kotlin/com/ntt/authservice/auth/adapter/in/web/TokenController.kt`
+- `CaptchaController` — `src/main/kotlin/com/ntt/authservice/auth/adapter/in/web/CaptchaController.kt`
+- `AdminSessionController` — `src/main/kotlin/com/ntt/authservice/auth/adapter/in/web/AdminSessionController.kt`
+- `SessionController` — `src/main/kotlin/com/ntt/authservice/auth/adapter/in/web/SessionController.kt`
+- `AccountLifecycleController` — `src/main/kotlin/com/ntt/authservice/auth/adapter/in/web/AccountLifecycleController.kt`
+- `KeyExchangeController` — `src/main/kotlin/com/ntt/authservice/auth/adapter/in/web/KeyExchangeController.kt`
+- `RateLimitAdminController` — `src/main/kotlin/com/ntt/authservice/auth/adapter/in/web/RateLimitAdminController.kt`
+- `AnonymousAuthController` — `src/main/kotlin/com/ntt/authservice/auth/adapter/in/web/AnonymousAuthController.kt`
+- `InternalApiController` — `src/main/kotlin/com/ntt/authservice/auth/adapter/in/web/InternalApiController.kt`
+
+## Handler (Command/Query Handlers — CQRS)
+
+- `LoginHandler` — `src/main/kotlin/com/ntt/authservice/auth/application/command/LoginHandler.kt`
+- `RegisterHandler` — `src/main/kotlin/com/ntt/authservice/auth/application/command/RegisterHandler.kt` (⚠️ Assumption: inferred from CQRS pattern)
+- `RefreshTokenHandler` — `src/main/kotlin/com/ntt/authservice/auth/application/command/RefreshTokenHandler.kt` (⚠️ Assumption: inferred from CQRS pattern)
+- `SwitchDomainHandler` — `src/main/kotlin/com/ntt/authservice/auth/application/command/SwitchDomainHandler.kt` (⚠️ Assumption: inferred from CQRS pattern)
+- `RevokeSessionsHandler` — `src/main/kotlin/com/ntt/authservice/auth/application/command/RevokeSessionsHandler.kt` (⚠️ Assumption: inferred from CQRS pattern)
+- `TokenGenerator` — `src/main/kotlin/com/ntt/authservice/auth/application/command/TokenGenerator.kt`
+- `AnonymousSessionHandler` — `src/main/kotlin/com/ntt/authservice/auth/application/command/AnonymousSessionHandler.kt`
+- `RenewAnonymousTokenHandler` — `src/main/kotlin/com/ntt/authservice/auth/application/command/RenewAnonymousTokenHandler.kt`
+- `BuildAuthResponseHandler` — `src/main/kotlin/com/ntt/authservice/auth/application/query/BuildAuthResponseHandler.kt` (⚠️ Assumption: inferred from CQRS pattern)
 
 ## Client / Gateway
 
-- `CaptchaClient` — `src/main/kotlin/com/ntt/authservice/auth/adapter/out/http/CaptchaClient.kt` — interface (HTTP client)
-- `SsoProviderClient` — `src/main/kotlin/com/ntt/authservice/auth/adapter/out/http/SsoProviderClient.kt` — interface (HTTP client)
-- `HttpCaptchaGateway` — `src/main/kotlin/com/ntt/authservice/auth/adapter/out/http/HttpCaptchaGateway.kt` — HTTP gateway implementation
-- `HttpSsoGateway` — `src/main/kotlin/com/ntt/authservice/auth/adapter/out/http/HttpSsoGateway.kt` — HTTP gateway implementation
-- `CaptchaGatewayAdapter` — `src/main/kotlin/com/ntt/authservice/auth/adapter/out/gateway/CaptchaGatewayAdapter.kt` — adapter for CaptchaGateway port
-- `OAuth2TokenExchanger` — `src/main/kotlin/com/ntt/authservice/auth/adapter/out/sso/OAuth2TokenExchanger.kt` — @Component, exchanges OAuth2 auth code
+- `SsoGateway` (port) — `src/main/kotlin/com/ntt/authservice/auth/application/port/out/SsoGateway.kt`
+- `HttpSsoGateway` (adapter) — `src/main/kotlin/com/ntt/authservice/auth/adapter/out/http/HttpSsoGateway.kt`
+- `SsoProviderClient` — `src/main/kotlin/com/ntt/authservice/auth/adapter/out/http/SsoProviderClient.kt`
+- `CaptchaGateway` (port) — `src/main/kotlin/com/ntt/authservice/auth/application/port/out/CaptchaGateway.kt`
+- `CaptchaGatewayAdapter` — `src/main/kotlin/com/ntt/authservice/auth/adapter/out/gateway/CaptchaGatewayAdapter.kt`
+- `HttpCaptchaGateway` — `src/main/kotlin/com/ntt/authservice/auth/adapter/out/http/HttpCaptchaGateway.kt`
+- `CaptchaClient` — `src/main/kotlin/com/ntt/authservice/auth/adapter/out/http/CaptchaClient.kt`
+- `OAuth2TokenExchanger` — `src/main/kotlin/com/ntt/authservice/auth/adapter/out/sso/OAuth2TokenExchanger.kt`
 
-## Port Interfaces (Hexagonal)
+## Event Publishers
 
-- `UserPort` — `src/main/kotlin/com/ntt/authservice/auth/application/port/out/UserPort.kt` — interface
-- `TokenStore` — `src/main/kotlin/com/ntt/authservice/auth/application/port/out/TokenStore.kt` — interface
-- `DomainPort` — `src/main/kotlin/com/ntt/authservice/auth/application/port/out/DomainPort.kt` — interface
-- `EventPublisher` — `src/main/kotlin/com/ntt/authservice/auth/application/port/out/EventPublisher.kt` — interface
-- `CaptchaGateway` — `src/main/kotlin/com/ntt/authservice/auth/application/port/out/CaptchaGateway.kt` — interface
-- `SsoGateway` — `src/main/kotlin/com/ntt/authservice/auth/application/port/out/SsoGateway.kt` — interface
-- `PermissionCache` — `src/main/kotlin/com/ntt/authservice/auth/application/port/out/PermissionCache.kt` — interface
+- `EventPublisher` (port) — `src/main/kotlin/com/ntt/authservice/auth/application/port/out/EventPublisher.kt`
+- `SpringEventPublisher` (adapter) — `src/main/kotlin/com/ntt/authservice/auth/adapter/out/event/SpringEventPublisher.kt`
+- `KafkaEventPublisher` (adapter, @Primary) — `src/main/kotlin/com/ntt/authservice/auth/adapter/out/event/KafkaEventPublisher.kt`
 
-## Persistence Adapters
+## Exception Handling
 
-- `UserPersistenceAdapter` — `src/main/kotlin/com/ntt/authservice/auth/adapter/out/persistence/UserPersistenceAdapter.kt` — implements UserPort
-- `TokenStorePersistenceAdapter` — `src/main/kotlin/com/ntt/authservice/auth/adapter/out/persistence/TokenStorePersistenceAdapter.kt` — implements TokenStore
-- `DomainPersistenceAdapter` — `src/main/kotlin/com/ntt/authservice/auth/adapter/out/persistence/DomainPersistenceAdapter.kt` — implements DomainPort
+- `GlobalExceptionHandler` — `src/main/kotlin/com/ntt/authservice/shared/exception/GlobalExceptionHandler.kt`
+  - `@RestControllerAdvice` — extends `BaseControllerAdvice` (base-core)
+  - Handles `AuthException` hierarchy with RFC 7807 ProblemDetail
 
-## Exception Handler
+## Cache (abstract)
 
-- `GlobalExceptionHandler` — `src/main/kotlin/com/ntt/authservice/shared/exception/GlobalExceptionHandler.kt` — @RestControllerAdvice, extends BaseControllerAdvice (base-core)
-
-## Factory
-
-NOT DETECTED — no explicit Factory pattern classes found. CAPTCHA verification uses `CaptchaVerifier` interface with pluggable implementations.
+- `AbstractTwoTierCache` — `src/main/kotlin/com/ntt/authservice/shared/cache/AbstractTwoTierCache.kt`
+  - Abstract base for L1 (Caffeine) + L2 (Redis) caching
 
 ## NOT DETECTED
 
-- Traditional Factory classes
+- Factory classes (no factory pattern detected in auth-service — uses Spring DI instead)

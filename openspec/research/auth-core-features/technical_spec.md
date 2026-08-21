@@ -765,7 +765,7 @@ graph TD
 | 3 | MFA verify success | Integration | Valid mfaToken + correct OTP | 200 + AuthResponse |
 | 4 | MFA verify failure | Unit | Wrong OTP code (< max attempts) | 401 + MFA_CODE_INVALID |
 | 5 | MFA max attempts | Integration | 3 wrong OTP codes | 403 + MFA_MAX_ATTEMPTS |
-| 6 | CAPTCHA required | Integration | Failed logins ≥ threshold, no captcha token | 428 + CAPTCHA_REQUIRED |
+| 6 | CAPTCHA required | Integration | Failed logins >= threshold, no captcha token | 428 + CAPTCHA_REQUIRED |
 | 7 | SSO callback success | Integration | Valid auth code | 200 + AuthResponse |
 | 8 | SSO JIT provisioning | Integration | New user, auto-provision ON | 200 + new UserEntity + UserIdentityEntity |
 | 9 | SSO user not provisioned | Integration | New user, auto-provision OFF | 403 + SSO_USER_NOT_PROVISIONED |

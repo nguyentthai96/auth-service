@@ -1,184 +1,139 @@
-# SRS: Anonymous Login Optimization (MAINTENANCE)
+# SRS: Anonymous Login Optimization (MAINTENANCE — v2)
 
-[CHANGED] Scope reassessed from EXTEND → MAINTENANCE. Feature is fully implemented. This SRS covers post-implementation hardening: bug fixes, tests, observability.
+[CHANGED] Entire scope changed from archive v1 (JTI fix, ThreadLocal, metrics, tests) to v2 (Redis optimization + data integrity hardening). All archive v1 fixes are completed and deployed.
 
 ## 1. Feature Overview
 
-Anonymous Login Optimization feature đã được implement hoàn chỉnh trong codebase (12 classes mới + 10 classes sửa). SRS này mô tả MAINTENANCE scope: sửa bug JTI blacklisting, loại bỏ ThreadLocal smell, thêm Micrometer observability metrics, và bổ sung test coverage.
+Anonymous login feature is fully implemented and functionally correct. This SRS covers MAINTENANCE optimizations: Redis pipelining, Lua scripting for atomicity, sliding window rate limiting, batch data transfer, safe distributed lock release, TOCTOU fix, running data size counter, token blacklist cleanup, and configuration enhancements.
 
-## 2. Bug Fix Requirements
+**Zero API contract changes** — all optimizations are internal to Redis operations.
 
-### FIX-001: JTI Blacklisting Correctness [🔴 BUG — Security]
-- **Current behavior**: `LoginHandler` (L160) và `RegisterHandler` (L94) truyền `anonymousJti = ""` vào `SessionPromotionService.promoteSession()`. Kết quả: `TokenBlacklistEntity` được tạo với `tokenJti = ""`, anonymous token thực tế KHÔNG bị blacklist và có thể tái sử dụng sau promotion.
-- **Expected behavior**: Anonymous token JTI phải được blacklist chính xác sau promotion. Token phải bị reject khi sử dụng lại (FR-005 satisfaction).
-- **Root cause**: `LoginCommand` và `RegisterCommand` không có field cho anonymous token JTI. Controller layer có Authorization header nhưng không propagate JTI qua command.
-- **Fix specification**:
-  1. Add `val anonymousToken: String? = null` to `LoginRequestDto` and `RegisterRequestDto` — client gửi full anonymous JWT
-  2. Add `val anonymousTokenJti: String? = null` to `LoginCommand` and `RegisterCommand`
-  3. In `CqrsAuthController.login()` and `.register()`: if `request.anonymousToken != null` → parse via `jwtService.parseAnonymousToken(request.anonymousToken)` → extract `claims.id` as JTI
-  4. Pass `anonymousTokenJti` to command → handler passes to `SessionPromotionService`
-  5. In `LoginHandler` and `RegisterHandler`: replace `anonymousJti = ""` with `anonymousJti = command.anonymousTokenJti ?: ""`
-- **Validation**: 
-  - After promotion, `TokenBlacklistEntity.tokenJti` contains actual JTI (not empty string)
-  - Anonymous token with that JTI is rejected by `JwtAuthFilter` blacklist check
-  - Login/register still succeeds if `anonymousToken` field is null (backward compatible)
-- **API change**: New optional field `anonymousToken` in request body. Non-breaking — existing clients unaffected.
+## 2. Functional Requirements
 
-### FIX-002: Remove ThreadLocal from RegisterHandler [🟡 SMELL — Architecture]
-- **Current behavior**: `RegisterHandler` uses `ThreadLocal<PromotionResult?>` (L35) and exposes `lastPromotionResult` var. `CqrsAuthController.register()` reads this after `handle()`.
-- **Expected behavior**: `RegisterHandler` returns promotion result as part of its return type (like `LoginHandler` returns `LoginResult`).
-- **Risks of current approach**: ThreadLocal leak in pooled/virtual threads (Project Loom); temporal coupling between handler and controller; violates SRP.
-- **Fix specification**:
-  1. Create `RegisterResult.kt` sealed class:
-     ```kotlin
-     sealed class RegisterResult {
-         data class Success(
-             val authToken: AuthToken,
-             val promotionResult: PromotionResult? = null
-         ) : RegisterResult()
-     }
-     ```
-  2. Change `RegisterHandler` from `CommandHandler<RegisterCommand, AuthToken>` to `CommandHandler<RegisterCommand, RegisterResult>`
-  3. Remove `promotionResultHolder: ThreadLocal<PromotionResult?>` and `lastPromotionResult: PromotionResult?`
-  4. Return `RegisterResult.Success(authToken, promotionResult)` from `handle()`
-  5. Update `CqrsAuthController.register()` to unwrap `RegisterResult`:
-     ```kotlin
-     val result = registerHandler.handle(command)
-     when (result) {
-         is RegisterResult.Success -> {
-             val response = AuthResponse.from(result.authToken)
-             // Use result.promotionResult for promotion metadata
-         }
-     }
-     ```
-- **Validation**:
-  - RegisterHandler no longer has ThreadLocal or `lastPromotionResult`
-  - Promotion result available via return type, not side channel
-  - No temporal coupling between handler and controller
-- **⚠️ Assumption**: `CommandHandler<C, R>` from eventsourcing-utils supports sealed class as R type parameter. If not → use `data class RegisterResult(val authToken: AuthToken, val promotionResult: PromotionResult? = null)` instead.
+### FR-001: Pipeline Session Creation [MODIFY]
+- **Current behavior**: `AnonymousSessionHandler.handle()` makes 2 sequential Redis calls: `opsForHash().putAll()` then `expire()` (L63-64).
+- **Expected behavior**: Batch HSET+EXPIRE into single `executePipelined(RedisCallback)` call — 1 RTT instead of 2.
+- **Validation**: Session creation produces identical Redis state. P95 latency < 50ms. Pipeline result checked for errors.
+- **Fallback**: FR-010 — if pipeline throws exception, fall back to sequential calls.
 
-### FIX-003: Observability Metrics [🟡 GAP — Operations]
-- **Current behavior**: Zero Micrometer metrics for anonymous session lifecycle. No production monitoring capability.
-- **Expected behavior**: Standard Micrometer counters and timers for all anonymous operations, exposed via Spring Boot Actuator (`/actuator/prometheus`).
-- **Fix specification**:
-  - Inject `io.micrometer.core.instrument.MeterRegistry` into 5 anonymous service classes
-  - Add counters and timers as specified:
+### FR-002: Sliding Window Rate Limiting [MODIFY]
+- **Current behavior**: `AnonymousRateLimitService.checkRateLimit()` uses fixed-window INCR+EXPIRE (L44-54). Allows burst-at-boundary attacks.
+- **Expected behavior**: Replace with Lua `sliding_window_rate_limit.lua` script executing atomically. Weighted formula: `prev × (1 - elapsed/window) + current`. Returns count (allowed) or -1 (denied).
+- **Redis keys**: `anon:rate:{ip}:{currentWindowId}` and `anon:rate:{ip}:{prevWindowId}`
+- **Validation**: Rate limiting precision within 2% of true sliding window. Lua script syntactically valid. Feature flag `slidingWindowEnabled` controls rollout.
+- **Fallback**: FR-011 — if Lua script fails, fall back to fixed-window INCR+EXPIRE.
 
-  | Metric Name | Type | Tags | Class | When |
-  |-------------|------|------|-------|------|
-  | `auth.anonymous.sessions.created` | Counter | — | `AnonymousSessionHandler` | After successful session creation |
-  | `auth.anonymous.sessions.renewed` | Counter | — | `RenewAnonymousTokenHandler` | After successful token renewal |
-  | `auth.anonymous.sessions.promoted` | Counter | `status=[SUCCESS,PARTIAL,FAILED,CONFLICT]` | `SessionPromotionService` | After promotion attempt |
-  | `auth.anonymous.rate_limited` | Counter | — | `AnonymousRateLimitService` | When rate limit exceeded |
-  | `auth.anonymous.data.stored` | Counter | — | `AnonymousSessionDataService` | After successful data store |
-  | `auth.anonymous.data.size_exceeded` | Counter | — | `AnonymousSessionDataService` | When size limit exceeded |
-  | `auth.anonymous.promotion.duration` | Timer | — | `SessionPromotionService` | Duration of `promoteSession()` |
-  | `auth.anonymous.token.generation.duration` | Timer | — | `AnonymousSessionHandler` | Duration of token generation |
+### FR-003: Batch Data Transfer [MODIFY]
+- **Current behavior**: `AnonymousSessionDataService.transferData()` iterates per-key: SCAN → per-key GET → per-key SET (O(1+2N) RTTs, L90-115).
+- **Expected behavior**: SCAN collect keys → pipeline GET all → pipeline SET all user keys. ~3 RTTs regardless of N.
+- **Validation**: All data transferred correctly. `DataTransferResult` API unchanged. P95 latency < 10ms for 10 keys.
 
-- **Implementation pattern** (following Spring Boot conventions):
-  ```kotlin
-  @Service
-  class AnonymousSessionHandler(
-      private val jwtService: JwtService,
-      private val anonymousRateLimitService: AnonymousRateLimitService,
-      private val redisTemplate: StringRedisTemplate,
-      private val securityProperties: SecurityProperties,
-      private val meterRegistry: MeterRegistry  // ← NEW
-  ) : CommandHandler<CreateAnonymousSessionCommand, AnonymousSessionResult> {
-  
-      override fun handle(command: CreateAnonymousSessionCommand): AnonymousSessionResult {
-          // ...existing logic...
-          val sample = Timer.start(meterRegistry)
-          val result = // thservice/auth/application/SessionPromotionServiceTest.kt`
-  - `src/test/kotlin/com/ntt/authservice/auth/application/AnonymousRateLimitServiceTest.kt`
-- **Test focus areas**:
-  - JwtService: anonymous token generation (correct claims), parsing (type validation), invalid token rejection
-  - AnonymousSessionDataService: store/read/delete, size limit enforcement, session expiry handling
-  - SessionPromotionService: lock acquisition, data transfer, blacklisting, lock release, partial failure handling
-  - AnonymousRateLimitService: under limit allow, at limit deny, window expiry reset, Redis failure fail-open
-- **Validation**: All unit tests pass. Each public method has at least happy-path + error-path coverage.
+### FR-004: Safe Distributed Lock Release [MODIFY]
+- **Current behavior**: `SessionPromotionService` uses `LOCK_VALUE = "locked"` (L35) and simple `DELETE lockKey` (L142). Cross-process lock release possible.
+- **Expected behavior**: Lock value is UUID (unique per acquisition). Release via Lua `safe_lock_release.lua`: `if GET(key) == uuid then DEL(key) return 1 else return 0 end`.
+- **Validation**: Zero cross-process lock releases. Lock acquisition uses UUID. Lua script returns 0 if not owner (logged as warning, no error).
 
-## 4. Non-functional Requirements
+### FR-005: Running Data Size Counter [MODIFY]
+- **Current behavior**: `getSessionDataSize()` does SCAN+STRLEN loop (O(N), L129-147).
+- **Expected behavior**: Maintain `dataSize` field in session hash (`anon:session:{id}`). Initialize to "0" on session creation. Atomic increment via `atomic_data_store.lua`. Decrement on `deleteData()` via HINCRBY negative.
+- **Validation**: `dataSize=0` on new session. Counter accurate to ±0 (Lua atomicity). O(1) read via HGET. Backward compatible — null → 0 for pre-existing sessions.
 
-| NFR-ID | Loại | Yêu cầu | Target | Status |
-|--------|------|---------|--------|--------|
-| NFR-001 | Performance | Anonymous token generation response time | < 100ms P95 | ✅ Met (existing impl) |
-| NFR-002 | Security | Anonymous token creation rate limiting | Max 5/IP/hour | ✅ Met (existing impl) |
-| NFR-003 | Reliability | Session promotion atomicity | No partial state on failure | 🔴 FIX-001 (JTI not blacklisted) |
-| NFR-004 | Performance | Promotion overhead added to login | < 50ms additional | ✅ Met (existing impl) |
-| NFR-005 | Scalability | Concurrent anonymous sessions | 10,000+ simultaneous | ✅ Met (existing impl) |
-| NFR-006 | Performance | Session data read/write latency | < 20ms P95 | ✅ Met (existing impl) |
-| NFR-007 | Security | Anonymous token scope limitation | ROLE_ANONYMOUS only | ✅ Met (existing impl) |
-| NFR-008 | Reliability | Redis failure handling | Fail-open for rate limiting | ✅ Met (existing impl) |
-| NFR-009 | Observability | Anonymous session lifecycle metrics | Micrometer counters/timers | 🟡 FIX-003 (not yet) |
-| NFR-010 | Quality | Test coverage for anonymous feature | >80% code coverage | 🔴 TEST-001/002 (0% currently) |
+### FR-006: Observability Tracing Spans [DEFERRED]
+- **Rationale**: Existing Micrometer counters and timers (from archive v1) provide adequate operational visibility. Observation spans are incremental improvement — deferred to Phase 4.
 
-## 5. API Changes (FIX-001 only)
+### FR-007: Atomic Size Check + Data Write (TOCTOU Fix) [MODIFY]
+- **Current behavior**: `storeData()` calls `getSessionDataSize()` → check limit → `set()` (L37-57). Non-atomic — concurrent requests can exceed 64KB limit.
+- **Expected behavior**: Single Lua `atomic_data_store.lua` script atomically: HGET dataSize → check limit → SET data EX ttl → HINCRBY dataSize. Returns new total size or -1 (denied).
+- **Lua script**: 2 KEYS (session hash, data key), 3 ARGV (maxDataSizeBytes, value, ttlSeconds). ~15 lines.
+- **Validation**: Zero over-limit writes under concurrency. Test with CountDownLatch + ExecutorService (N threads).
 
-### Modified Endpoints
+### FR-008: RedisLuaScriptConfig Configuration Class [NEW]
+- **Action**: Create `RedisLuaScriptConfig` Spring `@Configuration` class at `shared/config/`.
+- **Beans**:
+  - `slidingWindowRateLimitScript(): DefaultRedisScript<Long>` — loads `classpath:redis/sliding_window_rate_limit.lua`
+  - `safeLockReleaseScript(): DefaultRedisScript<Long>` — loads `classpath:redis/safe_lock_release.lua`
+  - `atomicDataStoreScript(): DefaultRedisScript<Long>` — loads `classpath:redis/atomic_data_store.lua`
+- **Validation**: All 3 beans injectable. SHA1 cached automatically by `DefaultRedisScript`.
 
-| Method | Path | Change | Breaking? |
-|--------|------|--------|-----------|
-| `POST` | `/api/auth/login` | Add optional `anonymousToken: String?` to request body | No — field is optional |
-| `POST` | `/api/auth/register` | Add optional `anonymousToken: String?` to request body | No — field is optional |
+### FR-009: Lua Script Files [NEW]
+- **Action**: Create 3 Lua script files in `src/main/resources/redis/`:
+  1. `sliding_window_rate_limit.lua` — ~27 lines, 2 KEYS, 3 ARGV, returns Long
+  2. `safe_lock_release.lua` — ~8 lines, 1 KEY, 1 ARGV, returns Long
+  3. `atomic_data_store.lua` — ~15 lines, 2 KEYS, 3 ARGV, returns Long
+- **Validation**: Scripts syntactically valid Lua. Unit tests verify correct behavior with embedded Redis.
 
-### Request Body Changes
+### FR-010: Pipeline Fallback on Failure [MODIFY]
+- **Current behavior**: No pipeline usage exists.
+- **Expected behavior**: When `executePipelined()` throws exception, fall back to sequential Redis calls. Log warning "Pipeline failed, falling back to sequential". Session created regardless of pipeline failure.
+- **Validation**: Session creation succeeds even if pipeline fails.
 
-**LoginRequestDto** (after FIX-001):
-```json
-{
-  "username": "string",
-  "password": "string",
-  "domainCode": "string?",
-  "captchaToken": "string?",
-  "anonymousSessionId": "string?",
-  "anonymousToken": "string?"
-}
-```
+### FR-011: Lua Script Fallback on Failure [MODIFY]
+- **Current behavior**: No Lua script usage exists.
+- **Expected behavior**: When Lua script execution fails (Redis version incompatibility, script error), fall back to fixed-window INCR+EXPIRE. Log warning. Rate limiting still functional (degraded).
+- **Validation**: Rate limiting works under Lua failure. No request blocked by script errors.
 
-**RegisterRequestDto** (after FIX-001):
-```json
-{
-  "username": "string",
-  "email": "string",
-  "password": "string",
-  "fullName": "string",
-  "anonymousSessionId": "string?",
-  "anonymousToken": "string?"
-}
-```
+### FR-012: Running Counter Periodic Reconciliation [DEFERRED]
+- **Rationale**: `atomic_data_store.lua` makes write + increment atomic — primary drift risk eliminated. Sessions are ephemeral (24h TTL). Deferred to Phase 4.
 
-> **Design decision (DD-012)**: Full JWT in request body (not header) — server validates token before trusting JTI. Consistent with existing `anonymousSessionId` field being in body.
+### FR-013: TokenBlacklist Cleanup Scheduler [MODIFY]
+- **Current behavior**: `TokenBlacklistRepository` only has `existsByTokenJti()`. No cleanup of expired entries. Table grows unbounded.
+- **Expected behavior**: Extend `SessionCleanupScheduler` with second `@Scheduled` method: `cleanupExpiredBlacklistEntries()`. Runs every 6 hours (configurable). Calls `tokenBlacklistRepository.deleteByExpiresAtBefore(Instant.now())`.
+- **Repository change**: Add `fun deleteByExpiresAtBefore(cutoff: Instant): Int` to `TokenBlacklistRepository` (Spring Data JPA derived query).
+- **Validation**: Expired entries deleted. Non-expired entries preserved. Scheduler runs on configured interval.
 
-## 6. Traceability Matrix
+### FR-014: Configuration Enhancements [MODIFY]
+- **Current behavior**: `AnonymousProperties` has 6 fields (tokenTtl, sessionTtl, maxDataSize, maxRenewals, promotedDataTtl, rateLimit).
+- **Expected behavior**: Add 2 new fields:
+  - `val slidingWindowEnabled: Boolean = true` — feature flag for sliding window rate limiting
+  - `val scanCount: Int = 100` — SCAN batch size (tunable for large datasets)
+- **Validation**: Config has default values. Application starts without explicit configuration.
 
-| FR-ID | Original Status | MAINTENANCE Fix | Validation |
-|-------|----------------|-----------------|------------|
-| FR-001 | ✅ Implemented | FIX-003 (metrics) | Counter increments on create |
-| FR-002 | ✅ Implemented | FIX-003 (metrics) | Timer records session init |
-| FR-003 | ✅ Implemented | FIX-001 (JTI), FIX-002 (RegisterResult) | JTI correctly blacklisted, no ThreadLocal |
-| FR-004 | ✅ Implemented | — | TEST-001 validates transfer |
-| FR-005 | 🔴 BUG | FIX-001 (JTI blacklisting) | Correct JTI in token_blacklist |
-| FR-006 | ✅ Implemented | FIX-003 (metrics) | Counter increments on store |
-| FR-007 | ✅ Implemented | FIX-003 (metrics) | Counter increments on size exceeded |
-| FR-008 | ✅ Implemented | FIX-003 (metrics) | Counter increments on renewal |
-| FR-009 | ✅ Implemented | FIX-003 (metrics) | Counter increments on rate limit |
-| FR-010 | ✅ Implemented | FIX-003 (metrics) | Counter increments on promotion |
-| FR-011 | ✅ Implemented | — | TEST-001 validates ROLE_ANONYMOUS |
-| FR-012 | ✅ Implemented | — | Config already working |
-| FR-013 | ✅ Implemented | FIX-002 (RegisterResult) | Register response includes promotion metadata |
+## 3. Non-Functional Requirements
 
-**Coverage: 13/13 FRs addressed (5 with fixes, 8 with tests only)**
+| NFR-ID | Loại | Yêu cầu | Target |
+|--------|------|---------|--------|
+| NFR-001 | Performance | Session creation P95 latency | < 50ms (from ~100ms) |
+| NFR-002 | Accuracy | Rate limiting precision | Within 2% of true sliding window |
+| NFR-003 | Performance | Data transfer P95 latency (10 keys) | < 10ms (from ~50ms) |
+| NFR-004 | Reliability | Lock safety | Zero cross-process lock releases |
+| NFR-005 | Performance | Data store with size check P95 | < 5ms (from ~20ms) |
+| NFR-006 | Data Integrity | Size limit enforcement under concurrency | Zero over-limit writes |
 
-## 7. Assumptions
+## 4. API Changes
 
-- ⚠️ Assumption: `CommandHandler<C, R>` from eventsourcing-utils supports sealed class as R type parameter — if not, use plain data class for RegisterResult
-- ⚠️ Assumption: Spring Boot Actuator + Micrometer available in project (evidenced by `/actuator/**` permitAll in SecurityConfig)
-- ⚠️ Assumption: Full JWT string in request body is acceptable (client already has the anonymous token — sending it in body is natural)
-- ⚠️ Assumption: Redis testcontainer or embedded Redis available for integration tests
+**None.** All optimizations are internal to Redis operations. Same endpoints, same request/response schemas, same HTTP status codes.
 
-## 8. Open Questions
+## 5. Traceability Matrix
 
-- ⚠️ OPEN QUESTION: Should `anonymousToken` field in request be the full JWT string? → Recommendation: Yes — server validates token before trusting JTI. Sending only JTI allows spoofing.
-- ⚠️ OPEN QUESTION: Should `RegisterHandler` implement `CommandHandler<RegisterCommand, RegisterResult>` or should we use a different pattern? → Recommendation: Change to RegisterResult sealed class, verify eventsourcing-utils accepts sealed class type parameter.
-- ⚠️ OPEN QUESTION: What Grafana dashboard panels should be created for anonymous session monitoring? → Recommendation: Out of scope — define metric names consistently, dashboards can be created separately.
+| FR-ID | Action | Affected File(s) | Phase |
+|-------|--------|------------------|-------|
+| FR-001 | [MODIFY] | `AnonymousSessionHandler.kt` | 2 |
+| FR-002 | [MODIFY] | `AnonymousRateLimitService.kt` | 2 |
+| FR-003 | [MODIFY] | `AnonymousSessionDataService.kt` | 2 |
+| FR-004 | [MODIFY] | `SessionPromotionService.kt` | 1 |
+| FR-005 | [MODIFY] | `AnonymousSessionDataService.kt`, `AnonymousSessionHandler.kt` | 2 |
+| FR-006 | [DEFERRED] | — | 4 |
+| FR-007 | [MODIFY] | `AnonymousSessionDataService.kt` | 1 |
+| FR-008 | [NEW] | `RedisLuaScriptConfig.kt` | 1 |
+| FR-009 | [NEW] | `*.lua` files (3) | 1 |
+| FR-010 | [MODIFY] | `AnonymousSessionHandler.kt` | 3 |
+| FR-011 | [MODIFY] | `AnonymousRateLimitService.kt` | 3 |
+| FR-012 | [DEFERRED] | — | 4 |
+| FR-013 | [MODIFY] | `SessionCleanupScheduler.kt`, `Repositories.kt` | 3 |
+| FR-014 | [MODIFY] | `SecurityProperties.kt` | 3 |
+
+**Active FRs: 12/14** (FR-006 and FR-012 deferred)
+
+## 6. Assumptions
+
+- ⚠️ Assumption: Redis supports Lua EVAL (Redis 2.6+, available since 2012) — verified: project uses Redis 7+
+- ⚠️ Assumption: Spring Data Redis `executePipelined()` available with Lettuce driver — verified: Lettuce is default driver for spring-boot-starter-data-redis
+- ⚠️ Assumption: Single-node Redis deployment — Redlock unnecessary, simple UUID+SETNX sufficient
+- ⚠️ Assumption: `DefaultRedisScript<Long>` SHA1 caching works transparently — documented in Spring Data Redis
+- ⚠️ Assumption: Optimizations are internal only — no API contract changes needed
+
+## 7. Open Questions
+
+- ⚠️ OPEN QUESTION: Should `RedisLuaScriptConfig` define scripts as `DefaultRedisScript<Long>` or `RedisScript<Long>` interface? → **Recommendation**: `DefaultRedisScript<Long>` — concrete class with SHA1 caching, simpler bean definition.
+- ⚠️ OPEN QUESTION: Should `atomic_data_store.lua` also handle `deleteData()` decrement? → **Recommendation**: Keep delete decrement in Kotlin — deleting already-gone data is safe, no atomicity needed.
+- ⚠️ OPEN QUESTION: Should `SessionCleanupScheduler` be renamed to `AuthCleanupScheduler`? → **Recommendation**: Keep as-is — name change is cosmetic and could break references.

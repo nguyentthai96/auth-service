@@ -1,7 +1,8 @@
 package com.ntt.authservice.auth.adapter.out.cipher
 
+import com.ntt.basecore.autoconfigure.security.cipher.CipherProperties
+import com.ntt.basecore.autoconfigure.security.cipher.model.CipherHeaderMissingException
 import com.ntt.basecore.autoconfigure.security.cipher.model.CipherHeaders
-import com.ntt.basecore.autoconfigure.security.cipher.model.CipherProperties
 import com.ntt.basecore.autoconfigure.security.cipher.model.ReplayDetectedException
 import com.ntt.basecore.autoconfigure.security.cipher.model.RequestExpiredException
 import com.ntt.basecore.autoconfigure.security.cipher.security.AntiReplayValidator
@@ -30,10 +31,10 @@ class RedisAntiReplayValidator(
     private val log = LoggerFactory.getLogger(RedisAntiReplayValidator::class.java)
 
     override fun validate(request: HttpServletRequest) {
-        val timestamp = request.getHeader(CipherHeaders.X_TIMESTAMP)
-            ?: throw RequestExpiredException("Missing X-Timestamp header")
-        val nonce = request.getHeader(CipherHeaders.X_NONCE)
-            ?: throw ReplayDetectedException("Missing X-Nonce header")
+        val timestamp = request.getHeader(CipherHeaders.TIMESTAMP)
+            ?: throw CipherHeaderMissingException(CipherHeaders.TIMESTAMP)
+        val nonce = request.getHeader(CipherHeaders.NONCE)
+            ?: throw CipherHeaderMissingException(CipherHeaders.NONCE)
 
         // 1. Timestamp validation
         validateTimestamp(timestamp)
@@ -50,7 +51,7 @@ class RedisAntiReplayValidator(
         val requestTime = try {
             timestamp.toLong()
         } catch (e: NumberFormatException) {
-            throw RequestExpiredException("Invalid timestamp format: $timestamp")
+            throw RequestExpiredException(-1L)
         }
 
         val now = System.currentTimeMillis()
@@ -59,9 +60,7 @@ class RedisAntiReplayValidator(
 
         if (drift > windowMs) {
             log.warn("Request timestamp out of tolerance: drift={}ms, window={}ms", drift, windowMs)
-            throw RequestExpiredException(
-                "Request timestamp out of tolerance: drift=${drift}ms, window=${windowMs}ms"
-            )
+            throw RequestExpiredException(drift / 1000L)
         }
     }
 

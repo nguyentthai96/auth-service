@@ -9,7 +9,7 @@
 | Mục | Nội dung |
 |-----|----------|
 | **Feature** | ERP IAM System (3 Modules: auth-service, account-service, system-admin-service) |
-| **Ngày review** | 2026-08-05 |
+| **Ngày review** | 2025-07-15 |
 | **Lần review thứ** | 1 / 3 |
 | **Kết quả tổng** | ✅ PASS |
 
@@ -21,15 +21,15 @@
 
 | File | Check | Result | Issues |
 |------|-------|--------|--------|
-| `web_research.md` | Every claim has URL? | ✅ PASS | All 14 sources have URLs or standard references (RFC, OWASP, NIST) |
-| `opensource_findings.md` | Every project has repo URL? | ✅ PASS | All 5 projects have GitHub/official URLs |
+| `web_research.md` | Every claim has URL? | ✅ PASS | All 15 sources have URLs or standard references (RFC, OWASP, NIST, BestHub, GitHub) |
+| `opensource_findings.md` | Every project has repo URL? | ✅ PASS | All 5 evaluated projects have GitHub/official URLs |
 | `comparison_analysis.md` | Sources referenced? | ✅ PASS | References research_brief, opensource_findings, web_research |
 
 ### Unreachable URLs
 
 | URL | Status | Action Taken |
 |-----|--------|-------------|
-| (none) | - | All URLs are well-known stable sources (spring.io, keycloak.org, OWASP, NIST, GitHub) |
+| (none) | - | All URLs are well-known stable sources (spring.io, keycloak.org, OWASP, NIST, GitHub, bucket4j.com, BestHub) |
 
 ---
 
@@ -39,14 +39,15 @@
 
 | Cross-reference | Aligned? | Issues |
 |----------------|:---:|--------|
-| business_analysis UCs ↔ technical_spec APIs | ✅ | 47 UCs map to 57 API endpoints across 3 services |
+| business_analysis UCs ↔ technical_spec APIs | ✅ | 47 UCs map to 59 API endpoints across 3 services |
 | Entities in BA ↔ ERD in tech spec | ✅ | All entities from BA appear in tech spec ERDs |
-| Use case flows ↔ Sequence diagrams | ✅ | Login+MFA flow, Menu tree flow have matching sequence diagrams |
-| comparison_analysis recommendations ↔ tech spec choices | ✅ | Hybrid build → custom entities + Bucket4j rate limiting |
+| Use case flows ↔ Sequence diagrams | ✅ | Login+MFA flow, Menu tree flow have matching sequence diagrams with actual class names |
+| comparison_analysis recommendations ↔ tech spec choices | ✅ | Hybrid enhancement → enhance existing code + Bucket4j rate limiting |
 | Entity names consistent across documents | ✅ | Same naming: menu_items, departments, api_keys, workflow_definitions |
 | API endpoint naming convention | ✅ | RESTful `/api/admin/...` (admin), `/api/account/...` (user), `/api/auth/...` (auth) |
-| Base-core patterns referenced correctly | ✅ | SnowflakePersistentAuditableEntity, BaseController, ApiResponse<T> |
-| Priority levels consistent | ✅ | High/Medium mapping to P0/P1/P2 phases aligned |
+| Base-core patterns referenced correctly | ✅ | SnowflakePersistentAuditableEntity, TreeEntity, TreeBuilder, AbstractTwoTierCache, ApiResponse<T> |
+| Codebase references accurate | ✅ | All class names (LoginHandler, MfaRateLimitService, SessionPromotionService, WorkflowEngine, etc.) verified via codebase scan |
+| Priority levels consistent | ✅ | High/Medium mapping aligned across all documents |
 
 ---
 
@@ -56,16 +57,17 @@
 
 | Item | Complete? | Missing |
 |------|:-:|---------|
-| All 3 modules covered | ✅ | auth-service, account-service, system-admin-service |
+| All 3 modules covered | ✅ | auth-service (15+ key files), account-service (16 files), system-admin-service (27+ files) |
 | All UCs have basic flow | ✅ | 47 use cases with flows |
-| All UCs have exception flow | ✅ | Key UCs (MFA, API key, workflow) have detailed exception flows |
+| All UCs have exception flow | ✅ | Key UCs (MFA, API key, workflow, menu) have detailed exception flows |
 | All entities have field definitions | ✅ | ERD diagrams with field types for all ~30+ entities |
-| All APIs have endpoint listing | ✅ | 57+ endpoints listed with method, path, auth requirement |
+| All APIs have endpoint listing | ✅ | 59 endpoints listed with method, path, auth requirement |
 | Scoring matrix filled for all OS projects | ✅ | 5 projects × 7 criteria = complete scoring |
 | Business rules documented | ✅ | BR-MFA, BR-SSO, BR-PWD, BR-MENU, BR-ORG, BR-API, BR-WF, BR-AUDIT |
-| Gap analysis documented | ✅ | 18% current coverage → 100% target path defined |
-| Caching strategy documented | ✅ | 6 cache patterns with TTL and invalidation events |
+| Gap analysis documented | ✅ | Enhancement gaps clearly identified (rate limiting, button-level permission) |
+| Caching strategy documented | ✅ | 6 cache patterns via AbstractTwoTierCache with TTL and invalidation events |
 | Inter-service communication | ✅ | 4 Kafka topics + REST endpoints between services |
+| Existing code references | ✅ | Each UC references existing implementation files |
 
 ---
 
@@ -75,15 +77,15 @@
 
 | Check | Result | Notes |
 |-------|:---:|-------|
-| Tech spec feasible with current stack? | ✅ | All features buildable with Spring Boot 4.1 + Kotlin + PostgreSQL |
-| Dependencies available and maintained? | ✅ | Bucket4j (active), TOTP lib (stable), Passay (stable) |
-| Integration points validated? | ✅ | base-core patterns verified via codebase scan |
-| base-core reuse verified? | ✅ | SnowflakeEntity, ApiResponse, BaseController — all available |
+| Tech spec feasible with current stack? | ✅ | All enhancements buildable with Spring Boot 4.1 + Kotlin + PostgreSQL |
+| Dependencies available and maintained? | ✅ | Bucket4j (active), TOTP lib (stable), Passay (stable), OAuth2 starters (Spring) |
+| Integration points validated? | ✅ | base-core patterns verified via codebase scan — SnowflakeEntity, ApiResponse, BaseController all available |
+| Existing code verified? | ✅ | All referenced files confirmed to exist: TreeEntity.kt, TreeBuilder.kt, MenuPermissionService.kt, WorkflowEngine.kt, etc. |
 | Database compatibility? | ✅ | PostgreSQL supports JSONB, recursive CTE, partial indexes |
-| Performance concerns addressed? | ✅ | Redis caching strategy defined, Caffeine L1 |
-| Scale concerns addressed? | ✅ | Service-level separation, Kafka async events |
-| Team effort estimation? | ✅ | 4 phases, ~10-13 weeks total |
-| No blocking dependencies? | ✅ | Keycloak optional, SMS/Email adapter pattern |
+| Performance concerns addressed? | ✅ | AbstractTwoTierCache (Caffeine L1 + Redis L2) already provides caching infrastructure |
+| Scale concerns addressed? | ✅ | Service-level separation, Kafka async events, Redis distributed caching |
+| Enhancement effort estimation? | ✅ | 4-6 weeks for enhancements (vs 12-16 for full rewrite) |
+| No blocking dependencies? | ✅ | Keycloak optional (SsoAdapter exists), SMS/Email adapter pattern |
 
 ---
 
@@ -93,15 +95,15 @@
 
 | Gap from comparison_analysis | Addressed in tech spec? | How |
 |------------------------------|:---:|-----|
-| Menu Permission System (0% current) | ✅ | Full ERD + API spec + cache strategy for menu_items, menu_permissions, role_menu_permissions |
-| Organization Management (0% current) | ✅ | TreeEntity base class + departments, positions, user_positions entities |
-| API Partner + Rate Limiting (0% current) | ✅ | api_partners, api_keys entities + Bucket4j + ApiKeyFilter |
-| Approval Workflow (0% current) | ✅ | State machine + workflow_definitions, workflow_instances, workflow_step_instances |
-| User Profile (0% current) | ✅ | Separate account-service with user_profiles, user_contacts, user_devices |
-| MFA Enhancement (partial) | ✅ | mfa_configs, otp_tokens, recovery_codes entities + MFA flow diagram |
-| SSO Integration (partial) | ✅ | sso_providers, user_sso_links entities + Keycloak adapter pattern |
-| Password Policy (0% current) | ✅ | password_policies, password_history entities |
-| Audit Trail (partial) | ✅ | Immutable audit_logs + AOP interceptor |
+| Button-level Permission (enhancement) | ✅ | menu_permissions entity with permission_code + role_menu_permissions mapping |
+| Rate Limiting (Bucket4j integration) | ✅ | Bucket4j + Redis ProxyManager, integrated with api_keys.rate_limit_per_second |
+| MFA Progressive Flow (enhancement) | ✅ | SessionPromotionService + MfaRateLimitService + TotpService already exist |
+| SSO Integration (enhancement) | ✅ | SsoAdapter already exists, sso_providers entity for configuration |
+| Password Policy (existing) | ✅ | PasswordPolicyService.kt (Passay) already exists, password_policies entity for per-domain config |
+| Audit Immutability (enhancement) | ✅ | DB constraint on audit_logs (no UPDATE/DELETE), AuditAspect.kt already exists |
+| User Profile (existing) | ✅ | ProfileService.kt, ProfileController.kt already exist in account-service |
+| Organization (existing) | ✅ | OrganizationService.kt, DepartmentEntity.kt, PositionEntity.kt already exist |
+| Workflow (existing) | ✅ | WorkflowEngine.kt, WorkflowService.kt, WorkflowEscalationScheduler.kt already exist |
 
 ---
 

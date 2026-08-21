@@ -80,6 +80,14 @@ base-core:
 app:
   cors:
     allowed-origins: ${CORS_ALLOWED_ORIGINS:http://localhost:3000}
+  # Event Sourcing Configuration
+  event:
+    source: auth-service
+    outbox:
+      poll-interval-ms: 100
+      batch-size: 50
+      max-retries: 3
+      kafka-timeout-ms: 5000
   security:
     enabled: true
     jwt:
@@ -235,3 +243,24 @@ logging:
     com.ntt.authservice: DEBUG
     org.springframework.security: INFO
     org.hibernate.SQL: DEBUG
+
+# Resilience4j Circuit Breaker Configuration (FR-019)
+resilience4j:
+  circuitbreaker:
+    instances:
+      ssoProvider:
+        slidingWindowType: COUNT_BASED
+        slidingWindowSize: 10
+        failureRateThreshold: 50
+        waitDurationInOpenState: 30s
+        permittedNumberOfCallsInHalfOpenState: 3
+        minimumNumberOfCalls: 5
+        automaticTransitionFromOpenToHalfOpenEnabled: true
+      captchaProvider:
+        slidingWindowType: COUNT_BASED
+        slidingWindowSize: 10
+        failureRateThreshold: 50
+        waitDurationInOpenState: 30s
+        permittedNumberOfCallsInHalfOpenState: 3
+        minimumNumberOfCalls: 5
+        automaticTransitionFromOpenToHalfOpenEnabled: true

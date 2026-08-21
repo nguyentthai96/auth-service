@@ -9,8 +9,8 @@
 | Mục | Nội dung |
 |-----|----------|
 | **Feature** | ERP IAM System (3 Modules: auth-service, account-service, system-admin-service) |
-| **Ngày hoàn thành** | 2026-08-05 |
-| **Recommendation** | Hybrid build (custom + Bucket4j + optional Keycloak) |
+| **Ngày hoàn thành** | 2025-07-15 |
+| **Recommendation** | Hybrid enhancement (enhance existing + Bucket4j + optional Keycloak) |
 | **Research directory** | `openspec/research/erp-iam-system/` |
 | **Status** | complete |
 
@@ -18,7 +18,7 @@
 
 ## 1. Recommendation
 
-**Hybrid Build** — Custom build trên nền tảng base-core đã có (RBAC, PBAC, JWT, MFA, SSO, session management) + adopt Bucket4j cho rate limiting + optional Keycloak cho SSO delegation. Không có open source nào cover business-specific features (menu permission, org management, approval workflow) nên custom build là bắt buộc.
+**Hybrid Enhancement** — Enhance existing substantial codebase across 3 services (40+ Kotlin files already implemented). Adopt Bucket4j for distributed rate limiting. Optional Keycloak for SSO delegation via existing SsoAdapter. No open source covers business-specific features (menu permission, org management, approval workflow) but project already has implementations for all of them — enhancement only, not build from scratch.
 
 ---
 
@@ -26,10 +26,10 @@
 
 | Category | Finding | Source |
 |----------|---------|-------|
-| Open Source | Keycloak (9.25/10) — optional IdP, không adopt trực tiếp. Bucket4j (8.35/10) — **ADOPT** cho rate limiting. Cerbos, OpenFGA, Casbin — skip. | [opensource_findings.md](./opensource_findings.md) |
-| Web Research | Spring Security 7 native MFA, Permission-First approach, Stripe API key pattern, custom state machine cho workflow. 14 unique sources. | [web_research.md](./web_research.md) |
-| Gap Coverage | 18% current coverage (9/49 features). auth-service has strong foundation. account-service + system-admin-service = stub only. | [comparison_analysis.md](./comparison_analysis.md) |
-| Current System | auth-service đã có: RBAC Engine, PBAC PolicyEvaluator, JWT (RS256), MFA (TOTP + OTP), SSO adapter, session management, E2EE, anonymous sessions, CQRS handlers. Clean Architecture with Hexagonal pattern. | [research_brief.md](./research_brief.md) |
+| Open Source | Keycloak (9.25/10) — optional IdP, don't replace existing. Bucket4j (8.35/10) — **ADOPT** for rate limiting. Cerbos, OpenFGA, Casbin — skip (existing PolicyEvaluator sufficient). | [opensource_findings.md](./opensource_findings.md) |
+| Web Research | Spring Security 7 native MFA, Permission-First approach, Stripe API key pattern, DB-driven menu tree design, custom state machine for workflow. 15 unique sources. | [web_research.md](./web_research.md) |
+| Gap Coverage | Most features already implemented. Key enhancements: Bucket4j rate limiting, button-level permission, MFA progressive flow refinement. | [comparison_analysis.md](./comparison_analysis.md) |
+| Current System | auth-service has: RBAC Engine, PBAC PolicyEvaluator, JWT RS256, MFA (TOTP + OTP + rate limiting), SSO adapter, session management/promotion, E2EE, anonymous sessions, CQRS handlers, domain events. account-service has: profile, device, session, preference, lifecycle modules. system-admin-service has: menu permission, API partner, organization, workflow, audit, config, feature flags, TreeEntity + TreeBuilder. | [research_brief.md](./research_brief.md) |
 
 ---
 
@@ -56,13 +56,14 @@
 
 | Aspect | Decision/Finding |
 |--------|-----------------|
-| Architecture | Clean Architecture (Hexagonal) — adapter/in/web, adapter/out/persistence, application |
-| Data model | ~30+ entities across 3 services, 3 ERDs |
-| APIs | 57+ endpoints (15 auth, 14 account, 28 system-admin) |
-| Key dependencies | Bucket4j (rate limiting), dev.samstevens.totp (MFA), Passay (password policy), Google Tink (E2EE) |
-| Caching | Caffeine L1 (30s) + Redis L2 (5-30min TTL), 6 cache patterns |
-| Inter-service | REST (sync) + Kafka (async), 4 event topics |
-| Risk areas | 1. Scope creep (mitigate: 4-phase rollout) 2. Approval workflow state complexity (mitigate: immutable versions) |
+| Architecture | Clean Architecture (Hexagonal) — adapter/in/web, adapter/out/persistence, application, domain/model. All 3 services follow same pattern. |
+| Data model | ~30+ entities across 3 services, 3 ERDs. Existing entities verified via codebase scan. |
+| APIs | 59 endpoints (15 auth, 14 account, 30 system-admin) |
+| Key dependencies | Bucket4j (rate limiting — NEW), dev.samstevens.totp (MFA — existing), Passay (password — existing), Google Tink (E2EE — existing), Spring Kafka (events — existing) |
+| Caching | AbstractTwoTierCache (Caffeine L1 + Redis L2) — existing infrastructure, 6 cache patterns |
+| Inter-service | REST (sync) + Kafka (async), 4 event topics. ProfileKafkaListener already exists. |
+| Existing infrastructure | TreeEntity + TreeBuilder, AbstractTwoTierCache, IdempotencyFilter, VersionedAuditableEntity, DatabaseMessageSource, AuditLogService |
+| Risk areas | 1. Bucket4j integration effort (mitigate: Spring Boot starter available) 2. Button-level permission complexity (mitigate: simple permission_code pattern) |
 
 ---
 
@@ -80,12 +81,12 @@
 
 | File | Phase | Content |
 |------|-------|---------|
-| [research_brief.md](./research_brief.md) | 1 | Scope, 8 keywords, current system analysis (17 features scanned, tech stack constraints) |
+| [research_brief.md](./research_brief.md) | 1 | Scope, 8+ keywords, current system analysis (35+ existing features scanned across 3 services, tech stack constraints) |
 | [opensource_findings.md](./opensource_findings.md) | 2 | 5 open source projects evaluated with scoring matrix + gap analysis |
-| [web_research.md](./web_research.md) | 3 | 4 search iterations, 14 unique sources, 5 products evaluated |
-| [comparison_analysis.md](./comparison_analysis.md) | 4 | Build vs Buy vs Adopt, gap analysis (18% coverage), risk assessment |
+| [web_research.md](./web_research.md) | 3 | 4 search iterations, 15 unique sources, 5 products evaluated |
+| [comparison_analysis.md](./comparison_analysis.md) | 4 | Enhancement vs Replace vs Adopt, gap analysis, risk assessment |
 | [business_analysis.md](./business_analysis.md) | 5 | 47 use cases, 16 FRs, 8 NFRs, traceability matrix, business rules |
-| [technical_spec.md](./technical_spec.md) | 6 | 3 ERDs, 57+ API endpoints, caching strategy, agent implementation notes |
+| [technical_spec.md](./technical_spec.md) | 6 | 3 ERDs, 59 API endpoints, caching strategy, agent implementation notes |
 | [validation_report.md](./validation_report.md) | 7 | 5/5 checks passed on first iteration |
 
 ---
@@ -94,11 +95,11 @@
 
 | Check | Status | Notes |
 |-------|:---:|-------|
-| Source Verification | ✅ | All 14 sources verified (spring.io, keycloak.org, OWASP, NIST, GitHub) |
-| Consistency | ✅ | UCs ↔ APIs aligned, entities ↔ ERDs aligned, recommendations ↔ tech choices aligned |
-| Completeness | ✅ | All 3 modules covered, 47 UCs, 30+ entities, 57+ endpoints |
-| Feasibility | ✅ | Feasible with Spring Boot 4.1 + Kotlin + PostgreSQL. base-core reuse verified. |
-| Gap Coverage | ✅ | All 9 gaps from comparison_analysis addressed in tech spec |
+| Source Verification | ✅ | All 15 sources verified (spring.io, keycloak.org, OWASP, NIST, GitHub, BestHub, bucket4j.com) |
+| Consistency | ✅ | UCs ↔ APIs aligned, entities ↔ ERDs aligned, recommendations ↔ tech choices aligned, all class references verified |
+| Completeness | ✅ | All 3 modules covered, 47 UCs, 30+ entities, 59 endpoints, existing code references included |
+| Feasibility | ✅ | Feasible with Spring Boot 4.1 + Kotlin + PostgreSQL. All existing code verified via codebase scan. Enhancement-only approach reduces risk. |
+| Gap Coverage | ✅ | All enhancement gaps addressed in tech spec. Existing implementations referenced. |
 
 ---
 
@@ -106,10 +107,10 @@
 
 | Phase | Focus | Effort | Key Deliverables |
 |-------|-------|--------|-----------------|
-| Phase 1 — Foundation (P0) | Menu Permission, Organization, Profile, Audit | 3-4 weeks | Menu tree CRUD, dept/position CRUD, profile CRUD, audit trail |
-| Phase 2 — Security (P1) | MFA enhance, SSO, Password Policy, API Partner | 3-4 weeks | MFA engine, Keycloak adapter, API key + rate limiting |
-| Phase 3 — Advanced (P2) | Approval Workflow, System Config, Feature Flags | 2-3 weeks | Workflow engine, config CRUD, feature flags |
-| Phase 4 — Integration | Kafka events, E2E tests, API docs | 1-2 weeks | Inter-service events, integration tests, OpenAPI spec |
+| Phase 1 — Rate Limiting (P0) | Bucket4j integration, API key rate limiting | 1-2 weeks | Bucket4j + Redis ProxyManager, API key filter enhancement |
+| Phase 2 — Permission Enhancement (P1) | Button-level permission, menu permission refinement | 1-2 weeks | permission_code pattern, role_menu_permissions enhancement |
+| Phase 3 — Auth Enhancement (P2) | MFA progressive flow refinement, SSO provider config | 1-2 weeks | sso_providers entity, password_policies entity, recovery_codes |
+| Phase 4 — Integration & Testing | Kafka events expansion, E2E tests, API docs | 1 week | Inter-service events, integration tests, OpenAPI spec |
 
 ---
 

@@ -9,7 +9,7 @@
 | Mục | Nội dung |
 |-----|----------|
 | **Feature** | Auth Core Features (FR-001 → FR-004) |
-| **Ngày review** | 2026-08-19 |
+| **Ngày review** | 2026-08-20 |
 | **Lần review thứ** | 1 / 3 |
 | **Kết quả tổng** | ✅ PASS |
 
@@ -44,7 +44,7 @@
 | Screen flow ↔ Use case flows | ✅ | Login → MFA → Dashboard; SSO → Dashboard; Password Change all mapped |
 | comparison_analysis recommendations ↔ tech spec choices | ✅ | Custom Build recommendation → tech spec uses totp, Passay, Spring OAuth2, JJWT RS256 |
 | research_brief current system ↔ actual codebase | ✅ | All files verified against actual Kotlin source code |
-| business_analysis business rules ↔ tech spec implementation | ✅ | BR-001..BR-018 all have implementation references |
+| business_analysis business rules ↔ tech spec implementation | ✅ | BR-001..BR-022 all have implementation references |
 
 ---
 
@@ -55,7 +55,7 @@
 | Item | Complete? | Missing |
 |------|:-:|---------|
 | All UCs have basic flow | ✅ | None |
-| All UCs have exception flow | ✅ | None — UC-001 has 6 exception flows, UC-002 has 3, UC-004 has 2 |
+| All UCs have exception flow | ✅ | None — UC-001 has 6 exception flows, UC-002 has 3, UC-004 has 2, UC-005 has 1, UC-006 has 1 |
 | All entities have field definitions | ✅ | None — all 4 new/altered entities documented with types, constraints, defaults |
 | All APIs have request/response examples | ✅ | None — login, mfa/verify, introspect all have JSON examples |
 | Scoring matrix filled for all OS projects | ✅ | None — 5 projects evaluated with 7-criteria weighted scoring |

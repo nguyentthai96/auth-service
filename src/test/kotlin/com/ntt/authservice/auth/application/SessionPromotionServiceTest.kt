@@ -12,6 +12,8 @@ import org.mockito.ArgumentCaptor
 import org.mockito.Captor
 import org.mockito.Mock
 import org.mockito.junit.jupiter.MockitoExtension
+import org.mockito.junit.jupiter.MockitoSettings
+import org.mockito.quality.Strictness
 import org.mockito.kotlin.*
 import org.springframework.data.redis.core.StringRedisTemplate
 import org.springframework.data.redis.core.ValueOperations
@@ -22,6 +24,7 @@ import java.time.Duration
  * happy path, lock conflict, session expired, partial failure, JTI blacklisting.
  */
 @ExtendWith(MockitoExtension::class)
+@MockitoSettings(strictness = Strictness.LENIENT)
 @DisplayName("SessionPromotionService Tests")
 class SessionPromotionServiceTest {
 
@@ -30,6 +33,7 @@ class SessionPromotionServiceTest {
     @Mock private lateinit var tokenBlacklistRepository: TokenBlacklistRepository
     @Mock private lateinit var securityProperties: SecurityProperties
     @Mock private lateinit var valueOps: ValueOperations<String, String>
+    @Mock private lateinit var safeLockReleaseScript: org.springframework.data.redis.core.script.DefaultRedisScript<Long>
 
     @Captor private lateinit var blacklistCaptor: ArgumentCaptor<TokenBlacklistEntity>
 
@@ -47,12 +51,12 @@ class SessionPromotionServiceTest {
     @BeforeEach
     fun setUp() {
         meterRegistry = SimpleMeterRegistry()
-        lenient().whenever(securityProperties.anonymous).thenReturn(anonymousProps)
-        lenient().whenever(redisTemplate.opsForValue()).thenReturn(valueOps)
+        whenever(securityProperties.anonymous).thenReturn(anonymousProps)
+        whenever(redisTemplate.opsForValue()).thenReturn(valueOps)
 
         promotionService = SessionPromotionService(
             redisTemplate, anonymousSessionDataService, tokenBlacklistRepository,
-            securityProperties, meterRegistry
+            securityProperties, meterRegistry, safeLockReleaseScript
         )
     }
 
@@ -64,7 +68,7 @@ class SessionPromotionServiceTest {
         @DisplayName("should promote session: lock → transfer → blacklist → cleanup → release")
         fun should_promoteSuccessfully_when_allStepsPass() {
             // Given
-            whenever(valueOps.setIfAbsent(eq("anon:lock:sess-1"), eq("locked"), any<Duration>()))
+            whenever(valueOps.setIfAbsent(eq("anon:lock:sess-1"), any(), any<Duration>()))
                 .thenReturn(true)
             whenever(anonymousSessionDataService.verifySessionExists("sess-1")).thenReturn(true)
             whenever(anonymousSessionDataService.transferData("sess-1", 42L))
@@ -83,7 +87,7 @@ class SessionPromotionServiceTest {
             verify(tokenBlacklistRepository).save(any())
             verify(redisTemplate).delete("anon:session:sess-1")
             verify(anonymousSessionDataService).deleteAllSessionData("sess-1")
-            verify(redisTemplate).delete("anon:lock:sess-1")
+            verify(redisTemplate).execute(eq(safeLockReleaseScript), eq(listOf("anon:lock:sess-1")), any<String>())
 
             // Verify metrics
             assertThat(meterRegistry.counter("auth.anonymous.sessions.promoted", "status", "SUCCESS").count())
@@ -132,7 +136,7 @@ class SessionPromotionServiceTest {
             assertThat(result.status).isEqualTo(PromotionResult.Status.FAILED)
 
             // Verify lock released
-            verify(redisTemplate).delete("anon:lock:sess-gone")
+            verify(redisTemplate).execute(eq(safeLockReleaseScript), eq(listOf("anon:lock:sess-gone")), any<String>())
         }
     }
 

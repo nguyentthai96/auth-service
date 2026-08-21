@@ -35,13 +35,12 @@ class TokenIntrospectionIntegrationTest {
             Claims.SUBJECT to "42",
             Claims.ID to "jti-valid-123",
             Claims.ISSUER to "auth-service",
+            Claims.EXPIRATION to Date(System.currentTimeMillis() + 900_000),
+            Claims.ISSUED_AT to Date(System.currentTimeMillis() - 60_000),
             "username" to "testuser",
             "roles" to listOf("USER", "ADMIN"),
             "permissions" to listOf("READ", "WRITE")
-        )).apply {
-            expiration = Date(System.currentTimeMillis() + 900_000)
-            issuedAt = Date(System.currentTimeMillis() - 60_000)
-        }
+        ))
         whenever(jwtService.parseToken("valid-jwt-token")).thenReturn(claims)
         whenever(tokenBlacklistRepository.existsByTokenJti("jti-valid-123")).thenReturn(false)
 
@@ -55,8 +54,8 @@ class TokenIntrospectionIntegrationTest {
         assertEquals(listOf("READ", "WRITE"), response.permissions)
         assertEquals("auth-service", response.iss)
         assertEquals("jti-valid-123", response.jti)
-        assertNotNull(response.exp)
-        assertNotNull(response.iat)
+        Assertions.assertNotNull(response.exp)
+        Assertions.assertNotNull(response.iat)
     }
 
     // ── TC2: Expired token → 200 { active: false } ──
@@ -70,7 +69,7 @@ class TokenIntrospectionIntegrationTest {
         val response = introspect("expired-jwt-token")
 
         assertFalse(response.active)
-        assertNull(response.sub)
+        Assertions.assertNull(response.sub)
     }
 
     // ── TC3: Blacklisted jti → 200 { active: false } ──
@@ -81,11 +80,10 @@ class TokenIntrospectionIntegrationTest {
         val claims = DefaultClaims(mapOf(
             Claims.SUBJECT to "42",
             Claims.ID to "jti-blacklisted-456",
-            Claims.ISSUER to "auth-service"
-        )).apply {
-            expiration = Date(System.currentTimeMillis() + 900_000)
-            issuedAt = Date()
-        }
+            Claims.ISSUER to "auth-service",
+            Claims.EXPIRATION to Date(System.currentTimeMillis() + 900_000),
+            Claims.ISSUED_AT to Date()
+        ))
         whenever(jwtService.parseToken("blacklisted-jwt-token")).thenReturn(claims)
         whenever(tokenBlacklistRepository.existsByTokenJti("jti-blacklisted-456")).thenReturn(true)
 
@@ -107,7 +105,7 @@ class TokenIntrospectionIntegrationTest {
         val response = introspect("not.a.valid.jwt")
 
         assertFalse(response.active)
-        assertNull(response.sub)
+        Assertions.assertNull(response.sub)
     }
 
     /**

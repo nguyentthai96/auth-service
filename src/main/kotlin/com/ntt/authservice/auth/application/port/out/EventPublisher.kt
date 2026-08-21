@@ -14,16 +14,7 @@ interface DomainEvent {
     val eventType: String
 }
 
-/**
- * Event published when a user is registered.
- */
-data class UserRegisteredEvent(
-    val userId: Long,
-    val username: String,
-    val domainCode: String
-) : DomainEvent {
-    override val eventType: String = "user.registered"
-}
+// UserRegisteredEvent REMOVED — consolidated into auth.domain.event.UserRegisteredEvent (FR-002)
 
 /**
  * Event published when permissions are changed (triggers cache invalidation).

@@ -50,12 +50,12 @@ class DomainLookupService(
      * Returns branding fields: logo, colors, login page config.
      */
     fun getDomainBranding(domainCode: String): DomainBrandingInfo {
-        val domain = domainPort.findByCode(domainCode)
+        val domain = domainPort.findByCodeAndActive(domainCode)
             ?: throw ResourceNotFoundException("Domain", domainCode)
 
         return DomainBrandingInfo(
             domainCode = domain.code,
-            domainName = domain.name,
+            domainName = domain.name ?: domain.code,
             logoUrl = domain.logoUrl,
             primaryColor = domain.primaryColor,
             loginPageConfig = domain.loginPageConfig,

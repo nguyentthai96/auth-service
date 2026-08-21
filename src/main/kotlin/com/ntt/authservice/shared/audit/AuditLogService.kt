@@ -9,22 +9,34 @@ import org.springframework.stereotype.Service
 import jakarta.servlet.http.HttpServletRequest
 import org.springframework.web.context.request.RequestContextHolder
 import org.springframework.web.context.request.ServletRequestAttributes
+import java.time.Instant
 
 /**
- * Audit log service for security-sensitive events.
- * Logs to structured logger (JSON) and publishes to audit event stream for persistence (FR-015).
+ * Audit log service for security-sensitive events (FR-015).
+ * Persists to audit_logs table (immutable) AND publishes to event stream.
+ * Includes sensitive data masking for PII fields.
  */
 @Service
 class AuditLogService(
     private val encryptedAuditService: ObjectProvider<EncryptedAuditService>,
-    private val eventPublisher: ObjectProvider<EventPublisher>
+    private val eventPublisher: ObjectProvider<EventPublisher>,
+    private val auditLogRepository: ObjectProvider<AuditLogRepository>
 ) {
 
     private val log = LoggerFactory.getLogger("AUDIT")
 
+    companion object {
+        /** Fields that should be masked in audit log details. */
+        private val SENSITIVE_PATTERNS = listOf(
+            "password", "secret", "token", "credential", "ssn",
+            "credit_card", "card_number", "cvv", "pin"
+        )
+        private const val MASKED_VALUE = "***MASKED***"
+    }
+
     /**
      * Log an audit event with contextual information.
-     * Persists to audit_log via EventPublisher (FR-015 enhancement).
+     * Persists to DB (immutable audit_logs table) AND publishes to event stream (FR-015).
      */
     fun logEvent(
         userId: Long?,
@@ -36,7 +48,9 @@ class AuditLogService(
         val request = getCurrentRequest()
         val ipAddress = request?.let { getClientIp(it) } ?: "unknown"
         val userAgent = request?.getHeader("User-Agent") ?: "unknown"
+        val maskedDetails = maskSensitiveData(details)
 
+        // Structured log output
         log.info(
             "AUDIT action={} userId={} entityType={} entityId={} ip={} userAgent={} details={}",
             action.name,
@@ -45,10 +59,30 @@ class AuditLogService(
             entityId ?: "-",
             ipAddress,
             userAgent,
-            details ?: "-"
+            maskedDetails ?: "-"
         )
 
-        // Persist audit event via EventPublisher (FR-015 — replaces TODO)
+        // Persist to audit_logs table (FR-015 — replaces TODO)
+        auditLogRepository.ifAvailable?.let { repo ->
+            try {
+                val entity = AuditLogEntity().apply {
+                    this.userId = userId
+                    this.action = action.name
+                    this.entityType = entityType
+                    this.entityId = entityId
+                    this.details = maskedDetails
+                    this.ipAddress = ipAddress
+                    this.userAgent = userAgent
+                    this.eventTimestamp = Instant.now()
+                }
+                repo.save(entity)
+            } catch (e: Exception) {
+                log.error("Failed to persist audit log: action={} userId={} error={}", action.name, userId, e.message)
+                // Non-blocking: audit persistence failure should not break the main flow
+            }
+        }
+
+        // Publish audit event via EventPublisher (for cross-service audit consumption)
         eventPublisher.ifAvailable?.publish(
             AuditEvent(
                 userId = userId,
@@ -57,7 +91,7 @@ class AuditLogService(
                 entityId = entityId,
                 ipAddress = ipAddress,
                 userAgent = userAgent,
-                details = details
+                details = maskedDetails
             )
         )
     }
@@ -79,6 +113,29 @@ class AuditLogService(
             // Fallback to standard logging (without sensitive payload)
             log.info("AUDIT (unencrypted fallback) action={} userId={}", action.name, userId)
         }
+    }
+
+    /**
+     * Mask sensitive data in audit log details (FR-015).
+     * Replaces values of sensitive keys with MASKED_VALUE.
+     */
+    private fun maskSensitiveData(details: String?): String? {
+        if (details.isNullOrBlank()) return details
+
+        var masked = details
+        SENSITIVE_PATTERNS.forEach { pattern ->
+            // Mask key=value patterns (e.g., password=secret123 → password=***MASKED***)
+            masked = masked!!.replace(
+                Regex("(?i)($pattern)\\s*=\\s*[^,\\s]+"),
+                "$1=$MASKED_VALUE"
+            )
+            // Mask JSON patterns (e.g., "password": "secret" → "password": "***MASKED***")
+            masked = masked!!.replace(
+                Regex("(?i)\"$pattern\"\\s*:\\s*\"[^\"]*\""),
+                "\"$pattern\":\"$MASKED_VALUE\""
+            )
+        }
+        return masked
     }
 
     private fun getCurrentRequest(): HttpServletRequest? {
@@ -135,5 +192,11 @@ enum class AuditAction {
     DELETION_REQUESTED,
     DELETION_CANCELLED,
     DELETION_COMPLETED,
-    DATA_EXPORT_REQUESTED
+    DATA_EXPORT_REQUESTED,
+
+    // FR-015: Enhanced Audit
+    CONFIG_CHANGED,
+    PERMISSION_CHANGED,
+    SERVICE_TOKEN_ISSUED,
+    SERVICE_TOKEN_VALIDATED
 }

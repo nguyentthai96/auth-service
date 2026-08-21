@@ -4,14 +4,10 @@ import com.ntt.authservice.auth.application.port.out.DomainEvent
 
 /**
  * Domain events published by command handlers.
+ *
+ * Note: UserRegisteredEvent REMOVED — consolidated into
+ * com.ntt.authservice.auth.domain.event.UserRegisteredEvent (FR-002).
  */
-data class UserRegisteredEvent(
-    val userId: Long,
-    val username: String,
-    val domainCode: String
-) : DomainEvent {
-    override val eventType: String = "USER_REGISTERED"
-}
 
 data class UserLoggedInEvent(
     val userId: Long,

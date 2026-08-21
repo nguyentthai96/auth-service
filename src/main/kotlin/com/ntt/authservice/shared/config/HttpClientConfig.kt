@@ -13,7 +13,15 @@ import java.time.Duration
 
 /**
  * Configuration for @HttpExchange declarative clients (FR-019).
- * Configurable timeout per client (default 10s), circuit breaker pattern.
+ * Configurable timeout per client with circuit breaker support.
+ *
+ * Timeout defaults:
+ * - Connect timeout: 5s (configurable via app.http.*.connect-timeout-ms)
+ * - Read timeout: 10s (configurable via app.http.*.read-timeout-ms)
+ *
+ * Circuit breaker is configured via Resilience4j properties (application.yml):
+ * - resilience4j.circuitbreaker.instances.ssoProvider.*
+ * - resilience4j.circuitbreaker.instances.captchaProvider.*
  */
 @Configuration
 class HttpClientConfig {
@@ -56,7 +64,7 @@ class HttpClientConfig {
 
     /**
      * Create a request factory with configurable timeouts (FR-019).
-     * Circuit breaker pattern: external call fails gracefully after timeout.
+     * Circuit breaker annotations are applied at the gateway level (@CircuitBreaker).
      */
     private fun createTimeoutFactory(connectTimeoutMs: Int, readTimeoutMs: Int): SimpleClientHttpRequestFactory {
         return SimpleClientHttpRequestFactory().apply {

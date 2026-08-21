@@ -1,0 +1,28 @@
+primary: user_registration_event
+environment: kotlin
+rules:
+  - spring-boot
+  - error-handling
+  - testing
+  - api-security
+  - clean-architecture
+skills:
+  - wf_openspec
+  - spring-boot
+  - architecture
+artifacts:
+  - id: proposal
+    type: markdown
+    status: done
+  - id: srs
+    type: markdown
+    status: done
+  - id: design
+    type: markdown
+    status: done
+  - id: impact_analysis
+    type: markdown
+    status: done
+  - id: tasks
+    type: markdown
+    status: done

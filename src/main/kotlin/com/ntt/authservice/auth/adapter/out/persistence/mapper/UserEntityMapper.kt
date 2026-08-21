@@ -26,6 +26,7 @@ fun UserEntity.toDomain() = User(
     mfaEnabled = this.mfaEnabled ?: false,
     mfaMethod = this.mfaMethod ?: "NONE",
     trustedDeviceHash = this.trustedDeviceHash,
+    trustedDeviceSetAt = this.trustedDeviceSetAt,
     passwordChangedAt = this.passwordChangedAt,
     createdAt = this.createdAt,
     updatedAt = this.updatedAt
@@ -47,6 +48,7 @@ fun User.toEntity(existing: UserEntity? = null): UserEntity {
         mfaEnabled = this@toEntity.mfaEnabled
         mfaMethod = this@toEntity.mfaMethod
         trustedDeviceHash = this@toEntity.trustedDeviceHash
+        trustedDeviceSetAt = this@toEntity.trustedDeviceSetAt
         passwordChangedAt = this@toEntity.passwordChangedAt
     }
     return entity

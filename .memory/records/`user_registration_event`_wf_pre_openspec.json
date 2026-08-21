@@ -1,0 +1,15 @@
+{
+  "feature": "`user_registration_event`",
+  "workflow": "wf_pre_openspec",
+  "outcome": "success",
+  "timestamp": "2026-08-21T07:29:14.203711+00:00",
+  "duration_seconds": 728,
+  "tokens_used": 0,
+  "prompt_layer_tokens": {},
+  "output_artifacts": [
+    "/home/nguyentthai96/Desktop/bigbang/boilerplate/services/auth-service/openspec/changes/`user_registration_event`/pre_openspec.md"
+  ],
+  "errors": [],
+  "lesson_extracted": null,
+  "recovery_pattern": null
+}

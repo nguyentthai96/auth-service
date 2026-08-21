@@ -7,13 +7,18 @@
 ## 1. Tổng quan (Overview)
 
 ### 1.1 Bối cảnh nghiệp vụ (Business Context)
-Hệ thống ERP boilerplate hiện có auth-service với authentication cơ bản (login/register, JWT, RBAC/PBAC, MFA, SSO, session management) nhưng thiếu nhiều tính năng enterprise-grade: dynamic menu permission, organization management, API partner management, approval workflow. Account-service và system-admin-service chỉ có stub code. Cần xây dựng IAM hoàn chỉnh chia 3 microservice với bounded contexts rõ ràng.
+Hệ thống ERP boilerplate có 3 microservice IAM đã implement ở nhiều mức độ:
+- **auth-service**: Authentication hoàn chỉnh (login/register, JWT RS256, RBAC/PBAC, MFA TOTP+OTP, SSO adapter, session management, E2EE, anonymous sessions, password policy, CQRS, domain events, Kafka integration).
+- **account-service**: Profile CRUD, device management, preference management, account lifecycle (deactivate, GDPR export/deletion), session management (Redis-backed), Kafka listener.
+- **system-admin-service**: Menu permission (tree CRUD, caching), API partner management (key generation, usage tracking), organization (department tree, positions, user assignments), workflow (engine, escalation scheduler), audit (AOP aspect, audit logs), domain/tenant config, feature flags, TreeEntity + TreeBuilder.
+
+Cần enhance IAM thành enterprise-grade: strengthen MFA progressive flow, integrate Bucket4j rate limiting, add button-level permission, enhance approval workflow conditional routing, comprehensive audit immutability.
 
 ### 1.2 Mục tiêu (Objectives)
 
 | # | Mục tiêu | KPI đo lường | Độ ưu tiên |
 |---|---------|-------------|-----------|
-| O-01 | Authentication hoàn chỉnh (MFA, SSO, password policy) | MFA enrollment rate > 50% enterprise users | High |
+| O-01 | Authentication hoàn chỉnh (MFA progressive, SSO, password policy) | MFA enrollment rate > 50% enterprise users | High |
 | O-02 | Dynamic menu permission (tree + button-level) | Frontend render < 500ms, cache hit > 80% | High |
 | O-03 | Organization management (department, position) | Admin CRUD < 200ms response | High |
 | O-04 | API partner management (key, rate limit, quota) | Rate limit accuracy > 99%, 429 response < 50ms | High |
@@ -143,7 +148,7 @@ graph LR
 |-----|----------|
 | **Mã** | UC-MENU-01 |
 | **Tên** | Create/Read/Update/Delete Menu Items |
-| **Mô tả ngữ nghĩa** | Quản lý cây menu chức năng dynamic — cho phép admin cấu hình navigation tree, route paths, icons, và component mappings. Giá trị: frontend nhận menu tree từ backend để render navigation bar, đảm bảo users chỉ thấy menu items được phân quyền. |
+| **Mô tả ngữ nghĩa** | Quản lý cây menu chức năng dynamic — cho phép admin cấu hình navigation tree, route paths, icons, và component mappings. Giá trị: frontend nhận menu tree từ backend để render navigation bar, đảm bảo users chỉ thấy menu items được phân quyền. Existing: `MenuPermissionService.kt` đã có base implementation. |
 | **Actor** | System Admin |
 | **Trigger** | Admin mở trang Menu Management |
 | **Độ ưu tiên** | High |
@@ -163,7 +168,7 @@ graph LR
 
 | Step | Actor Action | System Response | Data | Ghi chú |
 |------|-------------|----------------|------|---------|
-| 1 | Admin mở Menu Management | Load full menu tree from DB | `GET /api/admin/menus/tree` | Cached in Redis |
+| 1 | Admin mở Menu Management | Load full menu tree from DB via TreeBuilder | `GET /api/admin/menus/tree` | Cached in Redis via AbstractTwoTierCache |
 | 2 | Admin click "Add Menu Item" | Show create form | - | Form: code, name, icon, path, type, parent |
 | 3 | Admin fill form + select parent | Validate input | CreateMenuRequest | Type: DIRECTORY, MENU, BUTTON, API |
 | 4 | Admin submit | Create menu item, assign sort_order | `POST /api/admin/menus` | Auto-increment sort_order |
@@ -217,7 +222,7 @@ graph LR
 | BR-MENU-02 | User override > Role | User override ưu tiên cao hơn role permission | Override check |
 | BR-MENU-03 | BUTTON type invisible | BUTTON type không hiển thị trong navigation, chỉ control button visibility | menu_type filter |
 | BR-MENU-04 | Admin full access | Admin domain có full access tất cả menu | Role check |
-| BR-MENU-05 | Cache invalidation | Menu cache Redis TTL 5 phút, invalidate khi thay đổi permission | Redis event |
+| BR-MENU-05 | Cache invalidation | Menu cache via AbstractTwoTierCache (Caffeine L1 30s + Redis L2 5min), invalidate khi thay đổi permission | Event-driven |
 
 ---
 
@@ -229,7 +234,7 @@ graph LR
 |-----|----------|
 | **Mã** | UC-MFA-02 |
 | **Tên** | Login with Multi-Factor Authentication |
-| **Mô tả ngữ nghĩa** | Progressive authentication flow — sau khi verify password, user phải verify 2FA code (OTP hoặc TOTP) để nhận full JWT token. Giá trị: bảo mật enterprise-grade, chống credential theft. |
+| **Mô tả ngữ nghĩa** | Progressive authentication flow — sau khi verify password, user phải verify 2FA code (OTP hoặc TOTP) để nhận full JWT token. Giá trị: bảo mật enterprise-grade, chống credential theft. Existing: `TotpService.kt`, `OtpService.kt`, `MfaRateLimitService.kt`, `SessionPromotionService.kt` đã có base implementation. |
 | **Actor** | End User |
 | **Trigger** | User submit login form với MFA enabled |
 | **Độ ưu tiên** | High |
@@ -240,16 +245,16 @@ graph LR
 
 | Step | Actor Action | System Response | Data | Ghi chú |
 |------|-------------|----------------|------|---------|
-| 1 | User submit username + password | Validate credentials | LoginRequest | Argon2 verify |
+| 1 | User submit username + password | Validate credentials via LoginHandler | LoginCommand | Argon2 verify |
 | 2 | - | Check MFA enabled | User.mfaEnabled | From DB |
 | 3 | - | Issue partial token, return MFA challenge | `{partial_token, require_2fa: true, methods: ["TOTP"]}` | 200 OK |
-| 4 | User enter TOTP/OTP code | Verify code against secret/Redis | VerifyMfaRequest | Within tolerance window |
-| 5 | - | Issue full JWT (access + refresh) | AuthResponse | Full authorization |
+| 4 | User enter TOTP/OTP code | Verify code via TotpService/OtpService, check rate limit via MfaRateLimitService | VerifyMfaRequest | Within tolerance window |
+| 5 | - | Promote session via SessionPromotionService, issue full JWT (access + refresh) | AuthResponse | Full authorization |
 
 #### 4.4 Luồng thay thế (Alternative Flows)
 
 ##### AF-001: Trusted Device Skip
-- **Trigger**: Tại Step 2, device fingerprint matches trusted device
+- **Trigger**: Tại Step 2, device fingerprint matches trusted device (DeviceService in account-service)
 - **Steps**: Skip MFA, issue full token directly
 - **Rejoin**: Step 5
 
@@ -263,7 +268,7 @@ graph LR
 ##### EF-001: Wrong OTP Code
 - **Trigger**: Tại Step 4, code invalid
 - **Error**: `401 Unauthorized` — `MFA_CODE_INVALID`
-- **Handling**: Increment attempt counter. After 3 fails → lock MFA for 30 min.
+- **Handling**: MfaRateLimitService increments attempt counter. After 3 fails → lock MFA for 30 min.
 - **Post-condition**: Partial token still valid (within TTL)
 
 ##### EF-002: Partial Token Expired
@@ -277,17 +282,17 @@ graph LR
 | BR-ID | Quy tắc | Mô tả chi tiết | Validation |
 |-------|---------|----------------|-----------|
 | BR-MFA-01 | OTP TTL = 5 min | OTP code expires after 300 seconds | Redis TTL |
-| BR-MFA-02 | Max 3 OTP attempts | After 3 wrong codes → rate limit lock 30 min | Redis counter |
+| BR-MFA-02 | Max 3 OTP attempts | After 3 wrong codes → rate limit lock 30 min (MfaRateLimitService) | Redis counter |
 | BR-MFA-03 | TOTP window ±1 | Accept TOTP code within ±1 step (30 sec each) | Algorithm tolerance |
 | BR-MFA-04 | Recovery code single-use | Each recovery code can only be used once | Mark `used_at` |
-| BR-MFA-05 | Trusted device TTL = 30 days | Trusted device skips 2FA for 30 days | `trusted_until` field |
+| BR-MFA-05 | Trusted device TTL = 30 days | Trusted device skips 2FA for 30 days | `trusted_until` field in UserDeviceEntity |
 
 #### 4.7 Yêu cầu phi chức năng
 
 | Loại | Yêu cầu | Target |
 |------|---------|--------|
 | Performance | MFA verification | < 200ms |
-| Security | OTP brute-force protection | Rate limit: 5 attempts / 15 min |
+| Security | OTP brute-force protection | Rate limit: 5 attempts / 15 min (MfaRateLimitService) |
 | Security | Partial token scope | Cannot access any API except /verify-2fa |
 | Availability | MFA service uptime | 99.9% |
 
@@ -301,7 +306,7 @@ graph LR
 |-----|----------|
 | **Mã** | UC-API-02 |
 | **Tên** | Generate or Rotate API Key |
-| **Mô tả ngữ nghĩa** | Tạo hoặc xoay vòng API key cho đối tác tích hợp. Key chỉ hiển thị 1 lần sau khi tạo (show-once pattern theo Stripe), sau đó chỉ lưu hash. Giá trị: cho phép partner truy cập API an toàn với lifecycle management. |
+| **Mô tả ngữ nghĩa** | Tạo hoặc xoay vòng API key cho đối tác tích hợp. Key chỉ hiển thị 1 lần sau khi tạo (show-once pattern theo Stripe), sau đó chỉ lưu hash. Giá trị: cho phép partner truy cập API an toàn với lifecycle management. Existing: `ApiPartnerService.kt` đã có base implementation. |
 | **Actor** | System Admin |
 | **Trigger** | Admin click "Generate API Key" hoặc "Rotate Key" |
 | **Độ ưu tiên** | High |
@@ -332,9 +337,9 @@ graph LR
 |-------|---------|----------------|-----------|
 | BR-API-01 | Show-once key | Raw key displayed only at generation time | No raw key in DB |
 | BR-API-02 | Key prefix format | Production: `ntt_pk_`, Sandbox: `ntt_sk_` | Prefix validation |
-| BR-API-03 | Rate limit enforcement | Per-key rate limits enforced at filter level | Bucket4j + Redis |
+| BR-API-03 | Rate limit enforcement | Per-key rate limits enforced at filter level via Bucket4j + Redis | Bucket4j ProxyManager |
 | BR-API-04 | 429 on exceed | Return `429 Too Many Requests` + `Retry-After` header | HTTP standard |
-| BR-API-05 | Usage log aggregation | Aggregate hourly/daily for dashboard | Scheduled job |
+| BR-API-05 | Usage log aggregation | Aggregate hourly/daily for dashboard via ApiUsageController | Scheduled job |
 
 ---
 
@@ -346,7 +351,7 @@ graph LR
 |-----|----------|
 | **Mã** | UC-WF-02 |
 | **Tên** | Submit Entity for Approval |
-| **Mô tả ngữ nghĩa** | Gửi business entity (order, purchase request, etc.) vào workflow phê duyệt. System tự động xác định workflow definition phù hợp, tạo instance, assign step đầu tiên. Giá trị: standardize approval process, đảm bảo compliance. |
+| **Mô tả ngữ nghĩa** | Gửi business entity (order, purchase request, etc.) vào workflow phê duyệt. System tự động xác định workflow definition phù hợp, tạo instance, assign step đầu tiên. Giá trị: standardize approval process, đảm bảo compliance. Existing: `WorkflowEngine.kt`, `WorkflowService.kt`, `WorkflowEscalationScheduler.kt` đã có. |
 | **Actor** | End User |
 | **Trigger** | User click "Submit for Approval" trên business entity |
 | **Độ ưu tiên** | High |
@@ -357,8 +362,8 @@ graph LR
 
 | Step | Actor Action | System Response | Data | Ghi chú |
 |------|-------------|----------------|------|---------|
-| 1 | User click "Submit for Approval" | Look up workflow_definition by entity_type | SubmitWorkflowRequest | Match entity_type + domain |
-| 2 | - | Create workflow_instance | PENDING status | Record requester_user_id |
+| 1 | User click "Submit for Approval" | Look up workflow_definition by entity_type via WorkflowService | SubmitWorkflowRequest | Match entity_type + domain |
+| 2 | - | Create workflow_instance via WorkflowEngine | PENDING status | Record requester_user_id |
 | 3 | - | Resolve first step approver | Based on approver_type (ROLE/DEPT_HEAD/USER) | Dynamic resolution |
 | 4 | - | Create workflow_step_instance | Assign to approver | Set due_at based on timeout_hours |
 | 5 | - | Send notification to approver | Kafka event / in-app notification | Async |
@@ -382,9 +387,9 @@ graph LR
 |-------|---------|----------------|-----------|
 | BR-WF-01 | Workflow version immutable | Cannot edit active workflow — create new version | Version field |
 | BR-WF-02 | REJECTED → configurable | Restart or terminate based on workflow config | Per-definition setting |
-| BR-WF-03 | Timeout escalation | Auto-escalate after N hours to escalation_step | Scheduled job |
+| BR-WF-03 | Timeout escalation | Auto-escalate after N hours to escalation_step via WorkflowEscalationScheduler | Scheduled job |
 | BR-WF-04 | Delegation same domain | Can only delegate to user in same domain | Domain check |
-| BR-WF-05 | Conditional routing | JSONB conditions evaluate dynamic routing | Similar to PBAC |
+| BR-WF-05 | Conditional routing | JSONB conditions evaluate dynamic routing | Similar to PBAC PolicyEvaluator |
 
 ---
 
@@ -439,12 +444,12 @@ graph LR
 |--------|------|---------|--------|-------------|
 | NFR-001 | Performance | API response time | < 500ms (P95) | APM monitoring |
 | NFR-002 | Security | Authentication + authorization on all endpoints | 100% coverage | Security audit |
-| NFR-003 | Performance | Permission cache hit ratio | > 80% | Redis metrics |
-| NFR-004 | Performance | Rate limit accuracy | > 99% | Load test |
+| NFR-003 | Performance | Permission cache hit ratio | > 80% | Redis metrics (AbstractTwoTierCache) |
+| NFR-004 | Performance | Rate limit accuracy | > 99% | Load test (Bucket4j) |
 | NFR-005 | Compliance | Audit log immutability | No UPDATE/DELETE on audit_logs | DB constraint |
 | NFR-006 | Scalability | Concurrent users per service | 1000+ | Load test |
 | NFR-007 | Availability | Service uptime | 99.9% | Monitoring |
-| NFR-008 | Data | GDPR compliance | Data export + deletion support | Manual verification |
+| NFR-008 | Data | GDPR compliance | Data export + deletion support | Manual verification (DataExportService.kt) |
 
 ---
 
@@ -453,13 +458,14 @@ graph LR
 | Thuật ngữ | Định nghĩa | Context sử dụng |
 |-----------|-----------|-----------------|
 | Domain | Business domain/tenant trong hệ thống ERP (e.g., booking, rental) | Multi-tenant isolation |
-| RBAC | Role-Based Access Control — phân quyền qua User→Group→Role→Permission chain | auth-service |
-| PBAC | Policy-Based Access Control — phân quyền qua dynamic conditions (JSONB) | auth-service |
-| Menu Item | Node trong navigation tree — có thể là DIRECTORY, MENU, BUTTON, hoặc API | system-admin-service |
+| RBAC | Role-Based Access Control — phân quyền qua User→Group→Role→Permission chain | auth-service (RbacEngine.kt) |
+| PBAC | Policy-Based Access Control — phân quyền qua dynamic conditions (JSONB) | auth-service (PolicyEvaluator.kt) |
+| Menu Item | Node trong navigation tree — có thể là DIRECTORY, MENU, BUTTON, hoặc API | system-admin-service (MenuPermissionService.kt) |
 | Permission Code | Mã quyền trên menu item (e.g., view, create, edit, delete, export) | system-admin-service |
-| API Key | Chuỗi xác thực cho API partner (prefix + random, hash stored) | system-admin-service |
-| Workflow Instance | Một instance cụ thể của workflow definition — track trạng thái phê duyệt | system-admin-service |
-| Partial Token | JWT token tạm thời chỉ cho phép verify 2FA, không access API khác | auth-service MFA flow |
+| API Key | Chuỗi xác thực cho API partner (prefix + random, hash stored) | system-admin-service (ApiPartnerService.kt) |
+| Workflow Instance | Một instance cụ thể của workflow definition — track trạng thái phê duyệt | system-admin-service (WorkflowEngine.kt) |
+| Partial Token | JWT token tạm thời chỉ cho phép verify 2FA, không access API khác | auth-service MFA flow (SessionPromotionService.kt) |
+| TreeEntity | Base class cho tree-structured entities (parentId, sortOrder, level) | system-admin-service (TreeEntity.kt) |
 
 ---
 
@@ -467,18 +473,18 @@ graph LR
 
 ### 9.1 Research References
 - [opensource_findings.md](./opensource_findings.md) — 5 projects evaluated (Keycloak, Cerbos, OpenFGA, Casbin, Bucket4j)
-- [web_research.md](./web_research.md) — 4 search iterations, 14 unique sources
-- [comparison_analysis.md](./comparison_analysis.md) — Hybrid build recommendation, 18% current gap coverage
+- [web_research.md](./web_research.md) — 4 search iterations, 15 unique sources
+- [comparison_analysis.md](./comparison_analysis.md) — Hybrid enhancement recommendation
 
 ### 9.2 Open Questions
 - [ ] OQ-001: Spring Security 7 `@EnableMultiFactorAuthentication` exact API stable? (may change before GA)
 - [ ] OQ-002: DPoP (Demonstrating Proof-of-Possession) support — Phase 4 consideration?
 
 ### 9.3 Assumptions
-- ⚠️ AS-001: base-core chưa có TreeEntity — cần tạo mới — Lý do: codebase scan confirmed
-- ⚠️ AS-002: account-service và system-admin-service chỉ có stub — Lý do: codebase scan confirmed
-- ⚠️ AS-003: Spring Security 7 MFA API based on early documentation — Lý do: Spring Boot 4.1.0 docs in development
-- ⚠️ AS-004: Kafka compileOnly dependency — cần thêm runtime dependency khi implement events — Lý do: build.gradle.kts review
+- ⚠️ AS-001: TreeEntity exists at `system-admin-service/shared/persistence/TreeEntity.kt` — Confirmed via codebase scan
+- ⚠️ AS-002: All 3 services have substantial implementations (NOT stubs) — Confirmed: account-service has 5+ modules, system-admin-service has 6+ modules
+- ⚠️ AS-003: Spring Security 7 MFA API based on early documentation — Spring Boot 4.1.0 docs in development
+- ⚠️ AS-004: Kafka is runtime dependency in auth-service — Confirmed via build.gradle.kts
 
 ---
 

@@ -1,7 +1,6 @@
 package com.ntt.authservice.auth.application.command
 
-import com.ntt.authservice.auth.application.LoginResult
-import com.ntt.authservice.auth.application.PasswordPolicyService
+import com.ntt.authservice.auth.application.*
 import com.ntt.authservice.auth.application.port.out.*
 import com.ntt.authservice.auth.domain.model.AuthToken
 import com.ntt.authservice.auth.domain.model.User
@@ -9,6 +8,7 @@ import com.ntt.authservice.auth.domain.model.UserStatus
 import com.ntt.authservice.auth.domain.model.vo.Email
 import com.ntt.authservice.auth.domain.model.vo.PasswordHash
 import com.ntt.authservice.auth.domain.model.vo.UserId
+import com.ntt.authservice.rbac.application.query.GetUserRolesHandler
 import com.ntt.authservice.shared.config.SecurityProperties
 import com.ntt.authservice.shared.exception.AccountLockedException
 import com.ntt.authservice.shared.exception.InvalidCredentialsException
@@ -36,11 +36,16 @@ class LoginHandlerTest {
     @Mock private lateinit var domainPort: DomainPort
     @Mock private lateinit var tokenStore: TokenStore
     @Mock private lateinit var captchaGateway: CaptchaGateway
-    @Mock private lateinit var permissionCache: PermissionCache
+    @Mock private lateinit var getUserRolesHandler: GetUserRolesHandler
     @Mock private lateinit var securityProperties: SecurityProperties
     @Mock private lateinit var tokenGenerator: TokenGenerator
     @Mock private lateinit var passwordConfig: SecurityProperties.PasswordProperties
+    @Mock private lateinit var mfaConfig: SecurityProperties.MfaProperties
     @Mock private lateinit var passwordPolicyService: PasswordPolicyService
+    @Mock private lateinit var loginRateLimitService: LoginRateLimitService
+    @Mock private lateinit var sessionPolicyService: SessionPolicyService
+    @Mock private lateinit var loginSessionService: LoginSessionService
+    @Mock private lateinit var sessionPromotionService: SessionPromotionService
     
     private lateinit var handler: LoginHandler
 
@@ -72,10 +77,14 @@ class LoginHandlerTest {
             domainPort = domainPort,
             tokenStore = tokenStore,
             captchaGateway = captchaGateway,
-            permissionCache = permissionCache,
+            getUserRolesHandler = getUserRolesHandler,
             securityProperties = securityProperties,
             tokenGenerator = tokenGenerator,
-            passwordPolicyService = passwordPolicyService
+            passwordPolicyService = passwordPolicyService,
+            loginRateLimitService = loginRateLimitService,
+            sessionPolicyService = sessionPolicyService,
+            loginSessionService = loginSessionService,
+            sessionPromotionService = sessionPromotionService
         )
     }
 
@@ -85,6 +94,8 @@ class LoginHandlerTest {
         // Given
         whenever(userPort.findByUsernameAndActive("testuser")).thenReturn(testUser)
         whenever(securityProperties.password).thenReturn(passwordConfig)
+        whenever(securityProperties.mfa).thenReturn(mfaConfig)
+        whenever(mfaConfig.trustedDeviceTtlDays).thenReturn(30)
         whenever(passwordConfig.maxFailedAttempts).thenReturn(5)
         whenever(tokenGenerator.matchesPassword(any(), any())).thenReturn(true)
         whenever(tokenGenerator.getPrimaryDomain(any())).thenReturn("default")

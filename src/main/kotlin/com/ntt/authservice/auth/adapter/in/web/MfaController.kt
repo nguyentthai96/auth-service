@@ -3,7 +3,10 @@ package com.ntt.authservice.auth.adapter.`in`.web
 import com.ntt.authservice.auth.adapter.`in`.web.dto.*
 import com.ntt.authservice.auth.application.AuthService
 import com.ntt.authservice.auth.application.MfaService
+import com.ntt.authservice.auth.application.JwtService
 import jakarta.validation.Valid
+import org.springframework.context.MessageSource
+import org.springframework.context.i18n.LocaleContextHolder
 import org.springframework.http.ResponseEntity
 import org.springframework.security.core.context.SecurityContextHolder
 import org.springframework.web.bind.annotation.*
@@ -15,7 +18,9 @@ import org.springframework.web.bind.annotation.*
 @RequestMapping("/api/auth/mfa")
 class MfaController(
     private val mfaService: MfaService,
-    private val authService: AuthService
+    private val authService: AuthService,
+    private val jwtService: JwtService,
+    private val messageSource: MessageSource
 ) {
 
     @PostMapping("/verify")
@@ -44,10 +49,12 @@ class MfaController(
     }
 
     @PostMapping("/totp/confirm")
-    fun confirmTotp(@Valid @RequestBody request: TotpConfirmRequest): ResponseEntity<Map<String, Boolean>> {
+    fun confirmTotp(@Valid @RequestBody request: TotpConfirmRequest): ResponseEntity<Map<String, Any?>> {
         val userId = getCurrentUserId()
         mfaService.confirmTotp(userId, request.code)
-        return ResponseEntity.ok(mapOf("success" to true))
+        val locale = LocaleContextHolder.getLocale()
+        val message = messageSource.getMessage("auth.totp_confirmed", null, "TOTP setup confirmed successfully", locale)
+        return ResponseEntity.ok(mapOf("success" to true, "message" to message))
     }
 
     @PostMapping("/resend")
@@ -86,17 +93,33 @@ class MfaController(
     }
 
     /**
+     * Verify a recovery code as MFA fallback (FR-001).
+     * On success, promotes the MFA session to full auth (same as TOTP/OTP verify).
+     */
+    @PostMapping("/recovery-codes/verify")
+    fun verifyRecoveryCode(@Valid @RequestBody request: RecoveryCodeVerifyRequest): ResponseEntity<Any> {
+        val response = mfaService.verifyRecoveryCodeMfa(
+            mfaToken = request.mfaToken,
+            code = request.code,
+            authResponseBuilder = { userId -> authService.buildAuthResponseForUser(userId) }
+        )
+        return ResponseEntity.ok(response)
+    }
+
+    /**
      * Regenerate recovery codes — generates 10 new single-use codes (FR-001).
      * Previous codes are invalidated.
      */
     @PostMapping("/recovery-codes/regenerate")
-    fun regenerateRecoveryCodes(): ResponseEntity<Map<String, Any>> {
+    fun regenerateRecoveryCodes(): ResponseEntity<Map<String, Any?>> {
         val userId = getCurrentUserId()
         val codes = mfaService.generateRecoveryCodes(userId)
+        val locale = LocaleContextHolder.getLocale()
+        val warning = messageSource.getMessage("auth.recovery_codes_warning", null, "Save these codes — they will not be shown again.", locale)
         return ResponseEntity.ok(mapOf(
             "codes" to codes,
             "count" to codes.size,
-            "warning" to "Save these codes — they will not be shown again."
+            "warning" to warning
         ))
     }
 

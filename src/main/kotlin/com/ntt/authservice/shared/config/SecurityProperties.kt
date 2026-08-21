@@ -198,6 +198,10 @@ data class SecurityProperties(
             maxAttempts = 5,
             windowSeconds = 3600,
             lockSeconds = 0
-        )
+        ),
+        /** Feature flag: enable sliding window rate limiting (Lua script). When false, falls back to fixed-window INCR+EXPIRE. */
+        val slidingWindowEnabled: Boolean = true,
+        /** SCAN batch size for Redis key iteration (e.g., data transfer, cleanup). Tunable for large sessions. */
+        val scanCount: Int = 100
     )
 }

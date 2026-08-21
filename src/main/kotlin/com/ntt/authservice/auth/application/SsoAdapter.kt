@@ -171,13 +171,14 @@ class SsoAdapter(
      * Delegates to OAuth2TokenExchanger which uses config-driven provider endpoints.
      */
     private fun exchangeCodeForUser(code: String, provider: String, redirectUri: String): IdpUserInfo {
-        // Resolve client credentials from environment variables
-        val clientId = System.getenv("${provider.uppercase()}_CLIENT_ID") ?: ""
-        val clientSecret = System.getenv("${provider.uppercase()}_CLIENT_SECRET") ?: ""
-
-        if (clientId.isBlank() || clientSecret.isBlank()) {
-            throw SsoTokenInvalidException("OAuth2 client credentials not configured for provider: $provider")
-        }
+        // Resolve client credentials from provider config or environment variables
+        val providerConfig = securityProperties.sso.providers[provider]
+        val clientId = providerConfig?.clientId?.ifBlank { null }
+            ?: System.getenv("${provider.uppercase()}_CLIENT_ID")
+            ?: ""
+        val clientSecret = providerConfig?.clientSecret?.ifBlank { null }
+            ?: System.getenv("${provider.uppercase()}_CLIENT_SECRET")
+            ?: ""
 
         val result = oauth2TokenExchanger.exchange(provider, code, redirectUri, clientId, clientSecret)
         return IdpUserInfo(sub = result.sub, email = result.email, name = result.name)

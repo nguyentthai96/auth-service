@@ -9,7 +9,7 @@
 | Mục | Nội dung |
 |-----|----------|
 | **Feature** | Auth Core Features (FR-001 → FR-004) |
-| **Ngày hoàn thành** | 2026-08-19 |
+| **Ngày hoàn thành** | 2026-08-20 |
 | **Recommendation** | build (using open source libraries for primitives) |
 | **Research directory** | `openspec/research/auth-core-features/` |
 | **Status** | complete |
@@ -76,7 +76,7 @@
 | [opensource_findings.md](./opensource_findings.md) | 2 | Open source evaluation: 5 projects scored (8 found, 5 evaluated) + gap analysis per project |
 | [web_research.md](./web_research.md) | 3 | Internet research: 4 iterations, 9 sources, 6 patterns/approaches identified |
 | [comparison_analysis.md](./comparison_analysis.md) | 4 | Comparison matrix (4 solutions), feature matrix (16 features), decision matrix, cost estimate |
-| [business_analysis.md](./business_analysis.md) | 5 | Business analysis: 6 use cases, 18 business rules, traceability matrix, NFRs |
+| [business_analysis.md](./business_analysis.md) | 5 | Business analysis: 6 use cases, 22 business rules, traceability matrix, NFRs |
 | [technical_spec.md](./technical_spec.md) | 6 | Technical specification: ERD, 3 sequence diagrams, 18 API endpoints, 18 classes, 18 test cases |
 | [validation_report.md](./validation_report.md) | 7 | Quality review: all 5 checks PASS on first iteration |
 

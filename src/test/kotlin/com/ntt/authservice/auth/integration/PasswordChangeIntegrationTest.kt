@@ -61,8 +61,8 @@ class PasswordChangeIntegrationTest {
     fun shouldChangePasswordSuccessfully() {
         val currentHash = passwordEncoder.encode("OldPass123!")
         val user = UserEntity().apply {
-            id = testUserId
-            passwordHash = currentHash
+            org.springframework.test.util.ReflectionTestUtils.setField(this, "id", testUserId)
+            passwordHash = currentHash!!
         }
         val policy = createPolicy(testDomainId, minLength = 8, historyCount = 3)
 
@@ -93,13 +93,13 @@ class PasswordChangeIntegrationTest {
         val currentHash = passwordEncoder.encode("CurrentPass123!")
         val oldHash = passwordEncoder.encode("OldReusedPass789!")
         val user = UserEntity().apply {
-            id = testUserId
-            passwordHash = currentHash
+            org.springframework.test.util.ReflectionTestUtils.setField(this, "id", testUserId)
+            passwordHash = currentHash!!
         }
         val policy = createPolicy(testDomainId, minLength = 8, historyCount = 3)
         val historyEntry = PasswordHistoryEntity().apply {
             userId = testUserId
-            passwordHash = oldHash
+            passwordHash = oldHash!!
             createdAt = Instant.now().minusSeconds(3600)
         }
 
@@ -120,8 +120,8 @@ class PasswordChangeIntegrationTest {
     fun shouldRejectWeakPassword() {
         val currentHash = passwordEncoder.encode("CurrentPass123!")
         val user = UserEntity().apply {
-            id = testUserId
-            passwordHash = currentHash
+            org.springframework.test.util.ReflectionTestUtils.setField(this, "id", testUserId)
+            passwordHash = currentHash!!
         }
         val policy = createPolicy(testDomainId, minLength = 12, requireUppercase = true, requireDigit = true, requireSpecial = true)
 
@@ -141,8 +141,8 @@ class PasswordChangeIntegrationTest {
     fun shouldRejectWrongOldPassword() {
         val currentHash = passwordEncoder.encode("CorrectOldPass!")
         val user = UserEntity().apply {
-            id = testUserId
-            passwordHash = currentHash
+            org.springframework.test.util.ReflectionTestUtils.setField(this, "id", testUserId)
+            passwordHash = currentHash!!
         }
 
         whenever(userRepository.findById(testUserId)).thenReturn(Optional.of(user))
@@ -159,8 +159,8 @@ class PasswordChangeIntegrationTest {
     fun shouldApplyDefaultPolicyWhenNoDomainPolicy() {
         val currentHash = passwordEncoder.encode("OldPass123!")
         val user = UserEntity().apply {
-            id = testUserId
-            passwordHash = currentHash
+            org.springframework.test.util.ReflectionTestUtils.setField(this, "id", testUserId)
+            passwordHash = currentHash!!
         }
 
         whenever(userRepository.findById(testUserId)).thenReturn(Optional.of(user))

@@ -1,0 +1,53 @@
+entries:
+- created_at: '2026-08-21T06:46:39.973169+00:00'
+  features:
+  - '`user_registration_event`'
+  - '`user_login_event`'
+  - '`user_logout_event`'
+  - '`jwt_token_issuance`'
+  - '`jwt_token_validation`'
+  - '`jwt_refresh_token_rotation`'
+  - '`token_blacklist_management`'
+  - '`oauth2_authorization_code_flow`'
+  - '`oauth2_client_credentials_flow`'
+  - '`oauth2_social_login_integration`'
+  - '`rbac_role_management`'
+  - '`rbac_permission_assignment`'
+  - '`pbac_policy_engine`'
+  - '`pbac_context_evaluation`'
+  - '`event_store_persistence`'
+  - '`event_replay_mechanism`'
+  - '`cqrs_command_handler`'
+  - '`cqrs_query_projection`'
+  - '`local_cache_configuration`'
+  - '`redis_cache_configuration`'
+  - '`two_tier_cache_strategy`'
+  - '`cache_ttl_policy_management`'
+  - '`session_metadata_store`'
+  - '`aggregate_state_reconstruction`'
+  - '`domain_event_publisher`'
+  - '`audit_log_projection`'
+  - '`base_core_redis_autoconfigure`'
+  - '`base_core_jwt_autoconfigure`'
+  - '`base_core_security_filter_autoconfigure`'
+  - '`base_core_local_cache_autoconfigure`'
+  - '`password_change_event`'
+  - '`role_assignment_event`'
+  - '`token_revocation_event`'
+  - '`user_aggregate`'
+  - '`session_aggregate`'
+  - '`role_aggregate`'
+  - '`policy_aggregate`'
+  - '`rs256_key_rotation`'
+  - '`oauth2_token_introspection`'
+  - '`multi_tenant_rbac_support`
+
+
+    ---'
+  id: 66254b32-556a-4e44-bf88-26e412f42bee
+  method: brainstorm
+  mode: idea
+  preview: Xây dựng hệ thống event sourcing cho authentication service with JWT, OAuth2,
+    re
+  source: cli
+total_records: 1

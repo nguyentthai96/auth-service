@@ -11,6 +11,8 @@ import jakarta.persistence.*
 @Table(name = "users")
 class UserEntity : SnowflakePersistentAuditableEntity() {
 
+    override var id: Long? = null
+
     @Column(nullable = false, unique = true, length = 100)
     lateinit var username: String
 
@@ -50,6 +52,9 @@ class UserEntity : SnowflakePersistentAuditableEntity() {
 
     @Column(name = "trusted_device_hash", length = 255)
     var trustedDeviceHash: String? = null
+
+    @Column(name = "trusted_device_set_at")
+    var trustedDeviceSetAt: java.time.Instant? = null
 
     @Column(name = "password_changed_at")
     var passwordChangedAt: java.time.Instant? = null

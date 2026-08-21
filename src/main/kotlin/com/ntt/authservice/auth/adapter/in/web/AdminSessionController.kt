@@ -2,6 +2,8 @@ package com.ntt.authservice.auth.adapter.`in`.web
 
 import com.ntt.authservice.auth.adapter.out.persistence.repository.LoginSessionRepository
 import com.ntt.authservice.auth.application.LoginSessionService
+import org.springframework.context.MessageSource
+import org.springframework.context.i18n.LocaleContextHolder
 import org.springframework.data.domain.PageRequest
 import org.springframework.data.domain.Sort
 import org.springframework.http.ResponseEntity
@@ -21,7 +23,8 @@ import org.springframework.web.bind.annotation.*
 @RequestMapping("/api/admin/sessions")
 class AdminSessionController(
     private val loginSessionService: LoginSessionService,
-    private val loginSessionRepository: LoginSessionRepository
+    private val loginSessionRepository: LoginSessionRepository,
+    private val messageSource: MessageSource
 ) {
 
     /**
@@ -31,7 +34,7 @@ class AdminSessionController(
     fun listAllActiveSessions(
         @RequestParam(defaultValue = "0") page: Int,
         @RequestParam(defaultValue = "20") size: Int
-    ): ResponseEntity<Map<String, Any>> {
+    ): ResponseEntity<Map<String, Any?>> {
         val pageable = PageRequest.of(page, size, Sort.by(Sort.Direction.DESC, "loginAt"))
         val sessionPage = loginSessionRepository.findBySessionActiveTrue(pageable)
 
@@ -62,7 +65,7 @@ class AdminSessionController(
      * Get session statistics — total active, breakdown by device type.
      */
     @GetMapping("/stats")
-    fun getSessionStats(): ResponseEntity<Map<String, Any>> {
+    fun getSessionStats(): ResponseEntity<Map<String, Any?>> {
         val totalActive = loginSessionRepository.countBySessionActiveTrue()
         val deviceBreakdown = loginSessionRepository.countActiveSessionsByDeviceType()
             .associate { arr -> (arr[0] as? String ?: "UNKNOWN") to (arr[1] as Long) }
@@ -77,11 +80,13 @@ class AdminSessionController(
      * Force revoke all sessions for a specific user.
      */
     @DeleteMapping("/user/{userId}")
-    fun forceRevokeUserSessions(@PathVariable userId: Long): ResponseEntity<Map<String, Any>> {
+    fun forceRevokeUserSessions(@PathVariable userId: Long): ResponseEntity<Map<String, Any?>> {
         val sessions = loginSessionService.getActiveSessions(userId)
         loginSessionService.revokeAllSessions(userId, "ADMIN_FORCE_REVOKE")
+        val locale = LocaleContextHolder.getLocale()
+        val message = messageSource.getMessage("auth.admin_sessions_revoked", arrayOf(userId), "All sessions revoked for user $userId", locale)
         return ResponseEntity.ok(mapOf(
-            "message" to "All sessions revoked for user $userId",
+            "message" to message,
             "revokedCount" to sessions.size
         ))
     }

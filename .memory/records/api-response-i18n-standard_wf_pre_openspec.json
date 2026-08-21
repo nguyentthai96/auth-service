@@ -2,8 +2,8 @@
   "feature": "api-response-i18n-standard",
   "workflow": "wf_pre_openspec",
   "outcome": "success",
-  "timestamp": "2026-08-20T02:13:40.794531+00:00",
-  "duration_seconds": 372,
+  "timestamp": "2026-08-21T03:03:13.011336+00:00",
+  "duration_seconds": 577,
   "tokens_used": 0,
   "prompt_layer_tokens": {},
   "output_artifacts": [

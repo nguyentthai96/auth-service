@@ -8,6 +8,10 @@ import com.ntt.authservice.auth.application.DomainLookupService
 import com.ntt.authservice.auth.domain.service.TokenHasher
 import com.ntt.authservice.auth.application.JwtService
 import com.ntt.authservice.auth.application.MfaService
+import com.ntt.authservice.rbac.application.query.GetPermissionsHandler
+import com.ntt.authservice.rbac.application.query.GetPermissionsQuery
+import com.ntt.authservice.rbac.application.query.GetUserRolesHandler
+import com.ntt.authservice.rbac.application.query.GetUserRolesQuery
 import com.ntt.authservice.shared.config.SecurityProperties
 import com.ntt.authservice.shared.exception.ResourceNotFoundException
 import org.springframework.security.crypto.password.PasswordEncoder
@@ -27,7 +31,8 @@ class TokenGenerator(
     private val mfaService: MfaService,
     private val passwordEncoder: PasswordEncoder,
     private val securityProperties: SecurityProperties,
-    private val permissionCache: PermissionCache,
+    private val getPermissionsHandler: GetPermissionsHandler,
+    private val getUserRolesHandler: GetUserRolesHandler,
     private val domainLookupService: DomainLookupService
 ) {
 
@@ -35,11 +40,9 @@ class TokenGenerator(
         val domain = domainPort.findByCodeAndActive(domainCode)
             ?: throw ResourceNotFoundException("Domain", domainCode)
 
-        // Load roles and permissions (via cache port)
-        val roles = permissionCache.getRoles(user.id.value, domain.id)
-            ?: emptyList()
-        val permissions = permissionCache.getPermissions(user.id.value, domain.id)
-            ?: emptyList()
+        // Load roles and permissions
+        val roles = getUserRolesHandler.handle(GetUserRolesQuery(user.id.value, domain.id))
+        val permissions = getPermissionsHandler.handle(GetPermissionsQuery(user.id.value, domain.id))
 
         // Generate tokens
         val accessToken = jwtService.generateAccessToken(

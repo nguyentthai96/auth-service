@@ -2,9 +2,8 @@ package com.ntt.authservice.auth.application.cipher
 
 import com.ntt.authservice.shared.exception.CipherVersionSunsetException
 import com.ntt.authservice.shared.exception.CipherVersionUnknownException
-import com.ntt.basecore.autoconfigure.security.cipher.model.CipherProperties
+import com.ntt.basecore.autoconfigure.security.cipher.CipherProperties
 import org.slf4j.LoggerFactory
-import org.springframework.cloud.context.config.annotation.RefreshScope
 import org.springframework.stereotype.Service
 import java.time.Instant
 import java.time.ZoneId
@@ -20,7 +19,6 @@ import java.time.format.DateTimeFormatter
  * - Hot-reloadable via @RefreshScope
  */
 @Service
-@RefreshScope
 class CipherVersionNegotiator(
     private val cipherProperties: CipherProperties
 ) {

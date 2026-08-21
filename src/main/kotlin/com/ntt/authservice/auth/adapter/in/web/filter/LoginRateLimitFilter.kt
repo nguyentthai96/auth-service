@@ -126,7 +126,7 @@ class LoginRateLimitFilter(
         val locale = resolveLocale(request)
         val detail = messageSource.getMessage(
             "auth.rate_limited",
-            arrayOf(ex.retryAfterSeconds, ex.dimension),
+            arrayOf<Any>(ex.retryAfterSeconds, ex.dimension),
             ex.message,
             locale
         )

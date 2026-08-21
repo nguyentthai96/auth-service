@@ -11,7 +11,8 @@ import java.time.Instant
 
 /**
  * Login session service — records login history, manages active sessions,
- * detects new devices, and provides session listing/revocation.
+ * detects new devices, provides session listing/revocation,
+ * and enforces concurrent session limits (FR-008).
  */
 @Service
 class LoginSessionService(
@@ -136,6 +137,45 @@ class LoginSessionService(
         }
         loginSessionRepository.saveAll(sessions)
         log.info("All sessions revoked userId={} count={} reason={}", userId, sessions.size, reason)
+    }
+
+    /**
+     * Enforce concurrent session limit for a user (FR-008).
+     * Terminates the oldest active sessions when the limit is exceeded.
+     *
+     * @param userId the user ID
+     * @param maxSessions maximum allowed concurrent sessions
+     * @return number of sessions terminated
+     */
+    @Transactional
+    fun enforceConcurrentLimit(userId: Long, maxSessions: Int): Int {
+        val activeSessions = loginSessionRepository.findByUserIdAndSessionActiveTrue(userId)
+            .sortedBy { it.loginAt }
+
+        if (activeSessions.size < maxSessions) {
+            return 0
+        }
+
+        // Terminate oldest sessions that exceed the limit
+        val sessionsToTerminate = activeSessions.take(activeSessions.size - maxSessions + 1)
+        val now = Instant.now()
+        sessionsToTerminate.forEach { session ->
+            session.sessionActive = false
+            session.revokedAt = now
+            session.revokeReason = "CONCURRENT_LIMIT_EXCEEDED"
+        }
+        loginSessionRepository.saveAll(sessionsToTerminate)
+
+        log.info("Concurrent limit enforced userId={} terminated={} maxSessions={}",
+            userId, sessionsToTerminate.size, maxSessions)
+        return sessionsToTerminate.size
+    }
+
+    /**
+     * Get count of active sessions for a user.
+     */
+    fun getActiveSessionCount(userId: Long): Long {
+        return loginSessionRepository.countByUserIdAndSessionActiveTrue(userId)
     }
 
     private fun detectNewDevice(userId: Long, deviceFingerprint: String?): Boolean {

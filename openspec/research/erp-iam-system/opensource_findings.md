@@ -9,7 +9,7 @@
 | Mục | Nội dung |
 |-----|----------|
 | **Tính năng** | Enterprise IAM System (Authentication, Authorization, Menu Permission, Org Management, API Partner, Approval Workflow) |
-| **Ngày tìm kiếm** | 2026-08-05 |
+| **Ngày tìm kiếm** | 2025-07-15 |
 | **Số dự án tìm thấy** | 8 |
 | **Số dự án đánh giá chi tiết** | 5 |
 | **Tech stack mục tiêu** | Kotlin + Spring Boot 4.x + PostgreSQL + Redis |
@@ -20,9 +20,9 @@
 |---|-------|---------|---------|
 | 1 | `"enterprise IAM open source identity management RBAC ABAC"` | 12 kết quả | Keycloak, Cerbos, OpenFGA nổi bật |
 | 2 | `"open source authorization engine Spring Boot Kotlin RBAC"` | 8 kết quả | Casbin, Spring Security |
-| 3 | `"open source dynamic menu permission system backend"` | 3 kết quả | Không có solution phù hợp |
+| 3 | `"open source dynamic menu permission system backend"` | 3 kết quả | Không có solution phù hợp; found articles on dynamic role-based permission design |
 | 4 | `"open source rate limiting API key management Java Spring"` | 6 kết quả | Bucket4j nổi bật |
-| 5 | `"open source approval workflow engine lightweight Java"` | 5 kết quả | Camunda, Temporal — quá heavy |
+| 5 | `"open source approval workflow engine lightweight Java"` | 5 kết quả | Camunda, Temporal — quá heavy; project đã có custom WorkflowEngine |
 
 ---
 
@@ -35,7 +35,7 @@
 | 3 | OpenFGA | https://github.com/openfga/openfga | 3k+ | Active (weekly) | Apache 2.0 | ✅ Có |
 | 4 | Casbin | https://github.com/casbin/casbin | 18k+ | Active (monthly) | Apache 2.0 | ✅ Có |
 | 5 | Bucket4j | https://github.com/bucket4j/bucket4j | 2.5k+ | Active (monthly) | Apache 2.0 | ✅ Có |
-| 6 | Camunda | https://github.com/camunda/camunda-bpm-platform | 4k+ | Active | Mixed | ❌ Không (quá heavy cho use case) |
+| 6 | Camunda | https://github.com/camunda/camunda-bpm-platform | 4k+ | Active | Mixed | ❌ Không (quá heavy cho use case — project đã có custom WorkflowEngine) |
 | 7 | Temporal | https://github.com/temporalio/temporal | 12k+ | Active | MIT | ❌ Không (quá heavy cho use case) |
 | 8 | Permit.io | https://github.com/permitio/opal | 4k+ | Active | Apache 2.0 | ❌ Không (SaaS-oriented) |
 
@@ -148,7 +148,7 @@
 | RBAC | ✅ | | Realm roles + client roles | - |
 | PBAC/ABAC | ⚠️ | | UMA 2.0 | Limited condition flexibility vs custom PolicyEvaluator |
 | Menu Permission System | | ❌ | - | Không có concept menu/button permission |
-| Organization/Department | | ❌ | - | Không có org hierarchy |
+| Organization/Department | | ❌ | - | Không có org hierarchy management |
 | API Key Management | | ❌ | - | Không native, cần custom SPI |
 | Rate Limiting | | ❌ | - | Không có |
 | Approval Workflow | | ❌ | - | Không có |
@@ -157,7 +157,7 @@
 
 **Verdict**: Dùng làm optional downstream IdP — delegate authentication
 **Recommendation**: Optional IdP — adapter pattern cho phép switch on/off
-**Reasoning**: Keycloak xuất sắc cho authentication/SSO nhưng thiếu hoàn toàn business-specific features (menu, org, workflow). Dùng adapter pattern để optional integration.
+**Reasoning**: Keycloak xuất sắc cho authentication/SSO nhưng thiếu hoàn toàn business-specific features (menu, org, workflow). Project đã có `SsoAdapter.kt` với adapter pattern.
 
 ### Cerbos — Gap Analysis
 
@@ -192,7 +192,7 @@
 
 **Verdict**: Dùng trực tiếp
 **Recommendation**: **ADOPT** — perfect fit cho API partner rate limiting
-**Reasoning**: Native Java, Spring Boot starter, Redis-backed distributed rate limiting. Complements existing base-resilience-starter (Resilience4j).
+**Reasoning**: Native Java, Spring Boot starter, Redis-backed distributed rate limiting. Complements existing `ApiPartnerService.kt` in system-admin-service.
 
 ### OpenFGA — Gap Analysis
 
@@ -245,11 +245,11 @@
 | Quyết định | Lý do | Evidence |
 |-----------|-------|---------|
 | **ADOPT Bucket4j** cho rate limiting | Production-proven, Spring Boot native, Redis-backed distributed | https://bucket4j.com/ |
-| **Optional Keycloak** via adapter pattern | Avoid lock-in, delegate auth khi cần enterprise SSO | https://www.keycloak.org/ |
-| **Custom build** cho menu, org, workflow | Không có open source nào cover business-specific features | Gap analysis all 5 projects |
+| **Optional Keycloak** via adapter pattern | Avoid lock-in, delegate auth khi cần enterprise SSO. `SsoAdapter.kt` đã có sẵn | https://www.keycloak.org/ |
+| **Enhance existing** cho menu, org, workflow | Code đã có trong system-admin-service — enhance, not build from scratch | Codebase scan results |
 | **Keep existing** RbacEngine + PolicyEvaluator | Already integrated, sufficient cho current scale | Codebase scan results |
 
 ---
 
-> **Sources**: Tất cả URLs đã verify tại thời điểm 2026-08-05
+> **Sources**: Tất cả URLs đã verify tại thời điểm 2025-07-15
 > **Next step**: Comparison Analysis (comparison_analysis.md)

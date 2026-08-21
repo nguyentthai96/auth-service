@@ -7,79 +7,92 @@
 | Mục | Nội dung |
 |-----|----------|
 | **Tên tính năng** | Anonymous Login Optimization |
-| **Ngày tạo** | 2025-01-20 |
-| **Input source** | Name + Description (seed prompt) |
-| **Input content** | Research anonymous/guest authentication patterns for enterprise IAM systems. Focus on: temporary anonymous sessions, session promotion (merging anonymous session data into authenticated user after login), guest cart management, seamless authentication upgrade flow, and anonymous-to-authenticated data transfer. Include Spring Boot + Redis + JWT implementation patterns. |
+| **Ngày tạo** | 2025-07-15 |
+| **Input source** | Name + Description (pipeline context) |
+| **Input content** | Optimize the existing anonymous/guest authentication system in auth-service. Focus on: performance tuning for anonymous session creation (reduce Redis round-trips), session promotion reliability improvements, data transfer optimization (batch operations vs per-key), rate limiting enhancements (sliding window vs fixed window), token renewal efficiency, Redis memory footprint reduction, and observability improvements (metrics, tracing, alerting). |
 | **Người yêu cầu** | Pipeline (headless mode) |
 
 ## 2. Mô tả tính năng
 
 ### 2.1 Bối cảnh (Context)
 
-The auth-service currently supports only fully authenticated users — every API interaction requires a valid JWT token obtained through username/password login, SSO, or MFA verification. There is no mechanism to allow unauthenticated users to interact with the system in a limited capacity before requiring login.
+The auth-service already has a fully functional anonymous login system implemented with:
+- `AnonymousSessionHandler` — CQRS handler creating anonymous sessions in Redis
+- `AnonymousAuthController` — REST controller at `/api/v1/auth/anonymous` with 5 endpoints
+- `SessionPromotionService` — orchestrates anonymous → authenticated promotion with distributed locking
+- `AnonymousSessionDataService` — Redis CRUD for namespaced session data with size enforcement
+- `AnonymousRateLimitService` — IP-based fixed-window rate limiting
+- `RenewAnonymousTokenHandler` — token renewal with max renewal count enforcement
+- `JwtService` extensions — `generateAnonymousToken()` and `parseAnonymousToken()`
 
-Many enterprise applications and e-commerce platforms need to support anonymous/guest sessions to reduce friction for first-time visitors. Users should be able to browse, add items to a cart, save preferences, or interact with the system without creating an account — and then seamlessly merge that temporary data into their profile upon authentication.
+The system works correctly but has several optimization opportunities identified through code review:
 
-This is commonly known as "session promotion" or "authentication upgrade" — transitioning from an anonymous identity to a fully authenticated one while preserving the user's work and context.
+1. **Redis Round-Trip Reduction**: `AnonymousSessionHandler.handle()` makes 3 Redis calls sequentially (HSET + EXPIRE + rate limit check). These can be pipelined or combined with Lua scripts.
+2. **Data Transfer Optimization**: `AnonymousSessionDataService.transferData()` uses per-key GET+SET in a loop via SCAN cursor. For sessions with many data keys, this creates N×2 Redis round-trips. Pipeline/batch operations would be more efficient.
+3. **Rate Limiting Enhancement**: Current `AnonymousRateLimitService` uses fixed-window rate limiting (INCR + EXPIRE). Sliding window log or sliding window counter would provide smoother rate limiting without burst-at-boundary issues.
+4. **Session Promotion Reliability**: `SessionPromotionService` uses simple SETNX for distributed lock. This lacks fencing tokens and could have issues in Redis failover scenarios.
+5. **Observability Gaps**: Metrics exist (counters/timers) but no distributed tracing spans, no alerting thresholds defined, no dashboard configuration.
+6. **Memory Optimization**: `getSessionDataSize()` uses SCAN to sum STRLEN of all keys — inefficient for frequent size checks. Could maintain a running total in the session hash.
 
 ### 2.2 Mục tiêu (Objectives)
-- [x] Objective 1: Enable anonymous/guest token generation with limited permissions and configurable TTL
-- [x] Objective 2: Implement session promotion — seamlessly upgrading anonymous sessions to authenticated user sessions
-- [x] Objective 3: Design a data transfer mechanism to merge temporary anonymous data (cart, preferences) into the authenticated user's profile
-- [x] Objective 4: Define anonymous token lifecycle management (creation, renewal, expiration, cleanup)
-- [x] Objective 5: Establish security guardrails for anonymous sessions (rate limiting, abuse prevention, resource quotas)
+- [x] Objective 1: Reduce Redis round-trips in anonymous session creation by 30-50% via pipelining/Lua scripts
+- [x] Objective 2: Optimize data transfer during promotion using batch Redis operations (MGET/MSET or pipeline)
+- [x] Objective 3: Evaluate and recommend sliding window rate limiting vs current fixed-window approach
+- [x] Objective 4: Improve session promotion reliability with Redlock or fencing token patterns
+- [x] Objective 5: Define observability strategy (OpenTelemetry spans, Grafana dashboards, alert rules)
+- [x] Objective 6: Reduce per-session Redis memory footprint through key compression and data structure optimization
 
 ### 2.3 Phạm vi ban đầu (Initial Scope)
 
 | In Scope | Out of Scope |
 |----------|-------------|
-| Anonymous token generation (JWT with `type=anonymous`) | Full guest checkout flow (belongs to order-service) |
-| Session promotion flow (anonymous → authenticated) | UI/UX for anonymous user onboarding |
-| Redis-backed temporary data store for anonymous sessions | Shopping cart domain logic (belongs to cart-service) |
-| Anonymous session lifecycle (TTL, cleanup, renewal) | Analytics tracking of anonymous users |
-| Rate limiting and abuse prevention for anonymous endpoints | A/B testing of anonymous vs. forced-login flows |
-| API endpoints for anonymous token creation and promotion | Social login integration for anonymous promotion |
-| Configuration properties for anonymous session behavior | Mobile SDK for anonymous authentication |
-| Integration with existing CQRS command/handler architecture | Multi-tenant anonymous session isolation |
+| Redis operation optimization (pipelining, Lua scripts, batch ops) | New anonymous session features (new endpoints, new data types) |
+| Rate limiting algorithm improvement (sliding window) | UI/UX changes |
+| Session promotion reliability hardening | Domain logic changes (cart merge strategies) |
+| Observability and monitoring setup | Multi-tenant anonymous session isolation |
+| Redis memory optimization | Migration to different cache provider |
+| Performance benchmarking | Load testing infrastructure setup |
+| Error handling improvements | Anonymous session analytics/reporting |
+| Code cleanup and refactoring | Mobile SDK changes |
 
 ## 3. Keywords & Search Terms
 
 ### 3.1 Primary Keywords
-- `anonymous authentication`
-- `guest session management`
-- `session promotion`
-- `anonymous to authenticated upgrade`
-- `temporary session token`
+- `Redis pipelining Spring Boot`
+- `Redis Lua scripting Spring Data Redis`
+- `sliding window rate limiting Redis`
+- `Redis batch operations Java Kotlin`
+- `distributed lock reliability Redlock`
 
 ### 3.2 Secondary Keywords
-- `guest cart merge`
-- `anonymous JWT token`
-- `session handoff`
-- `lazy registration`
-- `progressive authentication`
-- `ephemeral session`
-- `anonymous user tracking`
+- `Redis memory optimization`
+- `Redis SCAN performance`
+- `Spring Boot Micrometer observability`
+- `OpenTelemetry Redis tracing`
+- `Redis pipelining StringRedisTemplate`
+- `session promotion idempotency`
+- `Redis hash memory footprint`
+- `fixed window vs sliding window rate limit`
 
 ### 3.3 Domain-Specific Terms
-- `Session Promotion`: The process of upgrading an anonymous/guest session to a fully authenticated session, preserving temporary data accumulated during the anonymous phase.
-- `Anonymous Token`: A JWT token issued without user credentials, carrying limited permissions and a shorter TTL. Contains a `type=anonymous` claim and a unique anonymous session ID.
-- `Data Transfer / Session Merge`: The mechanism of migrating temporary data (cart items, preferences, form data) from an anonymous session to the authenticated user's permanent storage.
-- `Progressive Authentication`: A UX pattern where users begin interacting without credentials and are prompted to authenticate only when accessing privileged features.
-- `Lazy Registration`: Delaying account creation until the user needs to perform an action requiring identity (checkout, save, etc.).
-- `Ephemeral Session`: A short-lived session stored in Redis with automatic TTL-based expiration.
+- `Redis Pipelining`: Sending multiple Redis commands in a single network round-trip, reducing latency significantly for multi-command operations.
+- `Sliding Window Rate Limiting`: A rate limiting algorithm that provides smooth enforcement without burst-at-boundary issues, using either sorted sets (log-based) or counter subdivisions.
+- `Redlock`: A distributed lock algorithm by Redis creator Salvatore Sanfilippo, using N independent Redis instances for fault-tolerant locking.
+- `Fencing Token`: A monotonically increasing token included with each lock acquisition, allowing downstream services to reject stale lock holders.
+- `Redis Lua Scripting`: Server-side Lua scripts executed atomically by Redis, enabling complex multi-command operations without race conditions.
 
 ### 3.4 Search Queries (pre-defined)
 
 | # | Query | Target | Priority |
 |---|-------|--------|----------|
-| 1 | `"anonymous authentication session promotion Spring Boot best practices"` | General | High |
-| 2 | `"guest session to authenticated user migration open source"` | Open Source | High |
-| 3 | `"anonymous JWT token generation Redis temporary session"` | Architecture | High |
-| 4 | `"session promotion guest cart merge enterprise patterns"` | Patterns | Medium |
-| 5 | `"Spring Security anonymous authentication filter configuration"` | Framework | Medium |
-| 6 | `"anonymous user rate limiting abuse prevention"` | Security | Medium |
-| 7 | `"progressive authentication lazy registration IAM"` | Comparison | Low |
-| 8 | `"ephemeral session Redis TTL guest user management"` | Implementation | Medium |
+| 1 | `"Redis pipelining Spring Data Redis StringRedisTemplate"` | Performance | High |
+| 2 | `"sliding window rate limiting Redis implementation"` | Algorithm | High |
+| 3 | `"Redis Lua script atomic operations Spring Boot"` | Performance | High |
+| 4 | `"Redlock distributed lock reliability production"` | Reliability | Medium |
+| 5 | `"Redis SCAN vs KEYS performance optimization"` | Performance | Medium |
+| 6 | `"Redis memory optimization hash small values"` | Memory | Medium |
+| 7 | `"OpenTelemetry Spring Boot Redis tracing"` | Observability | Medium |
+| 8 | `"Redis MGET MSET batch operations Spring Data"` | Performance | High |
 
 ## 4. Current System Analysis
 
@@ -87,93 +100,109 @@ This is commonly known as "session promotion" or "authentication upgrade" — tr
 
 | Feature | Module/Package | Relevance | Notes |
 |---------|---------------|-----------|-------|
-| Login (CQRS) | `auth.application.command.LoginHandler` | High | Main authentication handler — anonymous promotion must integrate with this flow |
-| JWT Token Generation | `auth.application.JwtService` | High | Already supports multiple token types (`access`, `refresh`, `mfa`) — need to add `anonymous` type |
-| Session Management | `auth.application.LoginSessionService` | High | Records login sessions, device info — need to extend for anonymous sessions |
-| Session Policy | `auth.application.SessionPolicyService` | Medium | Enforces max sessions — need to decide if anonymous sessions count toward limits |
-| Token Generator | `auth.application.command.TokenGenerator` | High | Shared token generation — needs extension for anonymous tokens |
-| Security Config | `shared.config.SecurityConfig` | High | Defines public vs. authenticated endpoints — needs anonymous endpoint rules |
-| Rate Limiting | `auth.application.LoginRateLimitService` | Medium | IP/username/device rate limiting — needs anonymous-specific limits |
-| SSO Adapter | `auth.application.SsoAdapter` | Low | SSO callback could trigger session promotion |
-| MFA Service | `auth.application.MfaService` | Low | MFA flow after anonymous promotion |
-| CAPTCHA Verifier | `auth.application.CaptchaVerifier` | Medium | May be required for anonymous token generation to prevent abuse |
+| Anonymous Session Creation | `auth.application.command.AnonymousSessionHandler` | High | 3 sequential Redis calls: rate limit check + HSET + EXPIRE |
+| Anonymous Data Transfer | `auth.application.AnonymousSessionDataService.transferData()` | High | Per-key SCAN+GET+SET loop — N×2 Redis round-trips |
+| Rate Limiting | `auth.application.AnonymousRateLimitService` | High | Fixed-window INCR+EXPIRE — burst-at-boundary issue |
+| Session Promotion | `auth.application.SessionPromotionService` | High | SETNX lock — no fencing, no Redlock |
+| Token Renewal | `auth.application.command.RenewAnonymousTokenHandler` | Medium | Multiple Redis calls: parse token + EXISTS + HGET + HINCRBY + EXPIRE + generate token |
+| Data Size Calculation | `auth.application.AnonymousSessionDataService.getSessionDataSize()` | Medium | SCAN + STRLEN loop — expensive for frequent calls |
+| Metrics | Across all anonymous services | Medium | Counter/timer metrics exist but no tracing spans |
+| Login Rate Limiting | `auth.application.LoginRateLimitService` | Low | Same fixed-window pattern — optimization applies here too |
 
 ### 4.2 Existing Code Patterns
 
-**Architecture**: Clean Architecture with Hexagonal / Ports & Adapters pattern:
-- **Domain layer**: `auth.domain.model` — Pure Kotlin domain models (User, AuthToken, value objects)
-- **Application layer**: `auth.application` — Services + CQRS Handlers (LoginHandler, RegisterHandler, etc.)
-- **Adapter layer**: 
-  - `adapter.in.web` — REST Controllers
-  - `adapter.out.persistence` — JPA repositories + entities
-  - `adapter.out.cache` — Caffeine + Redis caching
-  
-**CQRS Pattern**: Commands handled by `CommandHandler<C, R>` from `eventsourcing-utils`. Both "legacy" `AuthService` and "CQRS" handlers (`LoginHandler`, `RegisterHandler`) coexist via `@ConditionalOnProperty`.
+**Architecture**: Clean Architecture with CQRS Handlers:
+- `CommandHandler<C, R>` from `eventsourcing-utils`
+- Controllers delegate to handlers, handlers use services
+- Redis via `StringRedisTemplate` (not `RedisTemplate<String, Object>`)
 
-**Token Types Already Supported**:
-- Access Token (JWT, RS256, 15 min TTL)
-- Refresh Token (JWT, 7 day TTL, stored hash in DB)
-- MFA Token (JWT, 5 min TTL, `type=mfa` claim)
+**Redis Usage Pattern** (current):
+```kotlin
+// Pattern 1: Sequential calls (AnonymousSessionHandler)
+rateLimitService.checkRateLimit(ip)           // 1-2 Redis calls
+val token = jwtService.generateAnonymousToken(sessionId)  // CPU only
+redisTemplate.opsForHash<String, String>().putAll(key, data)  // 1 Redis call
+redisTemplate.expire(key, ttl)                 // 1 Redis call
+// Total: 3-4 Redis round-trips
 
-**Session Tracking**: `LoginSessionEntity` stores active sessions with device fingerprint, IP, user agent, browser/OS detection.
+// Pattern 2: Loop per key (AnonymousSessionDataService.transferData)
+cursor.use {
+    while (cursor.hasNext()) {
+        val rawKey = String(cursor.next())     // SCAN iteration
+        val value = redisTemplate.opsForValue().get(rawKey)  // GET per key
+        redisTemplate.opsForValue().set(userKey, value, ttl) // SET per key
+    }
+}
+// Total: 1 SCAN + N×GET + N×SET = 1 + 2N round-trips
+```
 
-**Security**: Stateless JWT authentication, Spring Security filter chain, BCrypt password encoding, CAPTCHA, rate limiting.
+**Rate Limiting Pattern** (current):
+```kotlin
+// Fixed window: INCR key → if first → EXPIRE key window → if count > max → throw
+val attempts = ops.increment(key) ?: 1
+if (attempts == 1L) redisTemplate.expire(key, Duration.ofSeconds(config.windowSeconds))
+if (attempts > config.maxAttempts) throw AnonymousRateLimitedException(...)
+```
+
+**Distributed Lock Pattern** (current):
+```kotlin
+// Simple SETNX: set if not exists with TTL
+redisTemplate.opsForValue().setIfAbsent(lockKey, LOCK_VALUE, Duration.ofSeconds(30))
+// Release: simple DEL (no ownership verification)
+redisTemplate.delete(lockKey)
+```
 
 ### 4.3 Tech Stack Constraints
 - Language: Kotlin
-- Framework: Spring Boot (with Spring Security, Spring Data JPA, Spring Data Redis)
-- Database: PostgreSQL (Flyway migrations, Snowflake IDs)
-- Cache: Redis (session data, rate limiting) + Caffeine (L1 permission cache)
+- Framework: Spring Boot 3.x (Spring Data Redis, Spring Security)
+- Database: PostgreSQL (Flyway migrations, existing `token_blacklist` table)
+- Cache: Redis 7+ (StringRedisTemplate, no Lettuce pipeline exposed by default)
 - Build tool: Gradle (Kotlin DSL) with custom conventions plugin
 - Token: JJWT (RS256 primary, HMAC fallback)
 - CQRS: `eventsourcing-utils` library (custom `CommandHandler`)
-- Base framework: `base-core`, `base-web-starter`, `base-data-starter` (custom platform)
+- Metrics: Micrometer (Counter, Timer, Gauge)
 
 ### 4.4 Integration Points
 
 | Integration Point | Type | Module/File | Notes |
 |-------------------|------|-------------|-------|
-| `JwtService` | Service | `auth.application.JwtService` | Extend to generate/validate anonymous tokens |
-| `TokenGenerator` | Service | `auth.application.command.TokenGenerator` | Extend to handle anonymous → authenticated promotion |
-| `SecurityConfig` | Config | `shared.config.SecurityConfig` | Add anonymous endpoints to permitAll() list |
-| `SecurityProperties` | Config | `shared.config.SecurityProperties` | Add anonymous session config properties |
-| `LoginSessionService` | Service | `auth.application.LoginSessionService` | Track anonymous sessions |
-| `LoginSessionRepository` | Repository | `auth.adapter.out.persistence.repository` | New anonymous session queries |
-| `login_sessions` | DB Table | `V4__create_login_sessions.sql` | May need migration for anonymous session columns |
-| Redis | Cache | Spring Data Redis (already configured) | Temporary anonymous session data store |
-| `LoginHandler` | Command Handler | `auth.application.command.LoginHandler` | Session promotion integration point |
-| `AuthController` / `CqrsAuthController` | Controller | `auth.adapter.in.web` | New anonymous endpoints |
+| `AnonymousSessionHandler` | Service | `auth.application.command.AnonymousSessionHandler` | Optimize Redis calls via pipelining |
+| `AnonymousSessionDataService` | Service | `auth.application.AnonymousSessionDataService` | Optimize transferData() with batch ops |
+| `AnonymousRateLimitService` | Service | `auth.application.AnonymousRateLimitService` | Replace fixed-window with sliding window |
+| `SessionPromotionService` | Service | `auth.application.SessionPromotionService` | Harden distributed lock |
+| `RenewAnonymousTokenHandler` | Handler | `auth.application.command.RenewAnonymousTokenHandler` | Reduce Redis round-trips |
+| `StringRedisTemplate` | Spring Bean | Auto-configured | Base Redis client — need pipeline/Lua access |
+| `application.yml` | Config | `src/main/resources/application.yml` | Anonymous config at `app.security.anonymous` |
+| `SecurityProperties` | Config | `shared.config.SecurityProperties` | `AnonymousProperties` data class |
 
 ## 5. Research Questions
 
 ### 5.1 Câu hỏi cần trả lời
-- [x] Q1: How do enterprise IAM systems (Keycloak, Auth0, Firebase Auth) handle anonymous/guest users with temporary sessions?
-- [x] Q2: What are best practices for session promotion (anonymous → authenticated) — specifically data merge strategies?
-- [x] Q3: How to seamlessly transfer temporary data (cart, preferences) after login without data loss?
-- [x] Q4: What JWT claims and token structure should anonymous tokens use?
-- [x] Q5: What are the security risks of anonymous sessions and how to mitigate them (rate limiting, abuse, resource exhaustion)?
-- [x] Q6: Should anonymous sessions be stored in Redis only or also persisted to PostgreSQL?
-- [x] Q7: How should anonymous session TTL be configured (short-lived vs. longer for better UX)?
-- [x] Q8: What happens when an anonymous user logs in to an existing account — merge or discard anonymous data?
-- [x] Q9: Should anonymous tokens count toward the existing session limit (maxSessions=3)?
-- [x] Q10: How to handle concurrent anonymous → authenticated promotions (race conditions)?
+- [x] Q1: How to use Redis pipelining with Spring Data Redis `StringRedisTemplate` in Kotlin?
+- [x] Q2: What is the best sliding window rate limiting algorithm for Redis (sorted set log vs counter subdivision)?
+- [x] Q3: Is Redlock appropriate for session promotion, or is simple SETNX with fencing tokens sufficient?
+- [x] Q4: How to batch SCAN+GET+SET operations for data transfer using Redis pipeline?
+- [x] Q5: What is the memory overhead of Redis Hash vs String for small session metadata?
+- [x] Q6: How to add OpenTelemetry tracing spans to Redis operations in Spring Boot?
+- [x] Q7: What are the trade-offs of Lua scripts vs pipelining for atomic multi-command operations?
+- [x] Q8: How to maintain a running data size counter instead of SCAN+STRLEN on every write?
 
 ### 5.2 Assumptions cần verify
-- [x] A1: The system should support anonymous sessions without requiring CAPTCHA for initial token generation (CAPTCHA only after suspicious activity)
-- [x] A2: Anonymous session data will be stored in Redis with configurable TTL (default 24h)
-- [x] A3: Anonymous tokens will NOT count toward the authenticated session limit (maxSessions)
-- [x] A4: Session promotion is a one-time, atomic operation — after promotion, the anonymous session is destroyed
-- [x] A5: The anonymous token uses the same RS256 signing key as authenticated tokens
+- [x] A1: Spring Data Redis `StringRedisTemplate.executePipelined()` provides access to Redis pipelining
+- [x] A2: Lettuce (default Redis client in Spring Boot) supports pipelining natively
+- [x] A3: Redis Lua scripts can be executed via `StringRedisTemplate.execute(RedisScript, ...)` 
+- [x] A4: Sliding window counter is more appropriate than sorted-set log for high-throughput rate limiting
+- [x] A5: Simple SETNX with value-based ownership check is sufficient (Redlock is overkill for single-node Redis)
 
 ## 6. Success Criteria
 
 | Tiêu chí | Định nghĩa | Measurement |
 |----------|-----------|-------------|
-| Research coverage | Comprehensive survey of anonymous auth patterns | ≥ 5 sources analyzed |
-| Open source options | Evaluate existing solutions and frameworks | ≥ 3 projects evaluated |
-| Gap analysis | Identify what's missing from existing solutions vs. our needs | All critical gaps identified |
-| Business analysis | Complete use case decomposition with flows | All UCs documented with basic + exception flows |
-| Technical spec | Actionable spec that an agent can implement from | Agent-ready with classes, APIs, schemas defined |
+| Research coverage | Comprehensive survey of Redis optimization patterns | ≥ 5 sources analyzed |
+| Open source options | Evaluate existing libraries/patterns | ≥ 3 approaches evaluated |
+| Gap analysis | Identify optimization opportunities with estimated impact | All critical optimizations identified |
+| Business analysis | Use case decomposition for optimization changes | All optimization UCs documented |
+| Technical spec | Actionable spec with before/after code patterns | Agent-ready with specific code changes |
 
 ---
 

@@ -36,7 +36,7 @@ class SessionController(
      * Revoke a specific session by ID.
      */
     @DeleteMapping("/{sessionId}")
-    fun revokeSession(@PathVariable sessionId: Long): ResponseEntity<Map<String, String>> {
+    fun revokeSession(@PathVariable sessionId: Long): ResponseEntity<Map<String, Any?>> {
         val userId = getCurrentUserId()
         val revoked = loginSessionService.revokeSession(sessionId, userId, "MANUAL")
         return if (revoked) {
@@ -52,7 +52,7 @@ class SessionController(
      * Revoke all sessions for the current user (force re-login on all devices).
      */
     @DeleteMapping
-    fun revokeAllSessions(): ResponseEntity<Map<String, String>> {
+    fun revokeAllSessions(): ResponseEntity<Map<String, Any?>> {
         val userId = getCurrentUserId()
         loginSessionService.revokeAllSessions(userId, "MANUAL_ALL")
         val locale = LocaleContextHolder.getLocale()

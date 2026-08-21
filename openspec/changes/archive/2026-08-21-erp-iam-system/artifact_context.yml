@@ -1,0 +1,32 @@
+primary: erp-iam-system
+environment: java/kotlin
+rules:
+  - base-core-plugin-architecture
+  - security-first
+  - spring-boot
+  - error-handling
+  - testing
+  - api-security
+skills:
+  - wf_openspec
+  - spring-boot
+  - architecture
+artifacts:
+  - id: proposal
+    type: markdown
+    status: done
+  - id: srs
+    type: markdown
+    status: done
+  - id: design
+    type: markdown
+    status: done
+  - id: specs
+    type: markdown
+    status: done
+  - id: impact_analysis
+    type: markdown
+    status: done
+  - id: tasks
+    type: markdown
+    status: done

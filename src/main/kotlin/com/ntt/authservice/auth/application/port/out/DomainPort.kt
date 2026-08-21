@@ -14,5 +14,9 @@ interface DomainPort {
 data class DomainInfo(
     val id: Long,
     val code: String,
-    val name: String? = null
+    val name: String? = null,
+    val logoUrl: String? = null,
+    val primaryColor: String? = null,
+    val loginPageConfig: String? = null,
+    val faviconUrl: String? = null
 )

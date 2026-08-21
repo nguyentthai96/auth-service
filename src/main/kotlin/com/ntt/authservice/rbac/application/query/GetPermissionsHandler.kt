@@ -1,6 +1,5 @@
 package com.ntt.authservice.rbac.application.query
 
-import com.ntt.authservice.auth.application.port.out.PermissionCache
 import com.ntt.authservice.rbac.adapter.out.persistence.repository.*
 import com.ntt.eventsourcingutils.lib.cqrs.query.QueryHandler
 import org.slf4j.LoggerFactory
@@ -23,8 +22,7 @@ class GetPermissionsHandler(
     private val rolePermissionRepository: RolePermissionRepository,
     private val permissionRepository: PermissionRepository,
     private val domainResourceRepository: DomainResourceRepository,
-    private val actionRepository: ActionRepository,
-    private val permissionCache: PermissionCache
+    private val actionRepository: ActionRepository
 ) : QueryHandler<GetPermissionsQuery, List<String>> {
 
     private val log = LoggerFactory.getLogger(GetPermissionsHandler::class.java)
@@ -32,13 +30,8 @@ class GetPermissionsHandler(
     override fun queryType(): Class<GetPermissionsQuery> = GetPermissionsQuery::class.java
 
     @Transactional(readOnly = true)
+    @org.springframework.cache.annotation.Cacheable(cacheNames = ["permissions"], keyGenerator = "baseCacheKeyGenerator")
     override fun handle(query: GetPermissionsQuery): List<String> {
-        // Check cache first
-        val cached = permissionCache.getPermissions(query.userId, query.domainId)
-        if (cached != null) {
-            log.debug("Cache hit for permissions userId={} domainId={}", query.userId, query.domainId)
-            return cached
-        }
 
         // Resolve: User → Groups → Roles → Permissions (batch)
         val groups = userGroupRepository.findAllByUserIdAndActiveTrue(query.userId)
@@ -66,8 +59,6 @@ class GetPermissionsHandler(
             "${resource.code}:${action.code}"
         }
 
-        // Populate cache
-        permissionCache.putPermissions(query.userId, query.domainId, permissions)
         log.debug("Loaded {} permissions for userId={} domainId={}", permissions.size, query.userId, query.domainId)
 
         return permissions

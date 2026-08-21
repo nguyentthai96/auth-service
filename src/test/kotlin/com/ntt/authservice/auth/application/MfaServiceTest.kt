@@ -1,5 +1,6 @@
 package com.ntt.authservice.auth.application
 
+import com.ntt.authservice.auth.adapter.out.persistence.repository.MfaRecoveryCodeRepository
 import com.ntt.authservice.auth.adapter.`in`.web.dto.AuthResponse
 import com.ntt.authservice.rbac.adapter.out.persistence.entity.UserEntity
 import com.ntt.authservice.rbac.adapter.out.persistence.repository.UserRepository
@@ -36,6 +37,7 @@ class MfaServiceTest {
     @Mock private lateinit var redisTemplate: StringRedisTemplate
     @Mock private lateinit var auditLogService: AuditLogService
     @Mock private lateinit var rateLimitService: MfaRateLimitService
+    @Mock private lateinit var recoveryCodeRepository: MfaRecoveryCodeRepository
     @Mock private lateinit var mfaProperties: SecurityProperties.MfaProperties
     @Mock private lateinit var jwtProperties: SecurityProperties.JwtProperties
     @Mock private lateinit var valueOps: ValueOperations<String, String>
@@ -59,7 +61,8 @@ class MfaServiceTest {
     fun setUp() {
         mfaService = MfaService(
             otpService, totpService, jwtService, userRepository,
-            securityProperties, redisTemplate, auditLogService, rateLimitService
+            securityProperties, redisTemplate, auditLogService, rateLimitService,
+            recoveryCodeRepository
         )
     }
 

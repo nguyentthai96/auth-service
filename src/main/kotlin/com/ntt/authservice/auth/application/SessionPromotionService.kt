@@ -7,16 +7,19 @@ import io.micrometer.core.instrument.MeterRegistry
 import io.micrometer.core.instrument.Timer
 import org.slf4j.LoggerFactory
 import org.springframework.data.redis.core.StringRedisTemplate
+import org.springframework.data.redis.core.script.DefaultRedisScript
 import org.springframework.stereotype.Service
 import java.time.Duration
 import java.time.Instant
+import java.util.UUID
 
 /**
  * Orchestrates anonymous session promotion during login/register.
  * Flow: acquireLock → verifySession → transferData → blacklistToken → deleteSession → releaseLock.
  *
  * Promotion is best-effort: login/register succeeds even if promotion fails (DD-007).
- * Uses distributed lock to prevent concurrent promotion of the same session (FR-010).
+ * Uses distributed lock with UUID ownership to prevent concurrent promotion of the same session (FR-010).
+ * Lock release uses Lua script for ownership verification — prevents cross-process lock release (FR-004).
  */
 @Service
 class SessionPromotionService(
@@ -24,7 +27,8 @@ class SessionPromotionService(
     private val anonymousSessionDataService: AnonymousSessionDataService,
     private val tokenBlacklistRepository: TokenBlacklistRepository,
     private val securityProperties: SecurityProperties,
-    private val meterRegistry: MeterRegistry
+    private val meterRegistry: MeterRegistry,
+    private val safeLockReleaseScript: DefaultRedisScript<Long>
 ) {
 
     private val log = LoggerFactory.getLogger(SessionPromotionService::class.java)
@@ -32,7 +36,6 @@ class SessionPromotionService(
     companion object {
         private const val SESSION_PREFIX = "anon:session:"
         private const val LOCK_PREFIX = "anon:lock:"
-        private const val LOCK_VALUE = "locked"
         private const val LOCK_TTL_SECONDS = 30L
     }
 
@@ -47,8 +50,9 @@ class SessionPromotionService(
     fun promoteSession(sessionId: String, userId: Long, anonymousJti: String): PromotionResult {
         val sample = Timer.start(meterRegistry)
 
-        // Step 1: Acquire distributed lock
-        if (!acquireLock(sessionId)) {
+        // Step 1: Acquire distributed lock (returns ownerUUID on success, null on failure)
+        val ownerUUID = acquireLock(sessionId)
+        if (ownerUUID == null) {
             log.warn("Promotion lock acquisition failed for session={} — concurrent promotion detected", sessionId)
             meterRegistry.counter("auth.anonymous.sessions.promoted", "status", "CONFLICT").increment()
             return PromotionResult(status = PromotionResult.Status.CONFLICT)
@@ -114,35 +118,44 @@ class SessionPromotionService(
                 namespaces = transferResult?.namespaces ?: emptyList()
             )
         } finally {
-            // Step 6: Release lock
-            releaseLock(sessionId)
+            // Step 6: Release lock (with ownership verification via Lua)
+            releaseLock(sessionId, ownerUUID)
         }
     }
 
     /**
-     * Acquire a distributed lock for session promotion using SETNX with TTL.
+     * Acquire a distributed lock for session promotion using SETNX with UUID ownership + TTL.
+     * Returns the ownerUUID on success, null on failure.
      */
-    private fun acquireLock(sessionId: String): Boolean {
+    private fun acquireLock(sessionId: String): String? {
         val lockKey = "$LOCK_PREFIX$sessionId"
+        val ownerUUID = UUID.randomUUID().toString()
         return try {
-            redisTemplate.opsForValue().setIfAbsent(
-                lockKey, LOCK_VALUE, Duration.ofSeconds(LOCK_TTL_SECONDS)
+            val acquired = redisTemplate.opsForValue().setIfAbsent(
+                lockKey, ownerUUID, Duration.ofSeconds(LOCK_TTL_SECONDS)
             ) == true
+            if (acquired) ownerUUID else null
         } catch (ex: Exception) {
             log.error("Failed to acquire promotion lock for session={}: {}", sessionId, ex.message)
-            false
+            null
         }
     }
 
     /**
-     * Release the distributed lock for session promotion.
+     * Release the distributed lock using Lua script for ownership verification.
+     * Only deletes the lock if the stored value matches the ownerUUID — prevents cross-process lock release.
      */
-    private fun releaseLock(sessionId: String) {
+    private fun releaseLock(sessionId: String, ownerUUID: String) {
         val lockKey = "$LOCK_PREFIX$sessionId"
         try {
-            redisTemplate.delete(lockKey)
+            val released = redisTemplate.execute(
+                safeLockReleaseScript, listOf(lockKey), ownerUUID
+            )
+            if (released == 0L) {
+                log.warn("Lock for session={} owned by different process — skipped release", sessionId)
+            }
         } catch (ex: Exception) {
-            log.warn("Failed to release promotion lock for session={} — will auto-expire in {}s", sessionId, LOCK_TTL_SECONDS)
+            log.warn("Failed to release lock for session={} via Lua — will auto-expire in {}s", sessionId, LOCK_TTL_SECONDS)
         }
     }
 }

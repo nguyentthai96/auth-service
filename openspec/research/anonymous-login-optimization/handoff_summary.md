@@ -9,8 +9,8 @@
 | Mục | Nội dung |
 |-----|----------|
 | **Feature** | Anonymous Login Optimization |
-| **Ngày hoàn thành** | 2025-01-20 |
-| **Recommendation** | Build from scratch (with pattern references) |
+| **Ngày hoàn thành** | 2025-07-15 |
+| **Recommendation** | Build in-place optimizations (pipeline + Lua scripts) |
 | **Research directory** | `openspec/research/anonymous-login-optimization/` |
 | **Status** | complete |
 
@@ -18,7 +18,7 @@
 
 ## 1. Recommendation
 
-**Build from scratch** using Firebase Auth's API design (`signInAnonymously` → `linkWithCredential`) and Supabase GoTrue's JWT claims structure (`is_anonymous` claim) as design references. No existing open source library provides an embeddable, Spring Boot-native anonymous session promotion capability. The auth-service's existing JWT, Redis, and CQRS infrastructure makes custom build the lowest-risk, highest-integration-quality approach (estimated 5-8 developer-days).
+**Optimize in-place** using Spring Data Redis pipeline (`executePipelined`) and Lua scripts (`execute(RedisScript)`) with zero new external dependencies. The existing anonymous login system has 6 optimization areas: Redis round-trip reduction via pipelining, sliding window rate limiting via Lua script, batch data transfer during promotion, safe lock release with UUID ownership, running data size counter, and observability spans. All optimizations use existing Spring Data Redis APIs already available in the project.
 
 ---
 
@@ -26,10 +26,10 @@
 
 | Category | Finding | Source |
 |----------|---------|-------|
-| Open Source | 4 projects evaluated (Spring Security 7.90, Firebase 7.70, Keycloak 7.50, Supabase 6.70) — all assessed as "reference pattern only", none suitable for direct adoption or forking | [opensource_findings.md](./opensource_findings.md) |
-| Web Research | 8 unique sources analyzed across 3 search iterations; Firebase's `signInAnonymously()` + `linkWithCredential()` is the gold standard; Supabase's `is_anonymous` JWT claim is directly applicable; Redis ephemeral model recommended over DB-backed anonymous users | [web_research.md](./web_research.md) |
-| Gap Coverage | 100% gap coverage — all 8 identified gaps addressed in technical spec; custom build covers all 9 Must-have features (vs max 45% by any external solution) | [comparison_analysis.md](./comparison_analysis.md) |
-| Current System | auth-service has mature infrastructure (JwtService with RS256, CQRS CommandHandler, StringRedisTemplate, LoginRateLimitService, TokenBlacklistRepository) — anonymous auth is an incremental extension, not greenfield | [research_brief.md](./research_brief.md) |
+| Open Source | 4 solutions evaluated (Redisson 8.95, Spring Data Redis Pipeline 8.45, Bucket4j 7.85, Resilience4j 7.65) — Spring Data Redis Pipeline selected as primary approach (zero new deps); Redisson/Bucket4j referenced for algorithms only | [opensource_findings.md](./opensource_findings.md) |
+| Web Research | 8 unique sources across 3 iterations; Redis Labs sliding window counter algorithm, Kleppmann's safe lock release pattern, Spring Data executePipelined API — all well-documented, battle-tested | [web_research.md](./web_research.md) |
+| Gap Coverage | 100% gap coverage — all 6 optimization areas addressed in tech spec with concrete code examples and Lua script implementations | [comparison_analysis.md](./comparison_analysis.md) |
+| Current System | Anonymous login fully implemented: AnonymousSessionHandler (3-4 RTT → target 2), AnonymousRateLimitService (fixed window → sliding), AnonymousSessionDataService (per-key → batch), SessionPromotionService (unsafe DEL → Lua safe release) | [research_brief.md](./research_brief.md) |
 
 ---
 
@@ -37,14 +37,12 @@
 
 | UC ID | Tên | Mô tả ngắn | Priority |
 |-------|-----|------------|----------|
-| UC-001 | Create Anonymous Session | Generate anonymous JWT token + initialize Redis session with TTL | Must |
-| UC-002 | Promote Anonymous Session | Upgrade anonymous to authenticated during login — transfer data, blacklist token | Must |
-| UC-003 | Store Anonymous Session Data | CRUD operations on temporary session data in Redis (namespace-based) | Must |
-| UC-004 | Renew Anonymous Token | Renew expiring anonymous token while keeping same session | Should |
-| UC-005 | Rate Limit Check | IP-based rate limiting for anonymous token creation | Must |
-| UC-006 | Transfer Session Data | Migrate Redis data from anonymous namespace to authenticated user namespace | Must |
-| UC-007 | Invalidate Anonymous Token | Blacklist anonymous token JTI after promotion or renewal | Must |
-| UC-008 | Cleanup Expired Sessions | Automated cleanup of expired anonymous sessions (Redis TTL handles this) | Nice |
+| UC-OPT-001 | Pipeline Session Creation | Batch HSET+EXPIRE into 1 pipeline RTT (from 3-4 RTTs) | Must |
+| UC-OPT-002 | Sliding Window Rate Limiting | Replace fixed-window INCR+EXPIRE with Lua sliding window counter | Must |
+| UC-OPT-003 | Batch Data Transfer | Replace per-key GET+SET loop with pipeline MGET+MSET (from 1+2N RTT to 3 RTT) | Must |
+| UC-OPT-004 | Safe Lock Release | Replace simple DEL with Lua conditional DEL using UUID ownership verification | Should |
+| UC-OPT-005 | Running Size Counter | Replace SCAN+STRLEN (O(N)) with HINCRBY running counter (O(1)) | Should |
+| UC-OPT-006 | Observability Spans | Add Micrometer Observation spans to critical anonymous session paths | Nice |
 
 ---
 
@@ -52,11 +50,13 @@
 
 | Aspect | Decision/Finding |
 |--------|-----------------|
-| Architecture | Ephemeral Redis model — anonymous sessions stored in Redis only (no PostgreSQL anonymous user records); CQRS CommandHandler pattern for token creation/renewal; existing LoginHandler extended for promotion |
-| Data model | Redis-only: `anon:session:{id}` (Hash), `anon:data:{id}:{ns}:{key}` (String); no new PostgreSQL tables; existing `token_blacklist` table reused |
-| APIs | 6 endpoints: create session, renew token, store/read/delete data, login with promotion |
-| Key dependencies | No new external dependencies — uses existing JJWT, Spring Data Redis (StringRedisTemplate), Spring Security, eventsourcing-utils CQRS |
-| Risk areas | (1) Anonymous token abuse via bot farms — mitigated by IP rate limiting + CAPTCHA; (2) Redis memory exhaustion from mass anonymous sessions — mitigated by TTL + data size limits (64KB/session) |
+| Architecture | No architectural changes — internal optimization of existing services using Spring Data Redis pipeline and Lua scripting |
+| Data model | 1 change: add `dataSize` field to `anon:session:{id}` Redis hash. Rate limit keys change from `anon:rate:{ip}` to `anon:rate:{ip}:{windowId}` (sliding window) |
+| APIs | 0 API changes — all optimizations are internal, same request/response contracts |
+| Key dependencies | No new dependencies — uses existing StringRedisTemplate, executePipelined(), execute(RedisScript) |
+| Risk areas | (1) Lua script errors in production — mitigated by comprehensive tests + SHA1 caching; (2) Running size counter drift — mitigated by periodic SCAN reconciliation |
+| New artifacts | 2 Lua scripts: `sliding_window_rate_limit.lua` (27 lines), `safe_lock_release.lua` (8 lines). 1 config class: `RedisLuaScriptConfig`. |
+| Effort estimate | 3-5 developer-days |
 
 ---
 
@@ -64,7 +64,7 @@
 
 | Workflow | Command | Khi nào dùng |
 |----------|---------|-------------|
-| Brainstorm (deep thinking) | `/wf_brainstorm_openspec anonymous-login-optimization --from-research` | Muốn explore thêm — e.g., progressive authentication tiers, multi-level access |
+| Brainstorm (deep thinking) | `/wf_brainstorm_openspec anonymous-login-optimization --from-research` | Muốn explore thêm — e.g., full Redisson migration, Redis Cluster pipelining |
 | URD Analysis | `/wf_pre_openspec openspec/research/anonymous-login-optimization/business_analysis.md` | Đã rõ requirements, muốn formalize into URD |
 | OpenSpec (direct) | `/wf_openspec anonymous-login-optimization` | Đã rõ mọi thứ, muốn generate implementation artifacts (tasks, design, migration) |
 
@@ -74,13 +74,13 @@
 
 | File | Phase | Content |
 |------|-------|---------|
-| [research_brief.md](./research_brief.md) | 1 | Scope, 8 keywords, 10 search queries, current system analysis (10 integration points, tech stack constraints, existing code patterns) |
-| [opensource_findings.md](./opensource_findings.md) | 2 | 4 projects evaluated with scoring matrix (7-criteria weighted), gap analysis per project, recommendation: build from scratch |
-| [web_research.md](./web_research.md) | 3 | 3 search iterations, 8 unique sources, 4 implementation approaches compared (Firebase model, Ephemeral/Redis, Hybrid, Progressive Auth) |
-| [comparison_analysis.md](./comparison_analysis.md) | 4 | Feature matrix (11 features × 5 solutions), gap analysis (8 requirements, 7 system aspects), decision matrix (5 criteria weighted), cost estimate |
-| [business_analysis.md](./business_analysis.md) | 5 | 8 use cases (4 primary + 4 internal), 8 FRs, 6 NFRs, 16 business rules, traceability matrix, glossary |
-| [technical_spec.md](./technical_spec.md) | 6 | Architecture diagram, Redis key design, 4 sequence diagrams, state machine, 6 API endpoints with examples, security matrix, 15 classes to create + 10 to modify, 18 test cases |
-| [validation_report.md](./validation_report.md) | 7 | All 5 checks PASS on first iteration (source verification, consistency, completeness, feasibility, gap coverage) |
+| [research_brief.md](./research_brief.md) | 1 | Scope, 5 primary + 8 secondary keywords, 8 search queries, current system analysis (6 optimization areas, 8 code patterns documented) |
+| [opensource_findings.md](./opensource_findings.md) | 2 | 4 projects evaluated with scoring matrix (Redisson, Spring Data Redis Pipeline, Bucket4j, Resilience4j), gap analysis per project |
+| [web_research.md](./web_research.md) | 3 | 3 search iterations, 8 unique sources, 6 optimization patterns documented with trade-offs |
+| [comparison_analysis.md](./comparison_analysis.md) | 4 | Feature matrix (9 features × 4 solutions + current), gap analysis (6 requirements, 7 system aspects), decision matrix (5 criteria weighted), cost estimate |
+| [business_analysis.md](./business_analysis.md) | 5 | 6 optimization use cases, 6 FRs, 5 NFRs, 12 business rules, traceability matrix, glossary |
+| [technical_spec.md](./technical_spec.md) | 6 | Architecture diagrams, Redis key changes, 2 sequence diagrams, before/after performance tables, 2 Lua scripts, 3 code change examples, 5 classes to modify, 15 test cases |
+| [validation_report.md](./validation_report.md) | 7 | All 5 checks PASS on first iteration |
 
 ---
 
@@ -88,11 +88,11 @@
 
 | Check | Status | Notes |
 |-------|:---:|-------|
-| Source Verification | ✅ | All 8 sources have valid URLs |
-| Consistency | ✅ | BA ↔ Tech Spec aligned (UCs → APIs, FRs → endpoints, BRs consistent) |
-| Completeness | ✅ | All UCs have basic + exception flows; all APIs have request/response examples |
-| Feasibility | ✅ | Feasible with current stack — no new dependencies, all integration points verified |
-| Gap Coverage | ✅ | All 8 gaps from comparison analysis addressed in tech spec |
+| Source Verification | ✅ | All 8 sources have valid URLs (Redis docs, Spring Data docs, Kleppmann) |
+| Consistency | ✅ | BA ↔ Tech Spec aligned (UCs → class changes, FRs → code examples, BRs consistent) |
+| Completeness | ✅ | All UCs have flows; all Lua scripts provided; all code change examples complete |
+| Feasibility | ✅ | Feasible with current stack — no new dependencies; all APIs verified (executePipelined, execute(RedisScript)) |
+| Gap Coverage | ✅ | All 6 optimization gaps addressed with concrete implementations |
 
 ---
 

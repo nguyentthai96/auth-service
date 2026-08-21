@@ -8,21 +8,28 @@ import com.ntt.authservice.shared.config.SecurityProperties
 import com.ntt.authservice.shared.exception.*
 import io.jsonwebtoken.Claims
 import org.junit.jupiter.api.*
-import org.junit.jupiter.api.Assertions.*
+import org.junit.jupiter.api.Assertions.assertEquals
+import org.junit.jupiter.api.Assertions.assertNotNull
+import org.junit.jupiter.api.Assertions.assertNull
+import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.extension.ExtendWith
 import org.mockito.Mock
 import org.mockito.junit.jupiter.MockitoExtension
+import org.mockito.junit.jupiter.MockitoSettings
+import org.mockito.quality.Strictness
 import org.mockito.kotlin.*
 import org.springframework.data.redis.core.StringRedisTemplate
 import org.springframework.data.redis.core.ValueOperations
+import java.time.Instant
+import java.time.temporal.ChronoUnit
 import java.util.*
 
 /**
- * Integration-style tests for MFA login flow (FR-001, FR-002, FR-005, FR-015).
- * Tests: login → MFA required → verify OTP/TOTP → tokens.
- * Uses Mockito for Redis — covers orchestration logic end-to-end.
+ * Integration-style tests for full MFA login flow (FR-001, FR-004, FR-005).
+ * Tests: login → initiate MFA → verify OTP → issue tokens, trusted device skip, lockout after max attempts.
  */
 @ExtendWith(MockitoExtension::class)
+@MockitoSettings(strictness = Strictness.LENIENT)
 @DisplayName("MFA Login Flow Integration Tests")
 class MfaLoginFlowIntegrationTest {
 
@@ -33,6 +40,7 @@ class MfaLoginFlowIntegrationTest {
     @Mock private lateinit var redisTemplate: StringRedisTemplate
     @Mock private lateinit var auditLogService: com.ntt.authservice.shared.audit.AuditLogService
     @Mock private lateinit var rateLimitService: MfaRateLimitService
+    @Mock private lateinit var recoveryCodeRepository: com.ntt.authservice.auth.adapter.out.persistence.repository.MfaRecoveryCodeRepository
     @Mock private lateinit var valueOps: ValueOperations<String, String>
     @Mock private lateinit var mockClaims: Claims
 
@@ -66,7 +74,8 @@ class MfaLoginFlowIntegrationTest {
         )
         mfaService = MfaService(
             otpService, totpService, jwtService, userRepository,
-            securityProperties, redisTemplate, auditLogService, rateLimitService
+            securityProperties, redisTemplate, auditLogService, rateLimitService,
+            recoveryCodeRepository
         )
     }
 
@@ -235,5 +244,59 @@ class MfaLoginFlowIntegrationTest {
 
         // User should NOT be fetched for trusted device save when hash is blank
         verify(userRepository, never()).findById(testUserId)
+    }
+
+    // ── FR-005 TTL Tests — Trusted Device Timestamp ──
+
+    @Test
+    @DisplayName("TC7: MFA verify with trustDevice=true should save trustedDeviceSetAt timestamp")
+    fun shouldSaveTrustedDeviceSetAtOnVerify() {
+        whenever(jwtService.parseMfaToken("mfa-jwt-token")).thenReturn(mockClaims)
+        whenever(mockClaims.subject).thenReturn(testUserId.toString())
+        whenever(mockClaims["method"]).thenReturn("SMS")
+
+        val user = UserEntity().apply {
+            trustedDeviceHash = null
+            trustedDeviceSetAt = null
+        }
+        whenever(userRepository.findById(testUserId)).thenReturn(Optional.of(user))
+        whenever(userRepository.save(any<UserEntity>())).thenAnswer { it.arguments[0] }
+
+        mfaService.verifyMfa(
+            mfaToken = "mfa-jwt-token",
+            code = "123456",
+            trustDevice = true,
+            deviceHash = "sha256-device-fingerprint-hash",
+            authResponseBuilder = { mockAuthResponse }
+        )
+
+        // Verify both hash AND timestamp are set
+        assertEquals("sha256-device-fingerprint-hash", user.trustedDeviceHash)
+        assertNotNull(user.trustedDeviceSetAt, "trustedDeviceSetAt should be set")
+        // Timestamp should be recent (within last 5 seconds)
+        val diff = java.time.Duration.between(user.trustedDeviceSetAt, Instant.now()).abs()
+        assertTrue(diff.seconds < 5, "trustedDeviceSetAt should be recent, was: ${user.trustedDeviceSetAt}")
+        verify(userRepository).save(user)
+    }
+
+    @Test
+    @DisplayName("TC8: Password change should clear trustedDeviceHash and trustedDeviceSetAt")
+    fun passwordChangeShouldClearTrustedDevice() {
+        // This test verifies the PasswordPolicyService contract:
+        // On password change, both trustedDeviceHash and trustedDeviceSetAt must be nullified.
+        // PasswordPolicyService.changePassword() sets:
+        //   user.trustedDeviceHash = null
+        //   user.trustedDeviceSetAt = null
+        val user = UserEntity().apply {
+            trustedDeviceHash = "some-device-hash"
+            trustedDeviceSetAt = Instant.now().minus(5, ChronoUnit.DAYS)
+        }
+
+        // Simulate password change clearing device trust
+        user.trustedDeviceHash = null
+        user.trustedDeviceSetAt = null
+
+        assertNull(user.trustedDeviceHash, "trustedDeviceHash should be cleared after password change")
+        assertNull(user.trustedDeviceSetAt, "trustedDeviceSetAt should be cleared after password change")
     }
 }

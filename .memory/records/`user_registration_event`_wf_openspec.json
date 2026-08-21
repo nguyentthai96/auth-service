@@ -1,0 +1,17 @@
+{
+  "feature": "`user_registration_event`",
+  "workflow": "wf_openspec",
+  "outcome": "success",
+  "timestamp": "2026-08-21T07:49:21.509236+00:00",
+  "duration_seconds": 778,
+  "tokens_used": 0,
+  "prompt_layer_tokens": {},
+  "output_artifacts": [
+    "/home/nguyentthai96/Desktop/bigbang/boilerplate/services/auth-service/openspec/changes/`user_registration_event`/proposal.md",
+    "/home/nguyentthai96/Desktop/bigbang/boilerplate/services/auth-service/openspec/changes/`user_registration_event`/design.md",
+    "/home/nguyentthai96/Desktop/bigbang/boilerplate/services/auth-service/openspec/changes/`user_registration_event`/tasks.md"
+  ],
+  "errors": [],
+  "lesson_extracted": null,
+  "recovery_pattern": null
+}

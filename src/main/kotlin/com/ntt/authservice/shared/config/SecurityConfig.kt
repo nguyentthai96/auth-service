@@ -21,7 +21,7 @@ import org.springframework.web.cors.UrlBasedCorsConfigurationSource
 
 @Configuration
 @EnableWebSecurity
-@EnableConfigurationProperties(SecurityProperties::class)
+@EnableConfigurationProperties(SecurityProperties::class, OutboxProperties::class)
 class SecurityConfig(
     private val jwtAuthFilter: JwtAuthFilter,
     private val loginRateLimitFilter: LoginRateLimitFilter,

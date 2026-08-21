@@ -9,10 +9,10 @@
 | Mục | Nội dung |
 |-----|----------|
 | **Tính năng** | Enterprise IAM System (3 Modules: auth-service, account-service, system-admin-service) |
-| **Ngày phân tích** | 2026-08-05 |
-| **Recommendation** | **Hybrid approach — Custom build + Adopt libraries + Optional Keycloak** |
-| **Rationale** | Không có open source nào cover business-specific features (menu permission, org management, approval workflow). Custom build trên nền tảng base-core đã có, adopt Bucket4j cho rate limiting, optional Keycloak cho SSO delegation. |
-| **Confidence** | HIGH — Gap analysis rõ ràng, tech stack constraints đã xác định, foundation code đã có |
+| **Ngày phân tích** | 2025-07-15 |
+| **Recommendation** | **Hybrid approach — Enhance existing custom code + Adopt Bucket4j + Optional Keycloak** |
+| **Rationale** | Codebase đã có substantial implementation cho tất cả 3 services. Enhance existing code, adopt Bucket4j cho rate limiting, optional Keycloak cho SSO delegation. Không cần build from scratch. |
+| **Confidence** | HIGH — Codebase scan confirmed 40+ Kotlin files across 3 services, gap analysis rõ ràng, tech stack constraints đã xác định |
 
 ---
 
@@ -26,29 +26,29 @@
 | 2 | Bucket4j | Open Source Library | Embeddable rate limiting — token bucket + Redis | Spring Boot native, lightweight, distributed | Application-level only, no admin dashboard | ✅ Adopt | 8.35 |
 | 3 | Cerbos | Open Source Policy Engine | External policy-as-code engine — YAML policies | Powerful ABAC, playground | Separate Go service, overkill for current scale | ❌ Skip | 7.35 |
 | 4 | Casbin | Open Source Library | Embeddable authorization — model DSL | Multi-model support, embeddable | Would replace working RbacEngine, not native Spring | ❌ Skip | 7.20 |
-| 5 | Custom Build | In-house | Full IAM on base-core foundation | Full control, tight integration, no vendor lock-in | Development effort, maintenance burden | ✅ Primary | N/A |
+| 5 | Enhance Existing | In-house | Enhance existing implementations across 3 services | Full control, tight integration, no vendor lock-in, leverages existing code | Enhancement effort, maintenance burden | ✅ Primary | N/A |
 
 ---
 
 ## 3. So sánh theo tính năng (Feature Matrix)
 
-| Feature | Keycloak | Bucket4j | Cerbos | Casbin | Custom Build | Cần cho project? |
+| Feature | Keycloak | Bucket4j | Cerbos | Casbin | Enhance Existing | Cần cho project? |
 |---------|:---:|:---:|:---:|:---:|:---:|:---:|
-| Authentication (login/register) | ✅ | ❌ | ❌ | ❌ | ✅ | ⭐ Must (đã có) |
-| MFA/2FA | ✅ | ❌ | ❌ | ❌ | ✅ | ⭐ Must |
-| OAuth2/SSO | ✅ | ❌ | ❌ | ❌ | ✅ | ⭐ Must |
-| RBAC | ✅ | ❌ | ❌ | ✅ | ✅ | ⭐ Must (đã có) |
-| PBAC/ABAC | ⚠️ | ❌ | ✅ | ✅ | ✅ | ⭐ Must (đã có) |
-| Menu Permission (tree) | ❌ | ❌ | ❌ | ❌ | ✅ | ⭐ Must |
-| Button-level Permission | ❌ | ❌ | ❌ | ❌ | ✅ | ⭐ Must |
-| Organization Hierarchy | ❌ | ❌ | ❌ | ❌ | ✅ | ⭐ Must |
-| API Key Management | ❌ | ❌ | ❌ | ❌ | ✅ | ⭐ Must |
-| Rate Limiting | ❌ | ✅ | ❌ | ❌ | ⚠️ | ⭐ Must |
-| Approval Workflow | ❌ | ❌ | ❌ | ❌ | ✅ | Should |
-| Audit Trail | ✅ | ❌ | ⚠️ | ❌ | ✅ | ⭐ Must |
-| User Profile Management | ❌ | ❌ | ❌ | ❌ | ✅ | ⭐ Must |
-| Device Management | ❌ | ❌ | ❌ | ❌ | ✅ | Should |
-| System Configuration | ❌ | ❌ | ❌ | ❌ | ✅ | Nice to have |
+| Authentication (login/register) | ✅ | ❌ | ❌ | ❌ | ✅ (đã có) | ⭐ Must (đã có) |
+| MFA/2FA | ✅ | ❌ | ❌ | ❌ | ✅ (đã có) | ⭐ Must (đã có) |
+| OAuth2/SSO | ✅ | ❌ | ❌ | ❌ | ✅ (đã có) | ⭐ Must (đã có) |
+| RBAC | ✅ | ❌ | ❌ | ✅ | ✅ (đã có) | ⭐ Must (đã có) |
+| PBAC/ABAC | ⚠️ | ❌ | ✅ | ✅ | ✅ (đã có) | ⭐ Must (đã có) |
+| Menu Permission (tree) | ❌ | ❌ | ❌ | ❌ | ✅ (đã có) | ⭐ Must (đã có) |
+| Button-level Permission | ❌ | ❌ | ❌ | ❌ | ✅ (enhance) | ⭐ Must |
+| Organization Hierarchy | ❌ | ❌ | ❌ | ❌ | ✅ (đã có) | ⭐ Must (đã có) |
+| API Key Management | ❌ | ❌ | ❌ | ❌ | ✅ (đã có) | ⭐ Must (đã có) |
+| Rate Limiting | ❌ | ✅ | ❌ | ❌ | ⚠️ (cần Bucket4j) | ⭐ Must |
+| Approval Workflow | ❌ | ❌ | ❌ | ❌ | ✅ (đã có) | Should (đã có) |
+| Audit Trail | ✅ | ❌ | ⚠️ | ❌ | ✅ (đã có) | ⭐ Must (đã có) |
+| User Profile Management | ❌ | ❌ | ❌ | ❌ | ✅ (đã có) | ⭐ Must (đã có) |
+| Device Management | ❌ | ❌ | ❌ | ❌ | ✅ (đã có) | Should (đã có) |
+| System Configuration | ❌ | ❌ | ❌ | ❌ | ✅ (đã có) | Nice to have (đã có) |
 | **Coverage** | **5/15** | **1/15** | **1/15** | **2/15** | **15/15** | |
 
 ### Priority breakdown
@@ -65,43 +65,43 @@
 
 ### 4.1 Requirement vs Available Solutions
 
-| Requirement | Source | Keycloak | Bucket4j | Custom Build | Gap? |
+| Requirement | Source | Keycloak | Bucket4j | Enhance Existing | Gap? |
 |-------------|--------|:---:|:---:|:---:|:---:|
-| Authentication + MFA | UC-MFA-01..05 | ✅ | ❌ | ✅ | Không — covered by both |
-| OAuth2/SSO | UC-SSO-01..04 | ✅ | ❌ | ✅ | Không — covered by both |
-| Menu Permission Tree | UC-MENU-01..05 | ❌ | ❌ | ✅ | Có — chỉ Custom Build |
-| Button-level Permission | UC-MENU-04 | ❌ | ❌ | ✅ | Có — chỉ Custom Build |
-| Organization Management | UC-ORG-01..06 | ❌ | ❌ | ✅ | Có — chỉ Custom Build |
-| API Key + Rate Limiting | UC-API-01..07 | ❌ | ✅ (rate only) | ✅ | Partial — Bucket4j + Custom |
-| Approval Workflow | UC-WF-01..08 | ❌ | ❌ | ✅ | Có — chỉ Custom Build |
-| Audit Trail | BR-AUDIT-01..04 | ✅ | ❌ | ✅ | Không — covered |
-| User Profile CRUD | UC-PROF-01..06 | ❌ | ❌ | ✅ | Có — chỉ Custom Build |
-| Session Management | BR-SES-01..03 | ⚠️ | ❌ | ✅ | Partial |
+| Authentication + MFA | UC-MFA-01..05 | ✅ | ❌ | ✅ (đã có) | Không — covered |
+| OAuth2/SSO | UC-SSO-01..04 | ✅ | ❌ | ✅ (đã có) | Không — covered |
+| Menu Permission Tree | UC-MENU-01..05 | ❌ | ❌ | ✅ (đã có, enhance) | Enhance button-level |
+| Button-level Permission | UC-MENU-04 | ❌ | ❌ | ✅ (enhance) | Cần enhance |
+| Organization Management | UC-ORG-01..06 | ❌ | ❌ | ✅ (đã có) | Không — covered |
+| API Key + Rate Limiting | UC-API-01..07 | ❌ | ✅ (rate only) | ✅ + Bucket4j | Cần integrate Bucket4j |
+| Approval Workflow | UC-WF-01..08 | ❌ | ❌ | ✅ (đã có) | Không — covered |
+| Audit Trail | BR-AUDIT-01..04 | ✅ | ❌ | ✅ (đã có) | Không — covered |
+| User Profile CRUD | UC-PROF-01..06 | ❌ | ❌ | ✅ (đã có) | Không — covered |
+| Session Management | BR-SES-01..03 | ⚠️ | ❌ | ✅ (đã có) | Không — covered |
 
 ### 4.2 Current System vs Target System
 
 | Aspect | Current System | Target System | Gap | Impact |
 |--------|---------------|---------------|-----|--------|
-| Authentication | Basic login/register, JWT | MFA, SSO, CAPTCHA, password policy | MFA + SSO + policy engine | HIGH |
-| Authorization | RBAC + PBAC (working) | Same + menu/button permission | Menu permission layer | HIGH |
-| User Management | UserEntity in auth-service | Separate profile in account-service | Profile service separation | MEDIUM |
-| Organization | None | Department/Position/Hierarchy | Full new module | HIGH |
-| API Partner | None | API key, rate limiting, quota | Full new module | MEDIUM |
-| Workflow | None | Dynamic multi-step approval | Full new engine | HIGH |
-| Audit | Basic AOP logging | Immutable audit trail, export | Enhanced audit service | MEDIUM |
-| Caching | Caffeine L1 + Redis L2 (basic) | Comprehensive permission/menu caching | 10+ cache patterns | MEDIUM |
-| Inter-service | Kafka (compileOnly) | REST sync + Kafka async events | Event integration | MEDIUM |
+| Authentication | Login/register, JWT RS256, MFA (TOTP + OTP), SSO adapter | Enhanced MFA progressive flow, Keycloak optional | MFA enhancement, Keycloak adapter | MEDIUM |
+| Authorization | RBAC + PBAC (working, complete) | Same + button-level menu permission | Button-level permission layer | MEDIUM |
+| User Management | UserEntity in auth-service | Same — already separate profile in account-service | Minor enhancements | LOW |
+| Organization | Department tree + positions + user assignments (implemented) | Same — enhance with transfer, org chart | Transfer feature | LOW |
+| API Partner | API key management, usage tracking (implemented) | Same + Bucket4j rate limiting integration | Rate limiting integration | MEDIUM |
+| Workflow | WorkflowEngine + escalation scheduler (implemented) | Same — enhance with conditional routing | Minor enhancements | LOW |
+| Audit | AOP audit aspect + audit logs + controller (implemented) | Same — enhance immutability constraints | DB constraint | LOW |
+| Caching | AbstractTwoTierCache (Caffeine L1 + Redis L2) | Comprehensive permission/menu caching | Additional cache patterns | LOW |
+| Inter-service | Kafka (runtime), ProfileKafkaListener | Expanded event topics | More Kafka topics | LOW |
 
-### 4.3 Custom Build vs Reuse
+### 4.3 Enhance Existing vs External Replacement
 
-| Factor | Custom Build | Reuse Keycloak (Best External) | Winner |
+| Factor | Enhance Existing | Replace with Keycloak (Best External) | Winner |
 |--------|:---:|:---:|:---:|
-| Time to market | 10-13 weeks | 2 weeks setup + 8-10 weeks custom | Draw |
-| Maintenance burden | HIGH (all custom code) | MEDIUM (Keycloak managed + custom) | Keycloak |
-| Feature coverage | 100% (all features) | 46% (auth only, gaps remain) | Custom Build |
-| Integration effort | LOW (same tech stack, base-core) | MEDIUM (external service, adapter) | Custom Build |
-| Long-term flexibility | HIGH (full control) | LOW (Keycloak upgrade cycles, SPI) | Custom Build |
-| Risk | MEDIUM (development effort) | MEDIUM (proven + custom gaps) | Draw |
+| Time to market | 4-6 weeks (enhancement only) | 8-10 weeks (setup + custom gaps) | Enhance Existing |
+| Maintenance burden | MEDIUM (existing codebase) | HIGH (Keycloak + custom + adapter) | Enhance Existing |
+| Feature coverage | 100% (all features exist/enhanceable) | 42% (auth only, large gaps remain) | Enhance Existing |
+| Integration effort | LOW (same tech stack, patterns known) | MEDIUM (external service, adapter) | Enhance Existing |
+| Long-term flexibility | HIGH (full control, no vendor) | LOW (Keycloak upgrade cycles, SPI) | Enhance Existing |
+| Risk | LOW (proven codebase, incremental changes) | MEDIUM (new dependency + custom gaps) | Enhance Existing |
 
 ---
 
@@ -109,24 +109,25 @@
 
 ### Decision Matrix
 
-| Tiêu chí | Trọng số | Keycloak Only | Full Custom | Hybrid (Recommended) |
+| Tiêu chí | Trọng số | Keycloak Only | Full Replace | Hybrid Enhancement (Recommended) |
 |----------|----------|:---:|:---:|:---:|
 | Feature coverage | 30% | 4 | 10 | 10 |
-| Integration ease | 25% | 5 | 9 | 8 |
-| Maintenance | 20% | 8 | 5 | 6 |
-| Community/Support | 15% | 9 | 3 | 6 |
-| Learning curve | 10% | 6 | 8 | 7 |
-| **Tổng điểm (weighted)** | | **5.85** | **7.40** | **7.65** |
+| Integration ease | 25% | 5 | 9 | 9 |
+| Maintenance | 20% | 8 | 5 | 7 |
+| Community/Support | 15% | 9 | 3 | 5 |
+| Learning curve | 10% | 6 | 8 | 9 |
+| **Tổng điểm (weighted)** | | **5.85** | **7.40** | **8.20** |
 
 ### Reasoning
 
-**Recommended approach**: Hybrid — Custom build + Adopt Bucket4j + Optional Keycloak adapter
+**Recommended approach**: Hybrid Enhancement — Enhance existing codebase + Adopt Bucket4j + Optional Keycloak adapter
 
 **Lý do**:
-1. **Business-specific features (menu, org, workflow) = 60%+ effort** — không có open source nào cover. Custom build là bắt buộc.
-2. **Foundation đã có** — auth-service đã có RbacEngine, PolicyEvaluator, JWT, MFA, SSO adapter, session management. Mở rộng, không build from scratch.
-3. **Bucket4j adoption** — proven rate limiting library, Spring Boot native, Redis-backed. Không reinvent token bucket algorithm.
-4. **Keycloak as optional IdP** — adapter pattern cho phép switch on/off. Enable Keycloak khi cần enterprise SAML/OIDC federation.
+1. **Codebase already has substantial implementations** — 40+ Kotlin files across 3 services with Clean Architecture. Enhancement ≫ rewrite.
+2. **All core modules exist** — menu permission (`MenuPermissionService.kt`), organization (`OrganizationService.kt`, `DepartmentEntity.kt`, `PositionEntity.kt`), workflow (`WorkflowEngine.kt`), audit (`AuditAspect.kt`), profile (`ProfileService.kt`), device (`DeviceService.kt`). Enhancement only.
+3. **Bucket4j adoption** — proven rate limiting library, Spring Boot native, Redis-backed. Integrates with existing `ApiPartnerService.kt`.
+4. **TreeEntity + TreeBuilder already exist** — no need to create base class. `system-admin-service/shared/persistence/TreeEntity.kt` confirmed.
+5. **Keycloak as optional IdP** — `SsoAdapter.kt` already provides adapter pattern for SSO delegation.
 
 **Trade-offs chấp nhận**:
 - Custom maintenance effort — chấp nhận vì full control và tight integration với base-core
@@ -136,20 +137,20 @@
 
 | Risk | Probability | Impact | Mitigation |
 |------|:-:|:-:|-----------|
-| Scope creep (quá nhiều features) | HIGH | HIGH | Phased rollout (4 phases), strict prioritization |
-| Cross-service data consistency | MEDIUM | MEDIUM | Kafka events + eventual consistency |
-| Permission check performance | MEDIUM | MEDIUM | Redis caching (5 min TTL), Caffeine L1 |
-| Keycloak lock-in | LOW | LOW | Adapter pattern, Keycloak is optional |
-| Menu permission complexity | MEDIUM | MEDIUM | Start simple (role-based), add user overrides later |
-| Approval workflow state management | HIGH | HIGH | Immutable workflow versions, clear state machine |
+| Scope creep (quá nhiều enhancements) | MEDIUM | MEDIUM | Prioritize: rate limiting + button-level first |
+| Cross-service data consistency | MEDIUM | MEDIUM | Kafka events + eventual consistency (already have KafkaConfig) |
+| Permission check performance | LOW | MEDIUM | AbstractTwoTierCache already provides Caffeine L1 + Redis L2 |
+| Keycloak lock-in | LOW | LOW | SsoAdapter already provides adapter pattern |
+| Menu permission complexity | LOW | MEDIUM | TreeEntity + TreeBuilder already handle tree operations |
+| Approval workflow state management | LOW | MEDIUM | WorkflowEngine already implements state machine |
 
 ### Cost/Effort Estimate (Coarse)
 
 | Approach | Effort (developer-weeks) | Complexity | Long-term cost |
 |----------|:-:|:-:|:-:|
-| Keycloak Only + Custom gaps | 10-12 weeks | HIGH | MEDIUM |
-| Full Custom Build | 10-13 weeks | MEDIUM | HIGH |
-| Hybrid (Recommended) | 10-13 weeks | MEDIUM | MEDIUM |
+| Keycloak Only + Custom gaps | 8-10 weeks | HIGH | MEDIUM |
+| Full Rewrite | 12-16 weeks | HIGH | HIGH |
+| Hybrid Enhancement (Recommended) | 4-6 weeks | LOW-MEDIUM | LOW |
 
 ---
 
@@ -157,9 +158,9 @@
 
 | # | Artifact | Vai trò |
 |---|---------|---------|
-| 1 | [research_brief.md](./research_brief.md) | Scope, keywords, current system analysis (17 existing features scanned) |
+| 1 | [research_brief.md](./research_brief.md) | Scope, keywords, current system analysis (35+ existing features scanned across 3 services) |
 | 2 | [opensource_findings.md](./opensource_findings.md) | 5 open source projects evaluated + scoring matrix |
-| 3 | [web_research.md](./web_research.md) | 4 search iterations, 14 unique sources, 5 products evaluated |
+| 3 | [web_research.md](./web_research.md) | 4 search iterations, 15 unique sources, 5 products evaluated |
 
 ---
 

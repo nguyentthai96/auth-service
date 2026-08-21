@@ -1,13 +1,19 @@
 {
   "feature": "erp-iam-system",
   "workflow": "wf_archive",
-  "outcome": "success",
-  "timestamp": "2026-08-20T07:06:40.007042+00:00",
-  "duration_seconds": 119,
+  "outcome": "failure",
+  "timestamp": "2026-08-21T08:59:32.568704+00:00",
+  "duration_seconds": 1106,
   "tokens_used": 0,
   "prompt_layer_tokens": {},
   "output_artifacts": [],
-  "errors": [],
+  "errors": [
+    "Error code: 502 - {'type': 'error', 'error': {'type': 'api_error', 'message': 'All upstream endpoints failed'}}",
+    "Error code: 502 - {'type': 'error', 'error': {'type': 'api_error', 'message': 'All upstream endpoints failed'}}",
+    "Error code: 502 - {'type': 'error', 'error': {'type': 'api_error', 'message': 'All upstream endpoints failed'}}",
+    "Error code: 502 - {'type': 'error', 'error': {'type': 'api_error', 'message': 'All upstream endpoints failed'}}",
+    "Error code: 502 - {'type': 'error', 'error': {'type': 'api_error', 'message': 'All upstream endpoints failed'}}"
+  ],
   "lesson_extracted": null,
   "recovery_pattern": null
 }

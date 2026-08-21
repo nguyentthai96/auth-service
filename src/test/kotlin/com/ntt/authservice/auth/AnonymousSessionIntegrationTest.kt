@@ -57,9 +57,9 @@ class AnonymousSessionIntegrationTest {
     @BeforeEach
     fun setUp() {
         meterRegistry = SimpleMeterRegistry()
-        lenient().whenever(securityProperties.anonymous).thenReturn(anonymousProps)
-        lenient().whenever(redisTemplate.opsForHash<String, String>()).thenReturn(hashOps as HashOperations<String, Any, Any>)
-        lenient().whenever(redisTemplate.opsForValue()).thenReturn(valueOps)
+        whenever(securityProperties.anonymous).thenReturn(anonymousProps)
+        whenever(redisTemplate.opsForHash<String, String>()).thenReturn(hashOps)
+        whenever(redisTemplate.opsForValue()).thenReturn(valueOps)
 
         sessionHandler = AnonymousSessionHandler(
             anonymousRateLimitService, jwtService, redisTemplate, securityProperties, meterRegistry

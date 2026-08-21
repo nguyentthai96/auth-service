@@ -34,7 +34,11 @@ class KafkaEventPublisher(
 
     /**
      * Publish a domain event to Kafka with retry.
-     * Topic is derived from event type: iam.user.registered → topic "iam.user.registered"
+     * Topic is derived from event type with iam. prefix normalization (FR-010).
+     * Events already prefixed with "iam." are not double-prefixed.
+     *
+     * Note: UserRegisteredEvent now goes through outbox path (OutboxPoller).
+     * This publisher is still used for non-outbox events (AuditEvent, PermissionChangedEvent, etc.).
      */
     @Retryable(
         value = [Exception::class],
@@ -42,7 +46,11 @@ class KafkaEventPublisher(
         backoff = Backoff(delay = 1000, multiplier = 2.0, maxDelay = 8000)
     )
     override fun publish(event: DomainEvent) {
-        val topic = event.eventType
+        val topic = if (event.eventType.startsWith(TOPIC_PREFIX)) {
+            event.eventType
+        } else {
+            TOPIC_PREFIX + event.eventType
+        }
         val payload = objectMapper.writeValueAsString(event)
 
         try {

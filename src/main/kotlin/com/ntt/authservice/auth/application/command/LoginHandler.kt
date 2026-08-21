@@ -9,6 +9,8 @@ import com.ntt.authservice.auth.application.SessionPromotionService
 import com.ntt.authservice.auth.application.port.out.*
 import com.ntt.authservice.auth.domain.model.UserStatus
 import com.ntt.authservice.auth.domain.service.TokenHasher
+import com.ntt.authservice.rbac.application.query.GetUserRolesHandler
+import com.ntt.authservice.rbac.application.query.GetUserRolesQuery
 import com.ntt.authservice.shared.config.SecurityProperties
 import com.ntt.authservice.shared.exception.*
 import com.ntt.eventsourcingutils.lib.cqrs.command.CommandHandler
@@ -33,7 +35,7 @@ class LoginHandler(
     private val domainPort: DomainPort,
     private val tokenStore: TokenStore,
     private val captchaGateway: CaptchaGateway,
-    private val permissionCache: PermissionCache,
+    private val getUserRolesHandler: GetUserRolesHandler,
     private val securityProperties: SecurityProperties,
     private val tokenGenerator: TokenGenerator,
     private val passwordPolicyService: com.ntt.authservice.auth.application.PasswordPolicyService,
@@ -117,7 +119,7 @@ class LoginHandler(
         }
 
         // MFA checkpoint
-        if (user.requiresMfa(command.trustedDeviceHash)) {
+        if (user.requiresMfa(command.trustedDeviceHash, securityProperties.mfa.trustedDeviceTtlDays)) {
             return tokenGenerator.generateMfaResult(user.id.value, user.mfaMethod)
         }
 
@@ -127,7 +129,7 @@ class LoginHandler(
         // Load roles for session policy
         val domain = domainPort.findByCodeAndActive(domainCode)
         val roles = if (domain != null) {
-            permissionCache.getRoles(user.id.value, domain.id) ?: emptyList()
+            getUserRolesHandler.handle(GetUserRolesQuery(user.id.value, domain.id))
         } else {
             emptyList()
         }

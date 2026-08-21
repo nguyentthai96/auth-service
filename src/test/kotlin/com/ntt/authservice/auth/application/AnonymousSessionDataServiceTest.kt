@@ -10,6 +10,8 @@ import org.junit.jupiter.api.*
 import org.junit.jupiter.api.extension.ExtendWith
 import org.mockito.Mock
 import org.mockito.junit.jupiter.MockitoExtension
+import org.mockito.junit.jupiter.MockitoSettings
+import org.mockito.quality.Strictness
 import org.mockito.kotlin.*
 import org.springframework.data.redis.core.StringRedisTemplate
 import org.springframework.data.redis.core.ValueOperations
@@ -20,12 +22,14 @@ import java.time.Duration
  * store, retrieve, delete, transfer data, and size limit enforcement.
  */
 @ExtendWith(MockitoExtension::class)
+@MockitoSettings(strictness = Strictness.LENIENT)
 @DisplayName("AnonymousSessionDataService Tests")
 class AnonymousSessionDataServiceTest {
 
     @Mock private lateinit var redisTemplate: StringRedisTemplate
     @Mock private lateinit var securityProperties: SecurityProperties
     @Mock private lateinit var valueOps: ValueOperations<String, String>
+    @Mock private lateinit var atomicDataStoreScript: org.springframework.data.redis.core.script.DefaultRedisScript<Long>
 
     private lateinit var meterRegistry: MeterRegistry
     private lateinit var dataService: AnonymousSessionDataService
@@ -41,10 +45,10 @@ class AnonymousSessionDataServiceTest {
     @BeforeEach
     fun setUp() {
         meterRegistry = SimpleMeterRegistry()
-        lenient().whenever(securityProperties.anonymous).thenReturn(anonymousProps)
-        lenient().whenever(redisTemplate.opsForValue()).thenReturn(valueOps)
+        whenever(securityProperties.anonymous).thenReturn(anonymousProps)
+        whenever(redisTemplate.opsForValue()).thenReturn(valueOps)
 
-        dataService = AnonymousSessionDataService(redisTemplate, securityProperties, meterRegistry)
+        dataService = AnonymousSessionDataService(redisTemplate, securityProperties, meterRegistry, atomicDataStoreScript)
     }
 
     @Nested
@@ -57,15 +61,24 @@ class AnonymousSessionDataServiceTest {
             // Given
             whenever(redisTemplate.hasKey("anon:session:sess-1")).thenReturn(true)
             whenever(redisTemplate.getExpire("anon:session:sess-1")).thenReturn(3600L)
+            whenever(redisTemplate.execute(
+                eq(atomicDataStoreScript),
+                eq(listOf("anon:session:sess-1", "anon:data:sess-1:cart:item1")),
+                eq("65536"),
+                eq("""{"id":1,"qty":2}"""),
+                eq("3600")
+            )).thenReturn(1L)
 
             // When
             dataService.storeData("sess-1", "cart", "item1", """{"id":1,"qty":2}""")
 
             // Then
-            verify(valueOps).set(
-                eq("anon:data:sess-1:cart:item1"),
+            verify(redisTemplate).execute(
+                eq(atomicDataStoreScript),
+                eq(listOf("anon:session:sess-1", "anon:data:sess-1:cart:item1")),
+                eq("65536"),
                 eq("""{"id":1,"qty":2}"""),
-                eq(Duration.ofSeconds(3600))
+                eq("3600")
             )
 
             // Verify metrics
@@ -77,13 +90,20 @@ class AnonymousSessionDataServiceTest {
         fun should_throwSizeExceeded_when_overLimit() {
             // Given — session exists but data size will exceed limit
             whenever(redisTemplate.hasKey("anon:session:sess-1")).thenReturn(true)
+            whenever(redisTemplate.getExpire("anon:session:sess-1")).thenReturn(3600L)
+            whenever(redisTemplate.execute(
+                eq(atomicDataStoreScript),
+                any<List<String>>(),
+                any(),
+                any(),
+                any()
+            )).thenReturn(-1L)
 
-            // Create a large value that exceeds 64KB
-            val largeValue = "x".repeat(70000) // > 64KB
+            val hashOpsMock = mock<org.springframework.data.redis.core.HashOperations<String, String, String>>()
+            whenever(redisTemplate.opsForHash<String, String>()).thenReturn(hashOpsMock)
+            whenever(hashOpsMock.get("anon:session:sess-1", "dataSize")).thenReturn("60000")
 
-            // Mock getSessionDataSize to return 0 (no existing data), but new data is > max
-            // The dataService.getSessionDataSize does SCAN which is complex to mock,
-            // so we mock hasKey for the session check
+            val largeValue = "x".repeat(10000)
 
             // When/Then
             assertThrows<AnonymousDataLimitExceededException> {

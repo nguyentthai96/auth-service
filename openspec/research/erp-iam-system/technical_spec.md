@@ -30,6 +30,8 @@ graph TB
             B_PROF["profile module"]
             B_DEV["device module"]
             B_SES["session module"]
+            B_PREF["preference module"]
+            B_LIFE["lifecycle module"]
         end
         subgraph "system-admin-service"
             C_MENU["menu module"]
@@ -64,6 +66,7 @@ graph TB
     A_AUTH --> DB_AUTH
     A_AUTH --> REDIS
     B_PROF --> DB_ACC
+    B_SES --> REDIS
     C_MENU --> DB_SYS
     C_MENU --> REDIS
 ```
@@ -77,16 +80,17 @@ graph TB
 | Framework | Spring Boot | 4.1.0 | Spring Framework 7, Spring Security 7 |
 | Database | PostgreSQL | 17+ | Separate DB per service |
 | Cache | Redis | 7.x | Permission cache, rate limiting, OTP state |
-| Cache L1 | Caffeine | Latest | In-process cache (30s TTL) |
+| Cache L1 | Caffeine | Latest | In-process cache via AbstractTwoTierCache |
 | ORM | Spring Data JPA + Hibernate | Latest | Via base-data-starter |
 | Migration | Flyway | Latest | Via base-data-starter |
 | Security | Spring Security + JJWT | Latest | RS256 + HMAC-SHA256 |
 | MFA | dev.samstevens.totp + Passay | 1.7.1 / 1.6.4 | TOTP + password policy |
 | Rate Limiting | Bucket4j | Latest | Token bucket + Redis ProxyManager |
-| Messaging | Spring Kafka | Optional | Inter-service events (async) |
+| Messaging | Spring Kafka | Runtime | Inter-service events (async) |
 | E2EE | Google Tink | 1.15.0 | End-to-end encryption |
+| OAuth2 | spring-boot-starter-oauth2-client + resource-server | Latest | SSO integration |
 | Build | Gradle | 8.x | Convention plugins |
-| Base | com.ntt:platform BOM | 0.0.1-SNAPSHOT | base-web-starter, base-data-starter, common-log |
+| Base | com.ntt:platform BOM | 0.0.1-SNAPSHOT | base-web-starter, base-data-starter, base-security-starter, common-log |
 
 ### 1.3 Dependencies & Integrations
 
@@ -95,7 +99,7 @@ graph TB
 | auth-service | Internal | Authentication + Authorization | REST API |
 | account-service | Internal | User profile management | REST API |
 | system-admin-service | Internal | Menu, Org, API Partner, Workflow | REST API |
-| Keycloak | External (Optional) | SSO/OIDC delegation | OAuth2/OIDC |
+| Keycloak | External (Optional) | SSO/OIDC delegation | OAuth2/OIDC (via SsoAdapter) |
 | SMS Provider | External | OTP delivery | Adapter pattern (HTTP) |
 | Email Provider | External | OTP + notifications | Adapter pattern (SMTP/HTTP) |
 
@@ -103,7 +107,7 @@ graph TB
 
 ## 2. Lược đồ dữ liệu (Data Schema)
 
-### 2.1 ERD — Auth Service (Mở rộng)
+### 2.1 ERD — Auth Service (Existing + Enhanced)
 
 ```mermaid
 erDiagram
@@ -217,7 +221,7 @@ erDiagram
     }
 ```
 
-### 2.2 ERD — Account Service
+### 2.2 ERD — Account Service (Existing)
 
 ```mermaid
 erDiagram
@@ -291,7 +295,7 @@ erDiagram
     }
 ```
 
-### 2.3 ERD — System Admin Service
+### 2.3 ERD — System Admin Service (Existing)
 
 ```mermaid
 erDiagram
@@ -516,10 +520,10 @@ graph LR
 
 | # | Input | Process | Output | Validation Rules |
 |---|-------|---------|--------|-----------------|
-| 1 | Login request (username, password) | Validate + check MFA | Partial/Full JWT token | NOT NULL, password encoder match |
-| 2 | MFA verify (partial_token, code) | Validate OTP/TOTP | Full JWT token | Code within window, max 3 attempts |
-| 3 | API Key header (X-API-Key) | Hash + lookup | Partner context | Key format `ntt_pk_` or `ntt_sk_`, SHA-256 hash match |
-| 4 | Menu tree request (userId) | Resolve roles → filter menu | Filtered menu tree JSON | User must be authenticated, domain context |
+| 1 | Login request (username, password) | Validate via LoginHandler + check MFA | Partial/Full JWT token | NOT NULL, password encoder match (Argon2) |
+| 2 | MFA verify (partial_token, code) | Validate via TotpService/OtpService, rate limit via MfaRateLimitService | Full JWT token | Code within window, max 3 attempts |
+| 3 | API Key header (X-API-Key) | Hash + lookup via ApiPartnerService | Partner context | Key format `ntt_pk_` or `ntt_sk_`, SHA-256 hash match |
+| 4 | Menu tree request (userId) | Resolve roles → filter menu via MenuPermissionService + TreeBuilder | Filtered menu tree JSON | User must be authenticated, domain context |
 
 ---
 
@@ -531,39 +535,40 @@ graph LR
 sequenceDiagram
     actor User
     participant Controller as AuthController
-    participant Service as AuthService
-    participant MFA as MfaService
+    participant LoginHandler as LoginHandler
+    participant MFA as MfaRateLimitService
+    participant TOTP as TotpService
+    participant Promotion as SessionPromotionService
     participant DB as PostgreSQL
     participant Redis as Redis
 
     User->>Controller: POST /api/auth/login {username, password, captcha}
     Controller->>Controller: Validate @Valid
-    Controller->>Service: login(command)
+    Controller->>LoginHandler: handle(LoginCommand)
 
-    Service->>DB: findByUsername(username)
-    DB-->>Service: UserEntity
+    LoginHandler->>DB: findByUsername(username)
+    DB-->>LoginHandler: UserEntity
 
-    Service->>Service: Verify password (Argon2)
+    LoginHandler->>LoginHandler: Verify password (Argon2)
 
     alt MFA Enabled
-        Service->>Redis: Store partial session
-        Service-->>Controller: {partial_token, require_2fa: true, methods: ["TOTP"]}
+        LoginHandler->>Redis: Store partial session
+        LoginHandler-->>Controller: {partial_token, require_2fa: true, methods: ["TOTP"]}
         Controller-->>User: 200 OK (MFA Required)
 
         User->>Controller: POST /api/auth/verify-2fa {partial_token, code}
-        Controller->>MFA: verify(partialToken, code)
-        MFA->>Redis: Get partial session
-        MFA->>MFA: Validate TOTP code
-        MFA->>Redis: Clear partial session
-        MFA-->>Controller: VerifyResult(success)
-
-        Controller->>Service: issueFullToken(userId)
-        Service->>DB: Load roles, permissions
-        Service-->>Controller: {access_token, refresh_token}
+        Controller->>MFA: checkRateLimit(userId)
+        MFA->>Redis: Get attempt count
+        Controller->>TOTP: verify(secret, code)
+        TOTP-->>Controller: VerifyResult(success)
+        Controller->>Promotion: promote(partialSession)
+        Promotion->>Redis: Clear partial session
+        Promotion->>DB: Load roles, permissions
+        Promotion-->>Controller: {access_token, refresh_token}
         Controller-->>User: 200 OK (Full Auth)
     else MFA Not Enabled
-        Service->>DB: Load roles, permissions
-        Service-->>Controller: {access_token, refresh_token}
+        LoginHandler->>DB: Load roles, permissions
+        LoginHandler-->>Controller: {access_token, refresh_token}
         Controller-->>User: 200 OK (Full Auth)
     end
 ```
@@ -575,6 +580,8 @@ sequenceDiagram
     actor User
     participant GW as API Gateway
     participant SYS as system-admin-service
+    participant MenuSvc as MenuPermissionService
+    participant TreeBld as TreeBuilder
     participant AUTH as auth-service
     participant Redis as Redis
     participant DB as PostgreSQL
@@ -583,16 +590,17 @@ sequenceDiagram
     GW->>GW: Validate JWT
     GW->>SYS: Forward request
 
-    SYS->>Redis: GET user:{userId}:menu
+    SYS->>Redis: GET user:{userId}:menu (via AbstractTwoTierCache)
     alt Cache Hit
         Redis-->>SYS: Cached menu tree
     else Cache Miss
         SYS->>AUTH: GET /api/permissions/user/{userId}/roles
         AUTH-->>SYS: {roles: ["ADMIN", "VIEWER"], permissions: [...]}
         SYS->>DB: Load menu_items + role_menu_permissions
-        SYS->>SYS: Filter menu tree by user roles
+        SYS->>MenuSvc: filterMenuByRoles(menuItems, roles)
         SYS->>DB: Check user_menu_overrides
-        SYS->>SYS: Apply overrides
+        SYS->>MenuSvc: applyOverrides(filteredMenu, overrides)
+        SYS->>TreeBld: buildTree(flatMenuItems)
         SYS->>Redis: SET user:{userId}:menu (TTL 5min)
     end
     SYS-->>User: {menu_tree with buttons}
@@ -609,7 +617,7 @@ stateDiagram-v2
     IN_PROGRESS --> REJECTED : Step rejected
     REJECTED --> PENDING : Revise & resubmit (if configured)
     REJECTED --> CANCELLED : Terminal reject
-    IN_PROGRESS --> ESCALATED : Timeout exceeded
+    IN_PROGRESS --> ESCALATED : Timeout exceeded (WorkflowEscalationScheduler)
     ESCALATED --> IN_PROGRESS : Escalation step assigned
     PENDING --> CANCELLED : Requester cancels
     APPROVED --> [*]
@@ -619,11 +627,11 @@ stateDiagram-v2
 | Transition | From | To | Trigger | Guard Condition | Side Effect |
 |-----------|------|-----|---------|----------------|------------|
 | Submit | [*] | PENDING | User action | All required fields filled | Create workflow_instance |
-| Assign | PENDING | IN_PROGRESS | System | First step resolved | Create step_instance, notify approver |
+| Assign | PENDING | IN_PROGRESS | System (WorkflowEngine) | First step resolved | Create step_instance, notify approver |
 | Approve | IN_PROGRESS | IN_PROGRESS | Approver action | More steps remaining | Advance to next step |
 | Approve (last) | IN_PROGRESS | APPROVED | Approver action | Last step | Mark complete, notify requester |
 | Reject | IN_PROGRESS | REJECTED | Approver action | - | Notify requester |
-| Escalate | IN_PROGRESS | ESCALATED | Timeout scheduler | timeout_hours exceeded | Assign to escalation step |
+| Escalate | IN_PROGRESS | ESCALATED | WorkflowEscalationScheduler | timeout_hours exceeded | Assign to escalation step |
 | Cancel | PENDING | CANCELLED | Requester action | - | Close instance |
 
 ### 4.4 Screen Flow
@@ -648,9 +656,9 @@ stateDiagram-v2
 
 | # | Method | Path | Description | Auth | Request Body | Response |
 |---|--------|------|------------|------|-------------|----------|
-| 1 | POST | `/api/auth/login` | Login (existing) | Public | LoginRequest | AuthResponse / MfaChallenge |
+| 1 | POST | `/api/auth/login` | Login (existing LoginHandler) | Public | LoginCommand | AuthResponse / MfaChallenge |
 | 2 | POST | `/api/auth/verify-2fa` | Verify MFA code | Partial | VerifyMfaRequest | AuthResponse |
-| 3 | POST | `/api/auth/request-otp` | Request OTP SMS/Email | Partial | RequestOtpRequest | 200 OK |
+| 3 | POST | `/api/auth/request-otp` | Request OTP SMS/Email (OtpService) | Partial | RequestOtpRequest | 200 OK |
 | 4 | POST | `/api/auth/forgot-password` | Initiate password reset | Public | ForgotPasswordRequest | 200 OK |
 | 5 | POST | `/api/auth/reset-password` | Reset with token | Public | ResetPasswordRequest | 200 OK |
 | 6 | POST | `/api/auth/change-password` | Change password | Bearer | ChangePasswordRequest | 200 OK |
@@ -660,7 +668,7 @@ stateDiagram-v2
 | 10 | POST | `/api/mfa/disable` | Disable MFA | Bearer | DisableMfaRequest | 200 OK |
 | 11 | GET | `/api/mfa/recovery-codes` | Generate recovery codes | Bearer | - | RecoveryCodesResponse |
 | 12 | GET | `/api/sso/providers` | List SSO providers | Public | - | List<SsoProvider> |
-| 13 | GET | `/api/sso/{provider}/authorize` | Initiate SSO | Public | - | Redirect |
+| 13 | GET | `/api/sso/{provider}/authorize` | Initiate SSO (SsoAdapter) | Public | - | Redirect |
 | 14 | POST | `/api/sso/{provider}/callback` | SSO callback | Public | OAuthCallback | AuthResponse |
 | 15 | GET | `/api/permissions/user/{userId}` | User effective permissions | Internal | - | PermissionsResponse |
 
@@ -668,53 +676,55 @@ stateDiagram-v2
 
 | # | Method | Path | Description | Auth |
 |---|--------|------|------------|------|
-| 1 | GET | `/api/account/profile` | Get profile | Bearer |
-| 2 | PUT | `/api/account/profile` | Update profile | Bearer |
+| 1 | GET | `/api/account/profile` | Get profile (ProfileController) | Bearer |
+| 2 | PUT | `/api/account/profile` | Update profile (ProfileService) | Bearer |
 | 3 | POST | `/api/account/profile/avatar` | Upload avatar | Bearer |
-| 4 | GET | `/api/account/devices` | List devices | Bearer |
-| 5 | POST | `/api/account/devices/{id}/trust` | Trust device | Bearer |
+| 4 | GET | `/api/account/devices` | List devices (DeviceController) | Bearer |
+| 5 | POST | `/api/account/devices/{id}/trust` | Trust device (DeviceService) | Bearer |
 | 6 | DELETE | `/api/account/devices/{id}` | Revoke device | Bearer |
-| 7 | GET | `/api/account/sessions` | List sessions | Bearer |
-| 8 | DELETE | `/api/account/sessions/{id}` | Terminate session | Bearer |
+| 7 | GET | `/api/account/sessions` | List sessions (SessionController) | Bearer |
+| 8 | DELETE | `/api/account/sessions/{id}` | Terminate session (SessionService) | Bearer |
 | 9 | GET | `/api/account/login-history` | Login history | Bearer |
-| 10 | GET | `/api/account/preferences` | Get preferences | Bearer |
-| 11 | PUT | `/api/account/preferences` | Update preferences | Bearer |
-| 12 | POST | `/api/account/deactivate` | Deactivate account | Bearer |
-| 13 | POST | `/api/account/deletion-request` | GDPR deletion | Bearer |
-| 14 | GET | `/api/account/export` | GDPR export | Bearer |
+| 10 | GET | `/api/account/preferences` | Get preferences (PreferenceController) | Bearer |
+| 11 | PUT | `/api/account/preferences` | Update preferences (PreferenceService) | Bearer |
+| 12 | POST | `/api/account/deactivate` | Deactivate account (AccountLifecycleService) | Bearer |
+| 13 | POST | `/api/account/deletion-request` | GDPR deletion (AccountLifecycleService) | Bearer |
+| 14 | GET | `/api/account/export` | GDPR export (DataExportService) | Bearer |
 
 ### 6.3 System Admin Service APIs
 
 | # | Method | Path | Description | Auth |
 |---|--------|------|------------|------|
-| 1 | GET | `/api/admin/menus/tree` | Full menu tree | Bearer+Admin |
+| 1 | GET | `/api/admin/menus/tree` | Full menu tree (MenuPermissionService + TreeBuilder) | Bearer+Admin |
 | 2 | GET | `/api/admin/menus/user-tree` | User's menu | Bearer |
 | 3 | POST | `/api/admin/menus` | Create menu item | Bearer+Admin |
 | 4 | PUT | `/api/admin/menus/{id}` | Update menu item | Bearer+Admin |
 | 5 | DELETE | `/api/admin/menus/{id}` | Delete menu item | Bearer+Admin |
 | 6 | POST | `/api/admin/roles/{roleId}/menus` | Assign menus to role | Bearer+Admin |
-| 7 | GET | `/api/admin/departments/tree` | Department tree | Bearer |
-| 8 | POST | `/api/admin/departments` | Create department | Bearer+Admin |
+| 7 | GET | `/api/admin/departments/tree` | Department tree (DepartmentController + TreeBuilder) | Bearer |
+| 8 | POST | `/api/admin/departments` | Create department (OrganizationService) | Bearer+Admin |
 | 9 | PUT | `/api/admin/departments/{id}` | Update department | Bearer+Admin |
-| 10 | GET | `/api/admin/positions` | List positions | Bearer |
-| 11 | POST | `/api/admin/positions` | Create position | Bearer+Admin |
+| 10 | GET | `/api/admin/positions` | List positions (PositionController) | Bearer |
+| 11 | POST | `/api/admin/positions` | Create position (PositionService) | Bearer+Admin |
 | 12 | POST | `/api/admin/user-positions` | Assign user position | Bearer+Admin |
-| 13 | GET | `/api/admin/partners` | List partners | Bearer+Admin |
+| 13 | GET | `/api/admin/partners` | List partners (ApiPartnerService) | Bearer+Admin |
 | 14 | POST | `/api/admin/partners` | Register partner | Bearer+Admin |
 | 15 | POST | `/api/admin/partners/{id}/api-keys` | Generate API key | Bearer+Admin |
 | 16 | POST | `/api/admin/api-keys/{id}/rotate` | Rotate API key | Bearer+Admin |
 | 17 | DELETE | `/api/admin/api-keys/{id}` | Revoke API key | Bearer+Admin |
-| 18 | GET | `/api/admin/partners/{id}/usage` | Usage dashboard | Bearer+Admin |
-| 19 | POST | `/api/admin/workflows` | Create workflow | Bearer+Admin |
-| 20 | POST | `/api/workflows/submit` | Submit for approval | Bearer |
-| 21 | POST | `/api/workflows/{id}/approve` | Approve step | Bearer |
+| 18 | GET | `/api/admin/partners/{id}/usage` | Usage dashboard (ApiUsageController) | Bearer+Admin |
+| 19 | POST | `/api/admin/workflows` | Create workflow (WorkflowController) | Bearer+Admin |
+| 20 | POST | `/api/workflows/submit` | Submit for approval (WorkflowService) | Bearer |
+| 21 | POST | `/api/workflows/{id}/approve` | Approve step (WorkflowEngine) | Bearer |
 | 22 | POST | `/api/workflows/{id}/reject` | Reject step | Bearer |
 | 23 | POST | `/api/workflows/{id}/delegate` | Delegate step | Bearer |
 | 24 | GET | `/api/workflows/my-pending` | My pending | Bearer |
-| 25 | GET | `/api/admin/audit-logs` | Search audit logs | Bearer+Admin |
-| 26 | GET | `/api/admin/audit-logs/export` | Export audit | Bearer+Admin |
-| 27 | GET | `/api/admin/configs` | List configs | Bearer+Admin |
+| 25 | GET | `/api/admin/audit-logs` | Search audit logs (AuditController) | Bearer+Admin |
+| 26 | GET | `/api/admin/audit-logs/export` | Export audit (AuditService) | Bearer+Admin |
+| 27 | GET | `/api/admin/configs` | List configs (DomainConfigService) | Bearer+Admin |
 | 28 | PUT | `/api/admin/configs/{key}` | Update config | Bearer+Admin |
+| 29 | GET | `/api/admin/feature-flags` | List feature flags (FeatureFlagService) | Bearer+Admin |
+| 30 | PUT | `/api/admin/feature-flags/{key}` | Update feature flag | Bearer+Admin |
 
 ### 6.4 Error Response Format (RFC 7807)
 
@@ -726,7 +736,7 @@ stateDiagram-v2
 | 404 | Not Found | Resource không tồn tại |
 | 409 | Conflict | Duplicate code, max keys exceeded |
 | 422 | Unprocessable Entity | Business rule violation |
-| 429 | Too Many Requests | Rate limit exceeded |
+| 429 | Too Many Requests | Rate limit exceeded (Bucket4j) |
 | 500 | Internal Server Error | Lỗi hệ thống |
 
 ---
@@ -735,7 +745,7 @@ stateDiagram-v2
 
 ### 7.1 Authentication Flow
 
-MFA progressive auth: Partial JWT (only allows `/verify-2fa`) → Full JWT (all authorized APIs). Trusted devices skip MFA for configured TTL (30 days default).
+MFA progressive auth: Partial JWT (only allows `/verify-2fa`) → Full JWT (all authorized APIs) via SessionPromotionService. Trusted devices (UserDeviceEntity in account-service) skip MFA for configured TTL (30 days default).
 
 ### 7.2 Authorization Matrix
 
@@ -748,11 +758,11 @@ MFA progressive auth: Partial JWT (only allows `/verify-2fa`) → Full JWT (all 
 
 ### 7.3 Data Protection
 - Password: Argon2id hashing (via BouncyCastle)
-- TOTP secret: AES-256 encrypted at rest
+- TOTP secret: AES-256 encrypted at rest (Google Tink)
 - API key: SHA-256 hash stored, raw key show-once
-- E2EE: Google Tink for end-to-end encryption
+- E2EE: Google Tink for end-to-end encryption (DecryptionVaultService)
 - Audit log: Immutable (no UPDATE/DELETE constraints)
-- GDPR: Data export + deletion request workflow
+- GDPR: Data export + deletion request workflow (DataExportService, AccountLifecycleService)
 
 ---
 
@@ -761,7 +771,7 @@ MFA progressive auth: Partial JWT (only allows `/verify-2fa`) → Full JWT (all 
 | Metric | Target | Measurement Method |
 |--------|--------|-------------------|
 | API response time (P95) | < 500ms | APM monitoring |
-| Menu tree load (cached) | < 100ms | Redis GET latency |
+| Menu tree load (cached) | < 100ms | Redis GET latency (AbstractTwoTierCache) |
 | Permission check (cached) | < 50ms | Caffeine L1 hit |
 | Rate limit check | < 10ms | Bucket4j + Redis |
 | Throughput (auth endpoints) | > 200 req/s | Load test |
@@ -772,94 +782,48 @@ MFA progressive auth: Partial JWT (only allows `/verify-2fa`) → Full JWT (all 
 
 ## 9. Agent Implementation Notes
 
-> **Section này dành cho AI agent** — chỉ rõ code cần tạo để agent dev trực tiếp.
+> **Section này dành cho AI agent** — chỉ rõ code cần tạo/enhdler) | Follow existing pattern |
+| Auth pattern | SecurityConfig filter chain + JwtAuthFilter | Same as existing |
+| Base class | SnowflakePersistentAuditableEntity | All entities extend this |
+| Tree class | TreeEntity (system-admin-service) | Menu items, departments extend this |
+| Tree building | TreeBuilder utility | Use for tree construction |
+| Error handling | Service-specific ControllerAdvice + ErrorCode enum | Each service has own handler |
+| Caching | AbstractTwoTierCache | Caffeine L1 + Redis L2 |
+| DTO mapping | Kotlin extension functions `toResponse()` + `Dtos.kt` | Follow existing convention |
+| Idempotency | IdempotencyFilter | For POST endpoints |
 
-### 9.1 Classes to Create — Auth Service (Mở rộng)
-
-| # | Class | Package | Type | Extends/Implements | Mô tả |
-|---|-------|---------|------|-------------------|--------|
-| 1 | `MfaConfigEntity` | `auth.adapter.out.persistence.entity` | @Entity | SnowflakePersistentAuditableEntity | MFA configuration per user |
-| 2 | `SsoProviderEntity` | `auth.adapter.out.persistence.entity` | @Entity | SnowflakePersistentAuditableEntity | SSO provider config |
-| 3 | `UserSsoLinkEntity` | `auth.adapter.out.persistence.entity` | @Entity | SnowflakePersistentAuditableEntity | User-SSO link |
-| 4 | `PasswordPolicyEntity` | `auth.adapter.out.persistence.entity` | @Entity | SnowflakePersistentAuditableEntity | Password policy per domain |
-| 5 | `PasswordPolicyService` | `auth.application` | @Service | - | Validate password against policy |
-
-### 9.2 Classes to Create — System Admin Service
-
-| # | Class | Package | Type | Extends/Implements | Mô tả |
-|---|-------|---------|------|-------------------|--------|
-| 1 | `MenuItemEntity` | `menu.adapter.out.persistence.entity` | @Entity | TreeEntity<MenuItemEntity> | Menu tree node |
-| 2 | `MenuPermissionEntity` | `menu.adapter.out.persistence.entity` | @Entity | SnowflakeBaseEntity | Permission on menu |
-| 3 | `RoleMenuPermissionEntity` | `menu.adapter.out.persistence.entity` | @Entity | SnowflakePersistentAuditableEntity | Role-menu grant |
-| 4 | `MenuService` | `menu.application` | @Service | - | Menu CRUD + tree operations |
-| 5 | `MenuPermissionService` | `menu.application` | @Service | - | Permission assignment + user tree |
-| 6 | `MenuController` | `menu.adapter.in.web` | @RestController | BaseController | Menu management endpoints |
-| 7 | `DepartmentEntity` | `org.adapter.out.persistence.entity` | @Entity | TreeEntity<DepartmentEntity> | Department tree node |
-| 8 | `PositionEntity` | `org.adapter.out.persistence.entity` | @Entity | SnowflakePersistentAuditableEntity | Position within department |
-| 9 | `OrganizationService` | `org.application` | @Service | - | Org CRUD + tree operations |
-| 10 | `OrganizationController` | `org.adapter.in.web` | @RestController | BaseController | Org management endpoints |
-| 11 | `ApiPartnerEntity` | `partner.adapter.out.persistence.entity` | @Entity | SnowflakePersistentAuditableEntity | API partner |
-| 12 | `ApiKeyEntity` | `partner.adapter.out.persistence.entity` | @Entity | SnowflakePersistentAuditableEntity | API key (hash stored) |
-| 13 | `ApiPartnerService` | `partner.application` | @Service | - | Partner + key management |
-| 14 | `ApiKeyFilter` | `partner.adapter.in.web.filter` | OncePerRequestFilter | - | API key auth + rate limit |
-| 15 | `WorkflowDefinitionEntity` | `workflow.adapter.out.persistence.entity` | @Entity | SnowflakePersistentAuditableEntity | Workflow definition |
-| 16 | `WorkflowInstanceEntity` | `workflow.adapter.out.persistence.entity` | @Entity | SnowflakePersistentAuditableEntity | Workflow instance |
-| 17 | `WorkflowEngine` | `workflow.application` | @Service | - | Workflow state machine |
-| 18 | `AuditLogEntity` | `audit.adapter.out.persistence.entity` | @Entity | SnowflakeBaseEntity | Immutable audit log |
-| 19 | `AuditLogService` | `audit.application` | @Service | - | Audit log creation + search |
-| 20 | `AuditLogInterceptor` | `audit.application` | @Aspect | - | AOP-based audit capture |
-
-### 9.3 Classes to Create — Account Service
-
-| # | Class | Package | Type | Extends/Implements | Mô tả |
-|---|-------|---------|------|-------------------|--------|
-| 1 | `UserProfileEntity` | `profile.adapter.out.persistence.entity` | @Entity | SnowflakePersistentAuditableEntity | User profile |
-| 2 | `UserContactEntity` | `profile.adapter.out.persistence.entity` | @Entity | SnowflakePersistentAuditableEntity | Contact info |
-| 3 | `UserDeviceEntity` | `device.adapter.out.persistence.entity` | @Entity | SnowflakePersistentAuditableEntity | User device |
-| 4 | `ProfileService` | `profile.application` | @Service | - | Profile CRUD |
-| 5 | `DeviceService` | `device.application` | @Service | - | Device management |
-| 6 | `ProfileController` | `profile.adapter.in.web` | @RestController | BaseController | Profile endpoints |
-
-### 9.4 Base-Core Extensions
-
-| # | Class | Module | Type | Mô tả |
-|---|-------|--------|------|--------|
-| 1 | `TreeEntity<T>` | base-model | @MappedSuperclass | Abstract tree entity (parentId, sortOrder, level, children) |
-| 2 | `@Audited` | common-log | Annotation | Mark method for audit logging |
-| 3 | `ApiKeyAuthenticationFilter` | base-security-starter | Filter | API key validation filter |
-
-### 9.5 Caching Strategy (Redis)
+### 9.6 Caching Strategy (Redis via AbstractTwoTierCache)
 
 | Cache Key Pattern | TTL | Invalidation Event |
 |-------------------|-----|-------------------|
 | `user:{id}:permissions` | 5 min | Role/Permission change |
 | `user:{id}:menu` | 5 min | Menu permission change |
 | `otp:{userId}:{channel}` | 5 min | OTP verified/expired |
-| `rate_limit:{apiKeyId}:{window}` | Per window | Auto-expire |
+| `rate_limit:{apiKeyId}:{window}` | Per window | Auto-expire (Bucket4j) |
 | `menu:tree:{domainId}` | 10 min | Menu item change |
 | `config:{domainId}:{key}` | 30 min | Config update |
 
-### 9.6 Inter-Service Communication
+### 9.7 Inter-Service Communication (Kafka)
 
 | Topic | Producer | Consumer | Event |
 |-------|----------|----------|-------|
-| `auth.user.events` | auth-service | account-service, system-admin | user.registered, user.status.changed |
+| `auth.user.events` | auth-service | account-service (ProfileKafkaListener), system-admin | user.registered, user.status.changed |
 | `auth.permission.events` | auth-service | system-admin | permission.changed, role.changed |
 | `system.org.events` | system-admin | auth-service | org.structure.changed |
-| `system.audit.events` | all services | system-admin (audit) | audit.log.created |
+| `system.audit.events` | all services | system-admin (AuditService) | audit.log.created |
 
-### 9.7 Test Cases (high-level)
+### 9.8 Test Cases (high-level)
 
 | # | Test | Type | Scenario | Expected |
 |---|------|------|----------|----------|
 | 1 | MFA enable TOTP | Integration | User enables TOTP, gets secret + QR | 200 + secret + recovery codes |
 | 2 | Login with MFA | Integration | Password OK + TOTP code | 200 + full JWT |
-| 3 | MFA wrong code 3x | Integration | 3 wrong TOTP codes | 401 + rate limit lock |
-| 4 | Menu tree create | Integration | Admin creates menu item | 201 + item in tree |
+| 3 | MFA wrong code 3x | Integration | 3 wrong TOTP codes | 401 + rate limit lock (MfaRateLimitService) |
+| 4 | Menu tree create | Integration | Admin creates menu item | 201 + item in tree (TreeBuilder) |
 | 5 | User menu filtered | Integration | User with limited roles | 200 + filtered menu tree |
 | 6 | API key generate | Integration | Generate key for partner | 201 + raw key (show-once) |
-| 7 | API rate limit | Integration | Exceed rate limit | 429 + Retry-After |
-| 8 | Workflow submit | Integration | Submit entity for approval | 201 + instance created |
+| 7 | API rate limit | Integration | Exceed rate limit | 429 + Retry-After (Bucket4j) |
+| 8 | Workflow submit | Integration | Submit entity for approval | 201 + instance created (WorkflowEngine) |
 | 9 | Workflow approve | Integration | Approve pending step | 200 + next step assigned |
 | 10 | Audit immutable | Integration | Try UPDATE on audit_logs | DB constraint error |
 

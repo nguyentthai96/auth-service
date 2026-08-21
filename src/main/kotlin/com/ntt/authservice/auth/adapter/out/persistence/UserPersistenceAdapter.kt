@@ -77,6 +77,7 @@ class UserPersistenceAdapter(
             mfaEnabled = this.mfaEnabled,
             mfaMethod = this.mfaMethod,
             trustedDeviceHash = this.trustedDeviceHash,
+            trustedDeviceSetAt = this.trustedDeviceSetAt,
             passwordChangedAt = this.passwordChangedAt,
             createdAt = this.createdAt,
             updatedAt = this.updatedAt

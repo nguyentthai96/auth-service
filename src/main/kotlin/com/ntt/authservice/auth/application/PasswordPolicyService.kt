@@ -96,6 +96,9 @@ class PasswordPolicyService(
         // Update user
         user.passwordHash = newHash
         user.passwordChangedAt = Instant.now()
+        // Clear trusted device on password change — security best practice (D19)
+        user.trustedDeviceHash = null
+        user.trustedDeviceSetAt = null
         userRepository.save(user)
 
         // Prune old history entries

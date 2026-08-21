@@ -1,389 +1,356 @@
 ---
 type: brainstorm_notes
 change: anonymous-login-optimization
-date: 2025-01-20
-selected_direction: "Approach D — Post-Implementation Hardening (Bug Fixes + Tests + Observability)"
+date: 2025-07-15
+selected_direction: "Balanced Optimization v3 — 3-Lua-Script Architecture with 4-Phase Delivery"
 pre_flow: "Non-Financial"
 pre_feature_type: "MAINTENANCE"
 status: complete
 ---
 
-# Brainstorm Notes: Anonymous Login Optimization
+# Brainstorm Notes: Anonymous Login Optimization (v3)
 
 ## Date
-2025-01-20
+2025-07-15
 
 ## Context
-The anonymous login optimization feature was originally classified as **EXTEND** in `pre_openspec.md`, targeting the addition of anonymous/guest sessions to the auth-service. However, the Phase B code scan in pre_openspec revealed a **CRITICAL finding**: the feature is **FULLY IMPLEMENTED** in the codebase. All 12 planned ADD classes exist, and all 10 planned MODIFY classes are already modified.
 
-This brainstorm re-evaluates the feature from a **post-implementation** perspective — identifying bugs, gaps, and optimization opportunities in the existing implementation rather than designing a new feature.
+The anonymous login feature is **fully implemented** in the auth-service codebase. This v3 brainstorm synthesizes all prior research, codebase investigation, and the refined `pre_openspec.md` with 14 FRs (9 research + 5 enriched).
 
-### Input Sources
-- `wf_feature_research`: 8 research artifacts, 100% gap coverage, all 5 validation checks PASS
-- `wf_pre_openspec`: 13 FRs, quality score 82/100, Phase B scan = FULLY IMPLEMENTED
-- Direct code review of all 22 implementation files (12 ADD + 10 MODIFY)
+**Trigger**: Post-implementation review + formal research (`wf_feature_research`) identified 6 optimization areas and 2 critical correctness bugs:
+1. ⚠️ **TOCTOU race condition** in `AnonymousSessionDataService.storeData()` (lines 37-57)
+2. ⚠️ **Unsafe lock release** in `SessionPromotionService.releaseLock()` (lines 140-147)
+3. Redis pipelining opportunity in `AnonymousSessionHandler` (lines 64-65)
+4. Sliding window rate limiting to replace fixed-window (lines 44-54 in `AnonymousRateLimitService`)
+5. Batch data transfer replacing per-key N+1 loop (lines 90-115 in `AnonymousSessionDataService`)
+6. Running data size counter replacing O(N) SCAN+STRLEN (lines 129-147)
+
+**Key inputs**:
+- `pre_openspec.md`: 14 FRs, Quality Score 88/100, MAINTENANCE classification confirmed
+- `handoff_summary.md`: "Build in-place optimizations" recommendation, 3-5 dev-days estimate
+- `comparison_analysis.md`: Spring Data Redis Pipeline+Lua scored 8.85/10 vs Redisson 6.35/10
+- `technical_spec.md`: Detailed code change examples, 2 Lua script designs, 15 test cases
+- Direct codebase verification: all 6 optimization targets confirmed at exact line numbers
 
 ## Questions Asked & Answers
 
-- Q1: **What is the actual optimization opportunity if the feature is fully implemented?**
-  - A: **Bug fixes, missing test coverage, observability gaps, and code hardening.** The implementation is functionally complete but has several issues that range from correctness bugs (JTI blacklisting) to architectural smells (ThreadLocal for cross-component communication) to operational gaps (zero metrics, zero tests).
+- Q1: Is the feature functional and covering all requirements? → A: **Yes.** All base FRs are implemented. Unit tests exist for all anonymous services. Integration tests cover anonymous session flow and promotion flow. This is a MAINTENANCE optimization.
 
-- Q2: **Should the feature type be reassessed from EXTEND to MAINTENANCE?**
-  - A: **Yes, reassess to MAINTENANCE.** The pre_openspec already flagged this in section 13 (Implementation Status): *"the feature type should be reassessed as MAINTENANCE (optimization/refinement of existing implementation)"*. No new domain capabilities are being added — all optimization work is hardening existing implementation.
+- Q2: What are the main performance bottlenecks? → A: **Redis N+1 query patterns.** Both `transferData()` (line 90-115: SCAN → per-key GET+SET) and `getSessionDataSize()` (line 129-147: SCAN → per-key STRLEN) use N+1 patterns. `AnonymousSessionHandler.handle()` (lines 64-65) makes 2 sequential Redis calls that can be pipelined. Rate limiting (lines 44-54) uses 2 Redis calls that can be reduced to 1 Lua EVAL.
 
-- Q3: **What is the severity ranking of identified issues?**
-  - A: After systematic code review, issues are ranked:
+- Q3: Are there critical race conditions? → A: **Yes, two confirmed:**
+  1. **TOCTOU in `storeData()`**: `getSessionDataSize()` scans and sums STRLENs (O(N) SCAN), then check limit, then `set()`. Between check and write, concurrent requests can exceed 64KB. No MULTI/WATCH or Lua protects this.
+  2. **Unsafe lock release**: `releaseLock()` does simple `DELETE` on lock key with static value `"locked"`. If lock TTL expires and another process acquires it, first process's `finally` block deletes wrong lock.
 
-    | # | Issue | Severity | Category |
-    |---|-------|:--------:|----------|
-    | 1 | JTI placeholder bug — `anonymousJti = ""` passed to SessionPromotionService | 🔴 BUG | Correctness |
-    | 2 | Zero test coverage for entire anonymous feature | 🔴 GAP | Quality |
-    | 3 | RegisterHandler ThreadLocal for promotion result | 🟡 SMELL | Architecture |
-    | 4 | No observability (metrics/counters) for anonymous lifecycle | 🟡 GAP | Operations |
-    | 5 | SCAN-per-write in getSessionDataSize() — O(n) per store operation | 🟡 PERF | Performance |
-    | 6 | Data transfer without Redis pipelining | 🟢 PERF | Performance |
-    | 7 | promotedDataTtlSeconds has no consuming service defined | 🟢 DESIGN | Clarity |
-    | 8 | Rate limit lockSeconds=0 (no lockout vs LoginRateLimitService) | 🟢 INCONSISTENCY | Consistency |
+- Q4: Should TOCTOU fix use Lua or WATCH/MULTI? → A: **Lua atomic check-and-set (`atomic_data_store.lua`).** Reasoning:
+  - The codebase is already introducing 2 Lua scripts (FR-002 sliding window, FR-004 safe lock release) — Lua is not a new pattern
+  - `WATCH/MULTI` in Spring Data Redis requires `SessionCallback` interface, retry loops under contention, and more complex error handling
+  - Lua EVAL is guaranteed atomic — zero retry overhead, single RTT
+  - All 3 scripts share the same infrastructure (`RedisLuaScriptConfig`, `DefaultRedisScript<Long>`)
+  - **Decision**: Lua script — simpler, guaranteed atomic, consistent architecture
 
-- Q4: **How critical is the JTI placeholder bug?**
-  - A: **Critical for security correctness.** The bug exists in both `LoginHandler` (L160) and `RegisterHandler` (L94):
-    ```kotlin
-    anonymousJti = "" // JTI is extracted at controller level when available
-    ```
-    This means `SessionPromotionService.promoteSession()` receives an empty string for `anonymousJti`, and inserts a `TokenBlacklistEntity` with `tokenJti = ""` into the `token_blacklist` table. Consequences:
-    1. The actual anonymous token JTI is **NOT blacklisted** — the token can be reused after promotion
-    2. A useless empty-JTI record is created in the database
-    3. The FR-005 requirement ("blacklist anonymous token JTI after promotion") is **NOT satisfied**
+- Q5: Should lock release use UUID + Lua or Redlock? → A: **UUID + Lua conditional DEL.** Reasoning:
+  - auth-service uses single Redis instance (confirmed in deployment config)
+  - Redlock requires 5+ Redis instances — massive overkill for single-node
+  - UUID ownership + Lua conditional DEL is the standard single-node safe lock pattern (Kleppmann)
+  - **Decision**: UUID lock value + `safe_lock_release.lua`
 
-    **Root cause**: The `LoginCommand` and `RegisterCommand` do not carry the anonymous token JTI. The controller layer has the Authorization header, but the CQRS command doesn't propagate it. The comment "JTI is extracted at controller level when available" suggests the developer intended to fix this but didn't.
+- Q6: Should pipelining use `executePipelined()` or raw Lettuce connection? → A: **`executePipelined(RedisCallback)`** — Spring-idiomatic, consistent with existing `StringRedisTemplate` usage. Both are new patterns (confirmed: `executePipelined` not found in codebase), but `executePipelined` provides connection pooling and error handling automatically.
 
-    **Fix**: Add `anonymousTokenJti: String? = null` to `LoginCommand` and `RegisterCommand`. Extract JTI from the anonymous token at the controller level (if the client sends an `X-Anonymous-Token` header or includes it in the request body) and pass it through the command.
+- Q7: Should we add a 3rd Lua script for TOCTOU, or combine with FR-005 running counter? → A: **Add `atomic_data_store.lua` (3rd script)** that atomically does: HGET dataSize → check limit → SET data → HINCRBY dataSize. This combines FR-005 (running counter) and FR-007 (TOCTOU fix) into a single atomic operation. The script operates on known key names (no SCAN/KEYS inside Lua).
 
-- Q5: **How should the RegisterHandler ThreadLocal smell be fixed?**
-  - A: **Return a composite result type instead of using ThreadLocal.** The current pattern:
-    ```kotlin
-    // RegisterHandler
-    private val promotionResultHolder = ThreadLocal<PromotionResult?>()
-    var lastPromotionResult: PromotionResult?
-    
-    // CqrsAuthController reads it after handle()
-    val promotionResult = registerHandler.lastPromotionResult
-    ```
-    This is fragile because:
-    1. It violates single-responsibility — the handler stores state outside its return value
-    2. ThreadLocal can leak in pooled threads / virtual threads (Project Loom)
-    3. It creates temporal coupling — controller must read before the next handle() call
-    
-    **Fix**: Change `RegisterHandler` to return a sealed class `RegisterResult` (similar to `LoginResult`):
-    ```kotlin
-    sealed class RegisterResult {
-        data class Success(val authToken: AuthToken, val promotionResult: PromotionResult? = null) : RegisterResult()
-    }
-    ```
-    This matches how `LoginHandler` returns `LoginResult.Success(response, promotionResult)`.
+- Q8: What about token_blacklist table growth? → A: Every renewal (max 24/session) + every promotion writes a row to `token_blacklist`. No cleanup exists (`TokenBlacklistRepository` only has `existsByTokenJti()`). **Decision**: Extend `SessionCleanupScheduler` with a second `@Scheduled` method for blacklist cleanup. Need to add `deleteByExpiresAtBefore(Instant)` to `TokenBlacklistRepository`.
 
-- Q6: **How severe is the O(n) SCAN-per-write in getSessionDataSize()?**
-  - A: **Moderate — impacts write latency at scale.** Every call to `storeData()` triggers `getSessionDataSize()` which does a full `SCAN` of `anon:data:{sessionId}:*` and calls `size()` on each key. For a session with 50 keys, that's 50 Redis round-trips per write.
+- Q9: Should FR-012 (counter reconciliation) be in initial scope? → A: **Defer to follow-up.** Reasoning:
+  - The `atomic_data_store.lua` makes write + increment atomic — the primary drift risk is eliminated
+  - Redis sessions are ephemeral (max 24h TTL) — any residual drift from edge cases (Redis crash mid-Lua, extremely unlikely) is temporary
+  - Reconciliation adds complexity (scheduled task, threshold detection, counter reset) for a low-probability edge case
+  - **Decision**: Deferred to Phase 4 / follow-up. Listed as nice-to-have.
 
-    **Fix**: Track cumulative size in the session metadata hash (`anon:session:{sessionId}` → add `dataSizeBytes` field). Increment on write, decrement on delete. This reduces size-check from O(n) to O(1). The full SCAN can be a fallback for consistency verification.
+- Q10: Should FR-006 (Micrometer Observation spans) be in initial scope? → A: **Deferred to Phase 4.** Existing metrics (`Counter`, `Timer.start()`) already provide comprehensive operational visibility. Observation spans are an incremental improvement, not a critical fix. Priority goes to correctness (Phase 1) and performance (Phase 2).
 
-- Q7: **What metrics should be added for observability?**
-  - A: **Micrometer counters and gauges aligned with the state machine transitions:**
-    - `auth.anonymous.sessions.created` (counter) — total sessions created
-    - `auth.anonymous.sessions.renewed` (counter) — total token renewals
-    - `auth.anonymous.sessions.promoted` (counter, tagged by status: SUCCESS/PARTIAL/FAILED/CONFLICT)
-    - `auth.anonymous.rate_limited` (counter) — rate limit rejections
-    - `auth.anonymous.data.stored` (counter) — data store operations
-    - `auth.anonymous.data.size_exceeded` (counter) — data limit rejections
-    - `auth.anonymous.promotion.duration` (timer) — promotion latency
-    - `auth.anonymous.token.generation.duration` (timer) — token generation latency
+- Q11: Should RenewAnonymousTokenHandler get pipelining? → A: **Deferred.** Lines 85-88 make 3 sequential Redis calls. Pipelining would save 2 RTTs, but renewal is low-frequency (max 24/session over 24h). Marginal gain, low priority.
 
-- Q8: **Should Redis pipelining be used for data transfer during promotion?**
-  - A: **Yes, for sessions with many keys.** The current implementation does individual `GET` + `SET` per key in the `transferData()` loop. Redis pipelining (`executePipelined`) batches these operations, reducing network round-trips from 2n to 2 (one pipeline for GETs, one for SETs). For small sessions (< 5 keys), the overhead is negligible, but for larger sessions (50+ keys), pipelining provides measurable latency improvement.
-
-    **Priority**: 🟢 LOW — the current implementation is correct and works within the <50ms P95 target for small sessions. Pipelining is a nice-to-have optimization.
-
-- Q9: **What about the missing lockSeconds=0 in anonymous rate limit config?**
-  - A: **Acceptable difference from LoginRateLimitService.** The anonymous rate limit uses `lockSeconds = 0` which means no lockout period — the rate limit resets after the window expires. This is intentional: anonymous users have no persistent identity, so a lockout would just force them to switch IP or wait. The fixed window with `maxAttempts=5` per hour is sufficient. However, the default should be documented in the configuration to make it explicit.
-
-- Q10: **Are there any missing endpoints or behaviors from the spec?**
-  - A: **Two minor gaps identified:**
-    1. **AF-001 in UC-001** (existing anonymous token check): The spec says if a client already has a valid anonymous token, the endpoint should return the existing token info (HTTP 200) instead of creating a new one. The current implementation always creates a new session. This is actually fine for v1 — the client can simply not call the endpoint if they already have a token.
-    2. **Retry-After header**: The `AnonymousRateLimitedException` stores `retryAfterSeconds` but the controller doesn't explicitly set a `Retry-After` response header. The `GlobalExceptionHandler` may or may not handle this. Should verify.
+- Q12: How many Lua scripts in total? → A: **3 scripts:**
+  1. `sliding_window_rate_limit.lua` — FR-002 (27 lines, 2 KEYS, 3 ARGV)
+  2. `safe_lock_release.lua` — FR-004 (8 lines, 1 KEY, 1 ARGV)
+  3. `atomic_data_store.lua` — FR-007 + FR-005 (15 lines, 2 KEYS, 3 ARGV)
 
 ## Approaches Considered
 
-### Approach A: Bug Fixes Only (Minimal Scope)
-Fix only the critical JTI placeholder bug and the ThreadLocal smell. ~1-2 developer-days.
+### Approach A: Performance-Only (Pipeline + Batch)
+Focus on Redis pipelining and batch operations only.
 
-- **Pros:**
-  - Addresses the most critical correctness issue
-  - Minimal risk of regression
-  - Fast turnaround
-- **Cons:**
-  - Leaves test gap entirely unaddressed
-  - No observability improvement
-  - Performance issues remain
+- **Scope**: FR-001 (pipeline session), FR-003 (batch transfer), FR-005 (running counter)
+- **Pros**: Direct P95 latency improvements; low risk; measurable
+- **Cons**: **Misses 2 critical correctness bugs** (TOCTOU, unsafe lock release); incomplete
+- **Score**: 5/10 — correctness > performance
 
-### Approach B: Bug Fixes + Tests (Medium Scope)
-Fix critical bugs + add comprehensive test coverage. ~3-4 developer-days.
+### Approach B: Data Integrity Only (Lua + Safety)
+Focus on correctness fixes only.
 
-- **Pros:**
-  - Addresses correctness AND quality gaps
-  - Tests provide regression safety net
-  - Validates the entire feature end-to-end
-- **Cons:**
-  - Still no observability
-  - Performance issues remain
-  - Moderate effort
+- **Scope**: FR-004 (safe lock), FR-007 (TOCTOU fix), FR-008/FR-009 (Lua infrastructure)
+- **Pros**: Eliminates real race conditions; correctness-first
+- **Cons**: Misses easy performance wins; leaves N+1 patterns intact
+- **Score**: 6/10 — necessary but insufficient
 
-### Approach C: Comprehensive Hardening (Large Scope)
-Fix all bugs + tests + observability metrics + performance optimizations. ~5-7 developer-days.
+### Approach C: Full Redisson Migration
+Replace `StringRedisTemplate` with Redisson for all Redis operations.
 
-- **Pros:**
-  - Complete feature hardening
-  - Production-ready with full observability
-  - All known issues addressed
-- **Cons:**
-  - Large scope may delay other features
-  - Performance optimizations may be premature
-  - Risk of scope creep
+- **Scope**: Replace entire Redis layer
+- **Pros**: Distributed objects, rate limiters, locks built-in; comprehensive
+- **Cons**: 8-12 dev-days (vs 3-5); major migration risk; new dependency (`io.redisson`); overkill for targeted fixes; breaks existing patterns used across entire auth-service
+- **Score**: 6.35/10 (from comparison_analysis.md)
 
-### Approach D: Post-Implementation Hardening (Bug Fixes + Tests + Observability) — SELECTED
-Fix critical bugs + add tests + add observability metrics. Skip performance optimizations for now (they're micro-optimizations within acceptable bounds). ~4-5 developer-days.
+### Approach D: Balanced Optimization (SELECTED) ★
+Combine critical integrity fixes + key performance optimizations + operational hardening.
 
-- **Pros:**
-  - Addresses all 🔴 and 🟡 severity issues
-  - Tests provide regression safety
-  - Observability enables production monitoring
-  - Performance optimizations deferred (currently within spec: <100ms P95, <50ms promotion overhead)
-  - Balanced scope/risk ratio
-- **Cons:**
-  - O(n) SCAN-per-write remains (acceptable for max 64KB sessions)
-  - No Redis pipelining (acceptable for typical session sizes)
+- **Scope**: All 14 FRs, phased delivery
+- **Pros**: Correctness bugs fixed first (Phase 1); consistent Lua architecture across 3 scripts; zero new dependencies; backward-compatible; incremental delivery — each phase complete and tested independently
+- **Cons**: Introduces 3 new patterns (executePipelined, RedisScript, Lua files) — learning curve
+- **Score**: 8.85/10 (from comparison_analysis.md)
 
 ## Selected Direction
 
-**Approach D — Post-Implementation Hardening (Bug Fixes + Tests + Observability)** selected for the following reasons:
+**Approach D: Balanced Optimization v3** — 3-Lua-Script Architecture with 4-Phase Delivery.
 
-1. **Correctness first**: The JTI placeholder bug is a security issue — anonymous tokens remain valid after promotion, violating FR-005. Must fix.
-2. **Quality gate**: Zero test coverage is unacceptable for a security-critical feature. Integration tests validate the entire flow.
-3. **Operational readiness**: Without metrics, the operations team cannot monitor anonymous session health, detect abuse patterns, or alert on resource exhaustion.
-4. **Pragmatic scope**: Performance optimizations (pipelining, size tracking counter) are deferred because current implementation meets spec targets. They can be addressed in a future micro-optimization pass.
-
-### Detailed Change Plan
+### Why This Approach
 
 ```
-┌─────────────────────────────────────────────────────────────────────┐
-│                    CHANGE PLAN (Approach D)                         │
-├──────────────────────┬──────────────────────────────────────────────┤
-│  FIX-001 (🔴 BUG)   │  JTI Blacklisting Fix                       │
-│                      │  • Add anonymousTokenJti to Login/Register   │
-│                      │    Command data classes                      │
-│                      │  • Extract JTI from anonymous token at       │
-│                      │    controller level (LoginRequestDto /       │
-│                      │    RegisterRequestDto → add anonymousToken   │
-│                      │    field, or use X-Anonymous-Token header)    │
-│                      │  • Pass JTI through to SessionPromotionSvc   │
-│                      │  • Remove empty-string placeholder            │
-│                      │  Files: LoginCommand, RegisterCommand,       │
-│                      │    LoginHandler, RegisterHandler,             │
-│                      │    CqrsAuthController, LoginRequestDto,      │
-│                      │    RegisterRequestDto                         │
-├──────────────────────┼──────────────────────────────────────────────┤
-│  FIX-002 (🟡 SMELL) │  Remove ThreadLocal from RegisterHandler      │
-│                      │  • Create RegisterResult sealed class        │
-│                      │    (mirrors LoginResult pattern)              │
-│                      │  • RegisterHandler returns RegisterResult     │
-│                      │    instead of AuthToken                       │
-│                      │  • Update CqrsAuthController.register() to   │
-│                      │    use RegisterResult                         │
-│                      │  • Remove ThreadLocal + lastPromotionResult   │
-│                      │  Files: RegisterResult.kt (new),             │
-│                      │    RegisterHandler, CqrsAuthController        │
-├──────────────────────┼──────────────────────────────────────────────┤
-│  FIX-003 (🟡 GAP)   │  Add Observability Metrics                    │
-│                      │  • Micrometer counters in all anonymous       │
-│                      │    services (session created/renewed/promoted/ │
-│                      │    rate-limited/data-stored/data-exceeded)    │
-│                      │  • Timer for promotion duration               │
-│                      │  • Timer for token generation                 │
-│                      │  Files: AnonymousSessionHandler,              │
-│                      │    RenewAnonymousTokenHandler,                │
-│                      │    SessionPromotionService,                   │
-│                      │    AnonymousRateLimitService,                 │
-│                      │    AnonymousSessionDataService                │
-├──────────────────────┼──────────────────────────────────────────────┤
-│  TEST-001 (🔴 GAP)  │  Integration Test Suite                       │
-│                      │  • 18 test cases from technical spec §9.6     │
-│                      │  • Covers: create session, rate limiting,     │
-│                      │    store/read/delete data, renew token,       │
-│                      │    promotion on login/register, concurrent    │
-│                      │    promotion, expired session, token reuse,   │
-│                      │    JwtAuthFilter ROLE_ANONYMOUS               │
-│                      │  Files: AnonymousSessionIntegrationTest.kt,  │
-│                      │    SessionPromotionIntegrationTest.kt,        │
-│                      │    AnonymousRateLimitServiceTest.kt           │
-├──────────────────────┼──────────────────────────────────────────────┤
-│  TEST-002 (🔴 GAP)  │  Unit Test Suite                              │
-│                      │  • JwtService.generateAnonymousToken/parse    │
-│                      │  • AnonymousSessionDataService                │
-│                      │  • SessionPromotionService                    │
-│                      │  • AnonymousRateLimitService                  │
-│                      │  Files: JwtServiceAnonymousTest.kt,           │
-│                      │    AnonymousSessionDataServiceTest.kt,        │
-│                      │    SessionPromotionServiceTest.kt             │
-└──────────────────────┴──────────────────────────────────────────────┘
+Decision Matrix (weighted scoring from comparison_analysis.md):
+
+┌───────────────────────┬────────┬───────────────┬──────────┬──────────┐
+│ Criterion             │ Weight │ Pipeline+Lua  │ Redisson │ No Change│
+├───────────────────────┼────────┼───────────────┼──────────┼──────────┤
+│ Feature coverage      │  30%   │      9        │    9     │    2     │
+│ Integration ease      │  25%   │     10        │    3     │   10     │
+│ Maintenan
+  │                  │ │                  │ │                  │
+  │ checkRateLimit() │ │ releaseLock()    │ │ storeData()      │
+  │   → EVAL lua     │ │   → EVAL lua     │ │   → EVAL lua     │
+  └──────────────────┘ └──────────────────┘ └──────────────────┘
+            │                    │                     │
+            ▼                    ▼                     ▼
+  ┌──────────────────────────────────────────────────────────────┐
+  │           resources/redis/                                   │
+  │  ┌────────────────────────────┐                              │
+  │  │ sliding_window_rate_       │  2 KEYS, 3 ARGV             │
+  │  │ limit.lua (~27 lines)     │  Returns: count or -1        │
+  │  ├────────────────────────────┤                              │
+  │  │ safe_lock_release.lua     │  1 KEY, 1 ARGV               │
+  │  │ (~8 lines)                │  Returns: 1 or 0             │
+  │  ├────────────────────────────┤                              │
+  │  │ atomic_data_store.lua     │  2 KEYS, 3 ARGV              │
+  │  │ (~15 lines)               │  Returns: newTotal or -1     │
+  │  └────────────────────────────┘                              │
+  └──────────────────────────────────────────────────────────────┘
 ```
+
+### 4-Phase Implementation Plan
+
+```
+Phase 1 — Data Integrity (MUST, ~1-2 days)
+═══════════════════════════════════════════
+ FR-004: UUID lock value + Lua safe release
+ FR-007: Lua atomic check-and-set (TOCTOU fix)
+ FR-008: RedisLuaScriptConfig @Configuration
+ FR-009: 3 Lua script files
+ 
+Phase 2 — Performance (~1-2 days)
+═══════════════════════════════════════════
+ FR-001: Pipeline HSET+EXPIRE in AnonymousSessionHandler
+ FR-002: Sliding window Lua rate limiting
+ FR-003: Pipeline MGET+MSET for batch transfer
+ FR-005: Running dataSize counter (via atomic_data_store.lua)
+
+Phase 3 — Reliability & Operations (~1 day)
+═══════════════════════════════════════════
+ FR-010: Pipeline fallback (try/catch → sequential)
+ FR-011: Lua script fallback (try/catch → fixed-window)
+ FR-013: TokenBlacklist cleanup scheduler
+ FR-014: Config enhancements (slidingWindowEnabled, scanCount)
+
+Phase 4 — Nice-to-have (deferred)
+═══════════════════════════════════════════
+ FR-006: Micrometer Observation spans
+ FR-012: Running counter periodic reconciliation
+ RenewAnonymousTokenHandler pipelining
+```
+
+### Key Design Decisions
+
+| ID | Decision | Rationale |
+|----|----------|-----------|
+| DD-01 | Lua over WATCH/MULTI for TOCTOU | Guaranteed atomic, no retry loops, consistent with other Lua scripts |
+| DD-02 | UUID lock value (not Redlock) | Single Redis instance; Redlock requires 5+ nodes |
+| DD-03 | `executePipelined(RedisCallback)` | Spring-idiomatic, connection pooling, error handling |
+| DD-04 | 3rd Lua script combining FR-005 + FR-007 | Atomic size check + write + increment in single EVAL |
+| DD-05 | Extend SessionCleanupScheduler | Same concern domain, separate @Scheduled method, 6h interval |
+| DD-06 | Defer FR-006/FR-012 | Lua atomicity eliminates primary drift risk; existing metrics adequate |
+| DD-07 | Feature flag `slidingWindowEnabled` | Gradual rollout, instant fallback to fixed-window |
+| DD-08 | `dataSize` backward compatibility | HGET returns null → treat as 0 for pre-existing sessions |
 
 ## Pre-classifications (preliminary)
-- Feature type: **MAINTENANCE** — hardening existing implementation (bug fixes, tests, observability)
-- Flow type: **Non-Financial** — no change to business flow, only correctness and quality improvements
+- Feature type: **MAINTENANCE** (confirmed — all code exists, optimizing/hardening)
+- Flow type: **Non-Financial** (no monetary transactions, session lifecycle operations)
 - Affected modules:
-  - `auth.application.command` — LoginCommand, RegisterCommand, LoginHandler, RegisterHandler (JTI fix + RegisterResult)
-  - `auth.application` — SessionPromotionService, AnonymousSessionDataService, AnonymousRateLimitService (metrics)
-  - `auth.adapter.in.web` — CqrsAuthController (JTI extraction + RegisterResult handling)
-  - `auth.adapter.in.web.dto` — LoginRequestDto, RegisterRequestDto (anonymousToken field)
-  - `test/` — New test files (unit + integration)
+  - `auth.application` — `SessionPromotionService` (MODIFY), `AnonymousSessionDataService` (MODIFY), `AnonymousRateLimitService` (MODIFY), `SessionCleanupScheduler` (MODIFY)
+  - `auth.application.command` — `AnonymousSessionHandler` (MODIFY)
+  - `shared.config` — `SecurityProperties.AnonymousProperties` (MODIFY), NEW `RedisLuaScriptConfig` (CREATE)
+  - `resources/redis/` — NEW `sliding_window_rate_limit.lua`, `safe_lock_release.lua`, `atomic_data_store.lua` (CREATE)
+  - `rbac.adapter.out.persistence.repository` — `TokenBlacklistRepository` (MODIFY — add `deleteByExpiresAtBefore`)
 
-## Codebase Investigation Findings
+## Codebase Findings
 
-### Critical Bug Analysis — JTI Placeholder
+### Verification Results (all confirmed via grep/view_file)
 
-```
-CURRENT FLOW (BROKEN):
-═══════════════════════
+| Check | Result | Evidence |
+|-------|:---:|---|
+| `executePipelined` exists? | ❌ NEW | `grep executePipelined` → 0 results |
+| `RedisScript` exists? | ❌ NEW | `grep RedisScript` → 0 results |
+| `.lua` files exist? | ❌ NEW | No `.lua` files in `src/main/resources/` |
+| `spring-boot-starter-data-redis` | ✅ | `build.gradle.kts` line 37 |
+| Lettuce driver (default) | ✅ | `spring-boot-starter-data-redis` includes Lettuce |
+| `LOCK_VALUE = "locked"` | ✅ CONFIRMED | `SessionPromotionService.kt` line 38 |
+| TOCTOU pattern | ✅ CONFIRMED | `AnonymousSessionDataService.kt` lines 37-57 |
+| Sequential HSET+EXPIRE | ✅ CONFIRMED | `AnonymousSessionHandler.kt` lines 64-65 |
+| Fixed-window INCR+EXPIRE | ✅ CONFIRMED | `AnonymousRateLimitService.kt` lines 44-54 |
+| Per-key transfer loop | ✅ CONFIRMED | `AnonymousSessionDataService.kt` lines 90-115 |
+| SCAN+STRLEN size calc | ✅ CONFIRMED | `AnonymousSessionDataService.kt` lines 129-147 |
+| `deleteByExpiresAtBefore` | ❌ NEW | `TokenBlacklistRepository` only has `existsByTokenJti()` |
+| Micrometer Observation | ❌ NEW | No `Observation` usage in codebase |
 
-  Client                     CqrsAuthController              LoginHandler            SessionPromotionService
-    |                               |                              |                          |
-    |  POST /login                  |                              |                          |
-    |  { username, password,        |                              |                          |
-    |    anonymousSessionId }       |                              |                          |
-    |  Authorization: Bearer <anon> |                              |                          |
-    |   ─────────────────────────→  |                              |                          |
-    |                               |  LoginCommand(               |                          |
-    |                               |    anonymousSessionId=...,   |                          |
-    |                               |    // ⚠️ NO JTI FIELD !!    |                          |
-    |                               |  ) ──────────────────────→   |                          |
-    |                               |                              |  promoteSession(         |
-    |                               |                              |    sessionId=...,        |
-    |                               |                              |    userId=...,           |
-    |                               |                              |    anonymousJti="" ← 🔴  |
-    |                               |                              |  ) ─────────────────────→|
-    |                               |                              |                          |
-    |                               |                              |        BlacklistEntity(  |
-    |                               |                              |          tokenJti=""  🔴 |
-    |                               |                              |        )                 |
-    |                               |                              |         ↓                |
-    |                               |                              |   [DB: empty JTI saved]  |
-    |                               |                              |   [Real anon token       |
-    |                               |                              |    NOT blacklisted! 🔴]  |
-
-
-FIXED FLOW:
-═══════════
-
-  Client                     CqrsAuthController              LoginHandler            SessionPromotionService
-    |                               |                              |                          |
-    |  POST /login                  |                              |                          |
-    |  { username, password,        |                              |                          |
-    |    anonymousSessionId,        |                              |                          |
-    |    anonymousToken: "eyJ..." } |                              |                          |
-    |   ─────────────────────────→  |                              |                          |
-    |                               |  // Extract JTI from         |                          |
-    |                               |  // anonymousToken field     |                          |
-    |                               |  jti = jwtSvc.parse(token).id|                          |
-    |                               |                              |                          |
-    |                               |  LoginCommand(               |                          |
-    |                               |    anonymousSessionId=...,   |                          |
-    |                               |    anonymousTokenJti=jti ✅  |                          |
-    |                               |  ) ──────────────────────→   |                          |
-    |                               |                              |  promoteSession(         |
-    |                               |                              |    sessionId=...,        |
-    |                               |                              |    userId=...,           |
-    |                               |                              |    anonymousJti=jti  ✅  |
-    |                               |                              |  ) ─────────────────────→|
-```
-
-### RegisterHandler ThreadLocal Fix — Before/After
+### RTT Analysis — Before vs After
 
 ```
-  RegisterHandler                                CqrsAuthController
-  ┌─────────────────────────────────┐            ┌──────────────────────────┐
-  │                                 │            │                          │
-  │  handle() returns               │            │  val result =            │
-  │    RegisterResult.Success(      │            │    registerHandler       │
-  │      authToken,                 │  ────────→ │      .handle(command)    │
-  │      promotionResult  ✅       │            │                          │
-  │    )                            │            │  result.authToken        │
-  │                                 │            │  result.promotionResult  │
-  │  No ThreadLocal ✅             │            │                          │
-  │  No temporal coupling ✅       │            │  // Clean, explicit ✅   │
-  │  Thread-safe ✅                │            │                          │
-  └─────────────────────────────────┘            └──────────────────────────┘
+Session Creation (POST /api/v1/auth/anonymous):
+  Before: INCR(1) + EXPIRE(1) + HSET(1) + EXPIRE(1) = 3-4 RTT
+  After:  EVAL lua(1) + executePipelined[HSET+EXPIRE](1) = 2 RTT
+  Improvement: -50% RTT
+
+Data Store (PUT /api/v1/auth/anonymous/session/data):
+  Before: SCAN(1+) + N×STRLEN + hasKey(1) + getExpire(1) + SET(1) = 4+N RTT
+  After:  hasKey(1) + EVAL atomic_data_store.lua(1) = 2 RTT
+  Improvement: -50% to -90% RTT (depends on N)
+
+Data Transfer / Promotion (POST /api/v1/auth/login):
+  Before: SETNX(1) + SCAN(1+) + N×GET + N×SET + DEL(session) + DEL(lock) = 4+2N RTT
+  After:  SETNX(1) + SCAN(1) + pipeline[N×GET](1) + pipeline[N×SET](1) + DEL(session) + EVAL lua(1) = 5 RTT
+  Improvement: -60% to -95% RTT (depends on N)
 ```
 
-### Implementation Status Summary
+### Lua Script Designs
 
+#### Script 1: `sliding_window_rate_limit.lua` (FR-002)
 ```
-FEATURE IMPLEMENTATION SCORECARD
-═════════════════════════════════
+KEYS[1] = anon:rate:{ip}:{currentWindow}
+KEYS[2] = anon:rate:{ip}:{prevWindow}
+ARGV[1] = maxAttempts, ARGV[2] = windowSeconds, ARGV[3] = elapsedSeconds
 
-  Functional Completeness     ████████████████████  100%  ✅
-  Test Coverage               ░░░░░░░░░░░░░░░░░░░░    0%  🔴
-  Bug-Free                    ███████████████░░░░░   75%  🔴 (JTI bug)
-  Architecture Clean          ██████████████████░░   90%  🟡 (ThreadLocal)
-  Observability               ░░░░░░░░░░░░░░░░░░░░    0%  🟡
-  Performance                 ██████████████████░░   90%  🟢 (within spec)
-  Security                    █████████████████░░░   85%  🔴 (token not blacklisted)
-  Configuration               ████████████████████  100%  ✅
-  Error Handling              ████████████████████  100%  ✅
-  ─────────────────────────────────────────────────
-  OVERALL PRODUCTION READINESS                      71%  🟡
+Flow: INCR current → (if first) EXPIRE 2×window
+      GET prev → calculate weight = max(0, (window-elapsed)/window)
+      count = prev × weight + current
+      if count > max → return -1 (denied)
+      return floor(count) (allowed)
 
-  After Approach D:
-  OVERALL PRODUCTION READINESS                      95%  ✅
+Lines: ~27   |   Complexity: MEDIUM   |   Returns: Long
 ```
 
-## Design Decisions Captured
+#### Script 2: `safe_lock_release.lua` (FR-004)
+```
+KEYS[1] = anon:lock:{sessionId}
+ARGV[1] = ownerUUID
 
-### DD-011: Feature type reassessed to MAINTENANCE
-- **Decision**: Change feature type from EXTEND to MAINTENANCE
-- **Rationale**: All functional code is implemented. Remaining work is bug fixes, test coverage, and observability — maintenance activities on existing code.
-- **Impact**: Downstream `wf_openspec` should generate maintenance-scope tasks, not new feature tasks.
+Flow: if GET(key) == uuid → DEL(key) → return 1
+      else → return 0 (not owner)
 
-### DD-012: JTI fix via request body field (not header)
-- **Decision**: Add `anonymousToken: String? = null` to `LoginRequestDto` and `RegisterRequestDto` rather than using a custom header
-- **Rationale**: The anonymous token is contextual to the specific login/register operation and should travel with the request body. Custom headers are less discoverable and harder to document. The controller extracts the JTI from the token and passes it through the command.
-- **Alternative considered**: `X-Anonymous-Token` header — rejected because it creates API discoverability issues and is inconsistent with the existing `anonymousSessionId` field being in the body.
+Lines: ~8   |   Complexity: TRIVIAL   |   Returns: Long
+```
 
-### DD-013: RegisterResult sealed class (mirrors LoginResult)
-- **Decision**: Create `RegisterResult` sealed class to replace ThreadLocal-based promotion result passing
-- **Rationale**: Follows the established `LoginResult` pattern. Thread-safe. Explicit. Self-documenting.
-- **Impact**: `RegisterHandler` changes return type from `AuthToken` to `RegisterResult`. `CqrsAuthController.register()` updated to unwrap.
+#### Script 3: `atomic_data_store.lua` (FR-007 + FR-005)
+```
+KEYS[1] = anon:session:{sessionId}  (hash with dataSize field)
+KEYS[2] = anon:data:{sessionId}:{namespace}:{key}  (data key to write)
+ARGV[1] = maxDataSizeBytes
+ARGV[2] = value (data to store)
+ARGV[3] = ttlSeconds (TTL for data key)
 
-### DD-014: Micrometer counters (not custom metrics)
-- **Decision**: Use Micrometer `Counter` and `Timer` for observability
-- **Rationale**: Spring Boot Actuator already includes Micrometer. The existing auth-service likely uses Actuator (given `requestMatchers("/actuator/**").permitAll()`). Using standard Micrometer APIs enables Prometheus/Grafana integration without custom tooling.
-- **Impact**: Add `MeterRegistry` as dependency to anonymous service classes. Define standard metric names with `auth.anonymous.*` prefix.
+Flow: currentSize = tonumber(HGET KEYS[1] "dataSize") or 0
+      newSize = #ARGV[2]  (string length in bytes)
+      if currentSize + newSize > maxDataSizeBytes → return -1 (limit exceeded)
+      SET KEYS[2] ARGV[2] EX ARGV[3]
+      HINCRBY KEYS[1] "dataSize" newSize
+      return currentSize + newSize
 
-## Risk Analysis
+Lines: ~15   |   Complexity: MEDIUM   |   Returns: Long (-1 = denied, ≥0 = new total)
+```
 
-| Risk | Probability | Impact | Mitigation | Status |
-|------|:-:|:-:|-----------|--------|
-| JTI bug allows token reuse after promotion | ACTIVE | HIGH | FIX-001 resolves this directly | Active risk → Fix |
-| ThreadLocal leak in virtual threads | LOW | MEDIUM | FIX-002 removes ThreadLocal entirely | Deferred risk → Fix |
-| Anonymous feature not tested, regressions undetected | MEDIUM | HIGH | TEST-001 + TEST-002 provide coverage | Active risk → Fix |
-| No production monitoring for anonymous session abuse | MEDIUM | MEDIUM | FIX-003 adds Micrometer metrics | Active risk → Fix |
-| RegisterHandler return type change breaks CommandHandler contract | LOW | MEDIUM | CommandHandler<RegisterCommand, RegisterResult> — verify eventsourcing-utils supports sealed return types | Technical risk → Validate |
+### Key Pattern Migration
+
+| Pattern | Before | After | Migration Strategy |
+|---------|--------|-------|--------------------|
+| Rate limit key | `anon:rate:{ip}` | `anon:rate:{ip}:{windowId}` | Auto — old keys expire via existing TTL (1h max) |
+| Lock value | `"locked"` (static) | UUID string | Auto — lock keys are ephemeral (30s TTL) |
+| Session hash | `{deviceFP, ip, createdAt, renewalCount}` | + `dataSize` field | Backward compatible — HGET returns null → treat as 0 |
+| Size check | SCAN+STRLEN O(N) | HGET dataSize O(1) | Atomic via `atomic_data_store.lua` |
+| Data store | getSize() → check → set() (TOCTOU) | EVAL atomic check-and-set (Lua) | Atomic replacement |
+
+### Pattern Reuse Opportunities
+
+| Current Pattern | Optimization | Reuse Target |
+|----------------|--------------|--------------|
+| Fixed-window INCR+EXPIRE in `AnonymousRateLimitService` | Sliding window Lua | `LoginRateLimitService` (identical pattern at lines 19-80) |
+| Fixed-window INCR+EXPIRE in `AnonymousRateLimitService` | Sliding window Lua | `MfaRateLimitService` (identical pattern) |
+| Sequential Redis calls | Pipeline | `RenewAnonymousTokenHandler` (lines 85-88, 3 sequential calls) |
+
+### Risk Assessment
+
+| Risk | Probability | Impact | Mitigation |
+|------|:-:|:-:|---|
+| Lua script error in production | LOW | MEDIUM | Comprehensive unit tests; SHA1 caching; fallback to fixed-window (FR-011) |
+| Pipeline breaking behavior | VERY LOW | LOW | Pipeline returns in order; integration tests; fallback to sequential (FR-010) |
+| Running counter drift | LOW | LOW | Lua atomicity eliminates primary cause; sessions are ephemeral (24h TTL) |
+| Redis version incompatibility | VERY LOW | HIGH | Lua EVAL since Redis 2.6 (2012); project uses Redis 7+ |
+| New pattern learning curve | MEDIUM | LOW | 3 patterns (executePipelined, RedisScript, Lua) — well-documented in Spring Data Redis docs |
 
 ## Open Questions for Design Phase
-- [OPEN] Should the `anonymousToken` field in LoginRequestDto be the full JWT string (and the controller parses it for JTI), or should the client extract and send only the JTI?
-  - Recommendation: Full JWT — the server should validate the token before trusting the JTI. Sending only JTI allows spoofing.
-- [OPEN] Should `RegisterHandler` implement `CommandHandler<RegisterCommand, RegisterResult>` or should we use a different pattern to return promotion data?
-  - Recommendation: Change to `RegisterResult` sealed class. Verify `eventsourcing-utils` `CommandHandler<C, R>` type parameter accepts sealed classes. If not, use `Pair<AuthToken, PromotionResult?>` or a simple data class wrapper.
-- [OPEN] What Grafana dashboard panels should be created for anonymous session monitoring?
-  - Recommendation: Out of scope for this change — but define metric names consistently so dashboards can be created later.
+- [RESOLVED] FR-007 approach: **Lua atomic check-and-set** — consistent with FR-002/FR-004, guaranteed atomic
+- [RESOLVED] FR-003 pipeline: **`executePipelined(RedisCallback)`** — Spring-idiomatic
+- [RESOLVED] FR-013 scheduler: **Extend `SessionCleanupScheduler`** with second `@Scheduled` method
+- [RESOLVED] Lua SCAN/KEYS: **N/A** — Lua scripts operate on known key names, SCAN stays in Kotlin
+- [RESOLVED] Lock ownership: **UUID value + Lua conditional DEL** — standard single-instance pattern
+- [RESOLVED] Counter reconciliation: **Deferred** — Lua atomicity eliminates primary drift risk
+- [RESOLVED] Observation spans: **Deferred** — existing metrics adequate for now
+- [OPEN] Should `RedisLuaScriptConfig` define scripts as `DefaultRedisScript<Long>` or `RedisScript<Long>` interface? → **Recommendation**: `DefaultRedisScript<Long>` — concrete class with SHA1 caching, simpler bean definition. Design phase should confirm.
+- [OPEN] Should `atomic_data_store.lua` also handle `deleteData()` decrement (HINCRBY negative), or keep delete decrement in Kotlin? → **Recommendation**: Keep in Kotlin — delete doesn't need atomicity (deleting data that's already gone is safe). A separate Lua for delete is over-engineering.
+- [OPEN] Should `SessionCleanupScheduler` be renamed to `AuthCleanupScheduler`? → **Recommendation**: Keep as-is — name change is cosmetic and could break references. Add method name that's self-documenting.
 
 ## Open Questions for URD Analysis
-- Not applicable (MAINTENANCE scope — no new URD needed)
+- None — URD analysis completed via `wf_pre_openspec` with quality score 88/100.
+
+## Cross-Cutting Considerations
+
+### Test Strategy
+```
+Unit Tests:
+  - Mock StringRedisTemplate to verify Lua script invocation with correct KEYS/ARGV
+  - Verify pipeline callback structure
+  - Test sliding window formula at boundary conditions
+
+Integration Tests:
+  - Embedded Redis (Testcontainers) for pipeline batching verification
+  - Lua script execution with real Redis
+  - End-to-end session creation → store data → promotion
+
+Concurrency Tests:
+  - CountDownLatch + ExecutorService with N threads for TOCTOU fix verification
+  - Simulate lock TTL expiry + concurrent acquisition for safe lock release
+  - Verify size limit enforcement under concurrent storeData() calls
+```
+
+### Backward Compatibility
+- **New sessions**: Get `dataSize=0` in session hash — fully supported
+- **Existing sessions** (pre-optimization): No `dataSize` field → HGET returns null → Lua treats as 0 → compatible
+- **Rate limit keys**: New pattern `anon:rate:{ip}:{windowId}` ≠ old `anon:rate:{ip}` — no conflict, old keys auto-expire
+- **Lock keys**: Ephemeral (30s TTL) — no migration needed
+- **API contracts**: Zero changes — all optimization is internal

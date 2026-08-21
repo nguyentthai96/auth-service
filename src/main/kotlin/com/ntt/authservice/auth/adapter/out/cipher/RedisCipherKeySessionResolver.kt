@@ -38,7 +38,7 @@ class RedisCipherKeySessionResolver(
     }
 
     override fun resolveSession(request: HttpServletRequest): CipherKeySession {
-        val keyId = request.getHeader(CipherHeaders.X_KEY_ID)
+        val keyId = request.getHeader(CipherHeaders.KEY_ID)
             ?: throw com.ntt.basecore.autoconfigure.security.cipher.model.CipherKeyNotFoundException(
                 "Missing X-Key-ID header"
             )

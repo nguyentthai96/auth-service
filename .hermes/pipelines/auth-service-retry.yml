@@ -1,0 +1,70 @@
+# ═══════════════════════════════════════════════════════════
+# Pipeline Config: auth-service-retry
+# ═══════════════════════════════════════════════════════════
+# Retry 2 features failed do PROXY_DOWN: auth-core-features, erp-iam-system
+# Full workflow chain: research → pre_openspec → brainstorm → openspec → apply → archive
+# ═══════════════════════════════════════════════════════════
+
+# ─── SDK Configuration ───────────────────────────────────────
+sdk_mode: "claude"
+model: "claude-opus-4-6"
+
+# ─── Features to Process ────────────────────────────────────
+# Only failed features from previous pipeline run
+features:
+  - auth-core-features
+  - erp-iam-system
+
+# ─── Workflow Chain ──────────────────────────────────────────
+# Full pipeline: research → analyze → brainstorm → spec → implement → archive
+workflows:
+  - wf_feature_research
+  - wf_pre_openspec
+  - wf_brainstorm_openspec
+  - wf_openspec
+  - wf_openspec_apply
+  - wf_archive
+
+# ─── Settings Override ──────────────────────────────────────
+settings:
+  max_retries: 5
+  retry_backoff_base: 30
+  retry_jitter: true
+  context_max_tokens: 8000
+  memory_max_items: 30
+  output_dir: "openspec"
+  memory_dir: ".memory"
+
+# ─── Tools Override ─────────────────────────────────────────
+tools:
+  enabled: true
+  include_write: true
+  include_exec: true
+  command_timeout: 120
+  max_turns: 50
+  max_output_tokens: 16384
+  allowed_commands:
+    - "gradle"
+    - "gradlew"
+    - "./gradlew"
+    - "find"
+    - "grep"
+    - "cat"
+    - "ls"
+    - "mvn"
+
+# ─── Proxy Configuration ────────────────────────────────────
+proxy:
+  enabled: true
+  base_url: "http://127.0.0.1:8045"
+  # api_key from ANTHROPIC_API_KEY env var
+  fallback_to_direct: false
+  timeout_seconds: 180
+  health_check_cache_seconds: 60
+  model_routing:
+    wf_feature_research: "claude"
+    wf_pre_openspec: "claude"
+    wf_brainstorm_openspec: "claude"
+    wf_openspec: "claude"
+    wf_openspec_apply: "claude"
+    wf_archive: "claude"

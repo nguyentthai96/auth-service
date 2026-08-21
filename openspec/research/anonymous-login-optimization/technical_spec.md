@@ -10,659 +10,469 @@
 
 ```mermaid
 graph TB
-    Client["📱 Client (Web/Mobile)"] -->|"POST /auth/anonymous"| Gateway["API Gateway"]
-    Client -->|"POST /auth/login + anonymousSessionId"| Gateway
-    Client -->|"PUT /auth/anonymous/session/data"| Gateway
-    Client -->|"POST /auth/anonymous/renew"| Gateway
+    Client["📱 Client"] -->|"POST /auth/anonymous"| Controller["AnonymousAuthController"]
+    Controller --> Handler["AnonymousSessionHandler"]
+    Handler --> RateLimitSvc["AnonymousRateLimitService<br/>(Lua sliding window)"]
+    Handler -->|"executePipelined"| Redis[("Redis")]
     
-    Gateway --> AnonCtrl["AnonymousAuthController"]
-    Gateway --> LoginCtrl["CqrsAuthController (extended)"]
+    Controller -->|"PUT /session/data"| DataSvc["AnonymousSessionDataService<br/>(running size counter)"]
+    DataSvc -->|"HINCRBY + SET"| Redis
     
-    AnonCtrl --> AnonHandler["AnonymousSessionHandler"]
-    AnonCtrl --> RenewHandler["RenewAnonymousTokenHandler"]
-    AnonCtrl --> DataSvc["AnonymousSessionDataService"]
+    LoginCtrl["CqrsAuthController"] --> LoginHandler["LoginHandler"]
+    LoginHandler --> PromotionSvc["SessionPromotionService<br/>(Lua safe lock release)"]
+    PromotionSvc -->|"pipeline MGET/MSET"| Redis
+    PromotionSvc -->|"Lua conditional DEL"| Redis
     
-    LoginCtrl --> LoginHandler["LoginHandler (extended)"]
-    LoginHandler --> PromotionSvc["SessionPromotionService"]
+    subgraph "Lua Scripts"
+        LuaRL["sliding_window_rate_limit.lua"]
+        LuaLock["safe_lock_release.lua"]
+    end
     
-    AnonHandler --> JwtSvc["JwtService (extended)"]
-    AnonHandler --> RateLimitSvc["AnonymousRateLimitService"]
-    AnonHandler --> Redis[("Redis")]
-    
-    RenewHandler --> JwtSvc
-    RenewHandler --> Redis
-    
-    DataSvc --> Redis
-    
-    PromotionSvc --> DataSvc
-    PromotionSvc --> Redis
-    PromotionSvc --> BlacklistRepo["TokenBlacklistRepository"]
-    BlacklistRepo --> DB[("PostgreSQL")]
-    
-    JwtSvc --> KeyPair["RS256 Key Pair"]
+    RateLimitSvc --> LuaRL
+    PromotionSvc --> LuaLock
 ```
 
 ### 1.2 Technology Stack
 
 | Layer | Technology | Version | Ghi chú |
 |-------|-----------|---------|---------|
-| Language | Kotlin | 1.9+ | Existing |
-| Framework | Spring Boot | 3.x | Existing |
-| Database | PostgreSQL | 15+ | Existing — only `token_blacklist` table reused |
-| Cache | Redis | 7+ | Existing — primary store for anonymous sessions |
-| Token | JJWT | 0.12+ | Existing — RS256 signing, custom claims |
-| CQRS | eventsourcing-utils | Custom | Existing — `CommandHandler<C,R>` pattern |
+| Language | Kotlin | 1.9+ | Existing — no change |
+| Framework | Spring Boot | 3.x | Existing — no change |
+| Cache | Redis | 7+ | Existing — leverage Lua EVAL, pipelining |
+| Redis Client | Lettuce | 6.x (via Spring Boot) | Existing — supports pipelining via connection |
+| Metrics | Micrometer | 1.12+ | Existing — add Observation spans |
+| CQRS | eventsourcing-utils | Custom | Existing — no change |
 
 ### 1.3 Dependencies & Integrations
 
 | Dependency | Type | Purpose | Interface |
 |-----------|------|---------|-----------|
-| `JwtService` | Internal | Generate/validate anonymous JWT tokens | Kotlin method call |
-| `StringRedisTemplate` | Internal | Anonymous session data CRUD | Spring Data Redis |
-| `TokenBlacklistRepository` | Internal | Blacklist anonymous token JTIs | JPA Repository |
-| `LoginHandler` | Internal | Extended for session promotion | CQRS CommandHandler |
-| `CaptchaGateway` | Internal | CAPTCHA verification for abuse prevention | Port interface |
+| `StringRedisTemplate` | Internal | Pipelining, Lua script execution | `executePipelined()`, `execute(RedisScript)` |
+| `DefaultRedisScript<Long>` | Internal | Lua script beans | Spring bean configuration |
+| Micrometer Observation | Internal | Tracing spans | `Observation.createNotStarted()` |
+
+> **No new external dependencies** — all changes use existing Spring Boot/Spring Data Redis APIs.
 
 ---
 
 ## 2. Lược đồ dữ liệu (Data Schema)
 
-### 2.1 Entity-Relationship Diagram
+### 2.1 Redis Key Design Changes
 
 ```mermaid
 erDiagram
-    ANONYMOUS_SESSION_REDIS {
+    ANON_SESSION_HASH {
         string sessionId PK "UUID v4"
         string deviceFingerprint "Optional device FP"
         string ipAddress "Creator IP"
-        timestamp createdAt "Session creation time"
-        int renewalCount "Number of token renewals"
+        string createdAt "ISO 8601 timestamp"
+        string renewalCount "Token renewal counter"
+        string dataSize "NEW: running data size in bytes"
     }
-    ANONYMOUS_DATA_REDIS {
-        string sessionId FK "References anonymous session"
-        string namespace "Data namespace (cart, preferences)"
-        string key "Data key within namespace"
-        string value "JSON serialized value"
+    RATE_LIMIT_WINDOW {
+        string ip_windowId PK "IP:windowNumber"
+        int count "Request count in this window"
     }
-    TOKEN_BLACKLIST {
-        bigint id PK "Snowflake ID (existing table)"
-        string token_jti "JWT ID of blacklisted token"
-        timestamp blacklisted_at "When blacklisted"
-        timestamp expires_at "When entry can be cleaned up"
-        string reason "PROMOTION or RENEWAL or MANUAL"
+    RATE_LIMIT_PREV_WINDOW {
+        string ip_prevWindowId PK "IP:prevWindowNumber"
+        int count "Request count in previous window"
     }
-    ANONYMOUS_SESSION_REDIS ||--o{ ANONYMOUS_DATA_REDIS : "has data"
-    ANONYMOUS_SESSION_REDIS ||--o| TOKEN_BLACKLIST : "blacklisted on promotion"
 ```
 
-> ⚠️ Note: `ANONYMOUS_SESSION_REDIS` and `ANONYMOUS_DATA_REDIS` are Redis structures, NOT PostgreSQL tables. `TOKEN_BLACKLIST` is the existing PostgreSQL table.
+### 2.2 Key Changes Detail
 
-### 2.2 Redis Key Design
+| Key Pattern | Change | Before | After |
+|-------------|--------|--------|-------|
+| `anon:session:{sessionId}` | **MODIFIED** | Hash: `{deviceFingerprint, ipAddress, createdAt, renewalCount}` | Hash: `{deviceFingerprint, ipAddress, createdAt, renewalCount, **dataSize**}` |
+| `anon:rate:{ip}` | **REPLACED** | String: single counter, fixed window | N/A — replaced by sliding window keys |
+| `anon:rate:{ip}:{windowId}` | **NEW** | N/A | String: counter for current time window |
+| `anon:rate:{ip}:{windowId-1}` | **NEW** | N/A | String: counter for previous time window (auto-expires) |
+| `anon:lock:{sessionId}` | **MODIFIED** | String: static `"locked"` | String: UUID of lock owner |
 
-#### Anonymous Session Metadata
-| Key Pattern | Type | TTL | Value |
-|-------------|------|-----|-------|
-| `anon:session:{sessionId}` | Hash | 86400s (24h) | `{ deviceFingerprint, ipAddress, createdAt, renewalCount }` |
-| `anon:data:{sessionId}:{namespace}:{key}` | String | 86400s (24h) | JSON serialized value |
-| `anon:lock:{sessionId}` | String | 30s | `"locked"` (distributed lock for promotion) |
-| `anon:rate:{ip}` | String | 3600s (1h) | Attempt count (rate limiting) |
+### 2.3 No Database Migration Needed
 
-#### Authenticated User Session Data (post-promotion)
-| Key Pattern | Type | TTL | Value |
-|-------------|------|-----|-------|
-| `user:session_data:{userId}:{namespace}:{key}` | String | Configurable | JSON serialized value (migrated from anonymous) |
-
-### 2.3 Bảng chi tiết — Existing Token Blacklist (no migration needed)
-
-#### Entity: token_blacklist (existing)
-
-| Field | Type | Constraint | Default | Mô tả |
-|-------|------|-----------|---------|--------|
-| `id` | `BIGINT` | PK | Snowflake | Primary key |
-| `token_jti` | `VARCHAR(255)` | NOT NULL, UNIQUE | - | JWT ID of blacklisted token |
-| `blacklisted_at` | `TIMESTAMP` | NOT NULL | `CURRENT_TIMESTAMP` | When token was blacklisted |
-| `expires_at` | `TIMESTAMP` | NOT NULL | - | When this blacklist entry can be cleaned up |
-| `reason` | `VARCHAR(50)` | NULLABLE | - | Reason: PROMOTION, RENEWAL, LOGOUT, MANUAL |
-
-> No database migration needed — the existing `token_blacklist` table handles anonymous token invalidation.
+No PostgreSQL schema changes. All modifications are Redis key structure changes only.
 
 ---
 
 ## 3. Luồng dữ liệu (Data Flow)
 
-### 3.1 Data Flow Diagram — Level 0 (Context)
+### 3.1 Optimized Session Creation Flow
 
 ```mermaid
 graph LR
-    Visitor["👤 Anonymous Visitor"] -->|"Create session / Store data / Renew token"| AnonSystem["⚙️ Anonymous Auth System"]
-    AnonSystem -->|"Token + Session ID"| Visitor
-    AnonSystem -->|"Read/Write sessions"| Redis[("📦 Redis")]
-    Visitor -->|"Login with anonymousSessionId"| LoginSystem["⚙️ Login System (existing)"]
-    LoginSystem -->|"Authenticated tokens + promoted data"| Visitor
-    LoginSystem -->|"Promotion"| AnonSystem
-    AnonSystem -->|"Blacklist JTI"| DB[("📦 PostgreSQL")]
-```
-
-### 3.2 Data Flow Diagram — Level 1 (chi tiết)
-
-```mermaid
-graph TB
-    subgraph "Anonymous Auth System"
-        P1["P1: Validate Request\n(rate limit, token)"]
-        P2["P2: Generate Anonymous Token\n(JwtService)"]
-        P3["P3: Initialize Redis Session"]
-        P4["P4: Store/Read Session Data"]
-        P5["P5: Promote Session\n(transfer data, blacklist)"]
-        P6["P6: Renew Token\n(new JWT, blacklist old)"]
+    subgraph "Before (3-4 RTTs)"
+        B1["INCR rate key"] --> B2["EXPIRE rate key"]
+        B2 --> B3["HSET session"]
+        B3 --> B4["EXPIRE session"]
     end
     
-    CreateReq["Create Session Request"] --> P1
-    P1 -->|"Valid"| P2
-    P1 -->|"Rate limited"| RateLimitResp["429 Response"]
-    P2 --> P3
-    P3 -->|"Save"| Redis[("Redis")]
-    P3 -->|"Success"| CreateResp["201 Response"]
+    subgraph "After (2 RTTs)"
+        A1["EVAL sliding_window_lua"] --> A2["executePipelined:<br/>HSET + EXPIRE"]
+    end
+```
+
+### 3.2 Optimized Data Transfer Flow
+
+```mermaid
+graph LR
+    subgraph "Before (1 + 2N RTTs)"
+        B1["SCAN keys"] --> B2["GET key1"] --> B3["SET user:key1"]
+        B2 --> B4["GET key2"] --> B5["SET user:key2"]
+        B4 --> B6["GET keyN"] --> B7["SET user:keyN"]
+    end
     
-    DataReq["Data Store/Read Request"] --> P1
-    P1 -->|"Valid token"| P4
-    P4 -->|"Read/Write"| Redis
-    P4 -->|"Success"| DataResp["200 Response"]
-    
-    LoginReq["Login + anonymousSessionId"] --> P5
-    P5 -->|"Transfer data"| Redis
-    P5 -->|"Blacklist JTI"| DB[("PostgreSQL")]
-    P5 -->|"Delete session"| Redis
-    
-    RenewReq["Renew Token Request"] --> P6
-    P6 -->|"New token"| Redis
-    P6 -->|"Blacklist old JTI"| DB
+    subgraph "After (3 RTTs)"
+        A1["SCAN keys"] --> A2["pipeline MGET all"] --> A3["pipeline MSET all"]
+    end
 ```
 
 ### 3.3 Data Transformation Rules
 
 | # | Input | Process | Output | Validation Rules |
 |---|-------|---------|--------|-----------------|
-| 1 | Create request (IP, deviceFingerprint) | Generate UUID + JWT, init Redis hash | `AnonymousTokenResponse` | IP not null, rate limit check |
-| 2 | Store data request (namespace, key, value) | JSON serialize value, store in Redis | Success confirmation | Session exists, data size ≤ 64KB, namespace not empty |
-| 3 | Promotion request (anonymousSessionId, userId) | Read all `anon:data:{sid}:*`, write to `user:session_data:{uid}:*`, delete anonymous keys | Transfer summary | Session exists, lock acquired, user authenticated |
-| 4 | Renew request (current token) | Parse token, generate new JWT with same sessionId, blacklist old JTI | New `AnonymousTokenResponse` | Token valid, session exists, renewal count < max |
+| 1 | Session creation command | Pipeline: HSET(session_data + dataSize=0) + EXPIRE | Redis hash with dataSize field | Same validation, pipelined execution |
+| 2 | Rate limit IP | Lua: INCR current + GET prev + weighted sum | Allow/deny (Long result) | -1 = denied, ≥0 = allowed |
+| 3 | Data store + size | HGET dataSize → validate → SET data → HINCRBY dataSize | Updated data + counter | dataSize + newSize ≤ maxSize |
+| 4 | Lock release | Lua: if GET(lock) == uuid then DEL(lock) | 1 (released) or 0 (not owner) | UUID must match |
 
 ---
 
 ## 4. Luồng xử lý (Processing Steps)
 
-### 4.1 Sequence Diagram — UC-001: Create Anonymous Session
+### 4.1 Sequence Diagram — Optimized Session Creation
 
 ```mermaid
 sequenceDiagram
     actor Client
     participant Controller as AnonymousAuthController
     participant Handler as AnonymousSessionHandler
-    participant RateLimit as AnonymousRateLimitService
-    participant JwtSvc as JwtService
+    participant RateLimitSvc as AnonymousRateLimitService
     participant Redis
-    
+
     Client->>Controller: POST /api/v1/auth/anonymous
     Controller->>Handler: handle(CreateAnonymousSessionCommand)
     
-    Handler->>RateLimit: checkRateLimit(ipAddress)
-    alt Rate limit exceeded
-        RateLimit-->>Handler: BLOCKED
-        Handler-->>Controller: 429 Too Many Requests
-        Controller-->>Client: 429 + Retry-After
+    Handler->>RateLimitSvc: checkRateLimit(ipAddress)
+    RateLimitSvc->>Redis: EVAL sliding_window_rate_limit.lua [currentKey, prevKey] [max, window, elapsed]
+    Redis-->>RateLimitSvc: count (or -1 if limited)
+    alt Rate limited
+        RateLimitSvc-->>Handler: throw AnonymousRateLimitedException
     end
-    RateLimit-->>Handler: ALLOWED
+    RateLimitSvc-->>Handler: allowed
     
-    Handler->>Handler: Generate UUID sessionId
-    Handler->>JwtSvc: generateAnonymousToken(sessionId)
-    JwtSvc-->>Handler: JWT string
+    Handler->>Handler: Generate UUID sessionId + JWT token
     
-    Handler->>Redis: HSET anon:session:{sessionId} {...}
-    Handler->>Redis: EXPIRE anon:session:{sessionId} 86400
-    Redis-->>Handler: OK
+    Handler->>Redis: executePipelined { HSET(session + dataSize=0), EXPIRE(ttl) }
+    Redis-->>Handler: [OK, true]
     
-    Handler-->>Controller: AnonymousTokenResponse
-    Controller-->>Client: 201 Created {token, sessionId, expiresIn}
+    Handler-->>Controller: AnonymousSessionResult
+    Controller-->>Client: 201 Created
 ```
 
-### 4.2 Sequence Diagram — UC-002: Promote Anonymous Session (during Login)
+### 4.2 Sequence Diagram — Optimized Data Transfer (Promotion)
 
 ```mermaid
 sequenceDiagram
-    actor Client
-    participant Controller as CqrsAuthController
-    participant LoginHandler
-    participant TokenGen as TokenGenerator
     participant PromotionSvc as SessionPromotionService
     participant DataSvc as AnonymousSessionDataService
     participant Redis
-    participant BlacklistRepo as TokenBlacklistRepository
-    participant DB as PostgreSQL
-    
-    Client->>Controller: POST /api/v1/auth/login {username, password, anonymousSessionId}
-    Controller->>LoginHandler: handle(LoginCommand)
-    
-    Note over LoginHandler: Standard login flow (validate credentials, MFA check, etc.)
-    LoginHandler->>TokenGen: generateAuthResponse(user, domainCode)
-    TokenGen-->>LoginHandler: AuthToken
-    
-    alt anonymousSessionId is present
-        LoginHandler->>PromotionSvc: promoteSession(anonymousSessionId, userId, anonymousTokenJti)
+
+    PromotionSvc->>Redis: SET anon:lock:{sid} {uuid} NX EX 30
+    alt Lock acquired
+        PromotionSvc->>DataSvc: transferData(sessionId, userId)
         
-        PromotionSvc->>Redis: SET anon:lock:{sessionId} "locked" NX EX 30
-        alt Lock acquired
-            PromotionSvc->>Redis: EXISTS anon:session:{sessionId}
-            alt Session exists
-                PromotionSvc->>DataSvc: transferData(sessionId, userId)
-                DataSvc->>Redis: KEYS anon:data:{sessionId}:*
-                Redis-->>DataSvc: [key1, key2, ...]
-                loop For each key
-                    DataSvc->>Redis: GET anon:data:{sessionId}:{ns}:{key}
-                    DataSvc->>Redis: SET user:session_data:{userId}:{ns}:{key} value
-                end
-                DataSvc-->>PromotionSvc: TransferResult(itemCount)
-                
-                PromotionSvc->>BlacklistRepo: save(anonymousTokenJti, reason=PROMOTION)
-                BlacklistRepo->>DB: INSERT into token_blacklist
-                
-                PromotionSvc->>Redis: DEL anon:session:{sessionId}
-                PromotionSvc->>Redis: DEL anon:data:{sessionId}:*
-                PromotionSvc->>Redis: DEL anon:lock:{sessionId}
-            else Session expired
-                PromotionSvc->>Redis: DEL anon:lock:{sessionId}
-                PromotionSvc-->>LoginHandler: PromotionResult(notFound)
-            end
-        else Lock not acquired
-            PromotionSvc-->>LoginHandler: PromotionResult(concurrent)
-        end
+        DataSvc->>Redis: SCAN anon:data:{sessionId}:*
+        Redis-->>DataSvc: [key1, key2, ..., keyN]
+        
+        DataSvc->>Redis: executePipelined { GET(key1), GET(key2), ..., GET(keyN) }
+        Redis-->>DataSvc: [val1, val2, ..., valN]
+        
+        DataSvc->>DataSvc: Build user key mappings
+        
+        DataSvc->>Redis: executePipelined { SET(userKey1,val1,ttl), SET(userKey2,val2,ttl), ... }
+        Redis-->>DataSvc: [OK, OK, ..., OK]
+        
+        DataSvc-->>PromotionSvc: DataTransferResult(itemCount=N)
+        
+        PromotionSvc->>Redis: EVAL safe_lock_release.lua [lockKey] [uuid]
+        Redis-->>PromotionSvc: 1 (released)
     end
-    
-    LoginHandler-->>Controller: LoginResult.Success(authResponse, promotionResult)
-    Controller-->>Client: 200 OK {accessToken, refreshToken, promotedFromAnonymous, dataTransferred}
 ```
 
 ### 4.3 Bảng Step xử lý chi tiết
 
-#### UC-001: Create Anonymous Session
+#### UC-OPT-001: Pipeline Session Creation
 
-| Step | Component | Action | Input | Output | Error Handling | Ghi chú |
-|------|-----------|--------|-------|--------|---------------|---------|
-| 1 | Controller | Extract IP, parse request | HttpServletRequest | `CreateAnonymousSessionCommand` | `400 Bad Request` | IP from X-Forwarded-For or remote addr |
-| 2 | Handler | Check rate limit | IP address | ALLOWED/BLOCKED | `429 Too Many Requests` | `AnonymousRateLimitService` |
-| 3 | Handler | Generate session ID | - | UUID | - | `UUID.randomUUID()` |
-| 4 | JwtService | Generate anonymous token | sessionId, TTL | JWT string | `500 Internal` | New method: `generateAnonymousToken()` |
-| 5 | Handler | Initialize Redis session | sessionId, metadata | Redis hash | `503 Service Unavailable` | `StringRedisTemplate.opsForHash()` |
-| 6 | Controller | Return response | Token, sessionId | `AnonymousTokenResponse` | - | HTTP 201 |
+| Step | Component | Action | Before | After | Performance Impact |
+|------|-----------|--------|--------|-------|--------------------|
+| 1 | RateLimitSvc | Rate limit check | 2 RTT (INCR + EXPIRE) | 1 RTT (Lua EVAL) | -50% RTT |
+| 2 | Handler | Generate sessionId + JWT | CPU only | CPU only | No change |
+| 3 | Handler | Create Redis session | 2 RTT (HSET + EXPIRE) | 1 RTT (pipeline) | -50% RTT |
+| **Total** | | | **3-4 RTT** | **2 RTT** | **-50% RTT** |
 
-#### UC-002: Promote Anonymous Session
+#### UC-OPT-003: Batch Data Transfer
 
-| Step | Component | Action | Input | Output | Error Handling | Ghi chú |
-|------|-----------|--------|-------|--------|---------------|---------|
-| 1 | LoginHandler | Standard login authentication | Credentials | User entity | `401 Unauthorized` | Existing flow unchanged |
-| 2 | LoginHandler | Check if anonymousSessionId present | LoginCommand | Boolean | - | Optional field |
-| 3 | PromotionSvc | Acquire distributed lock | sessionId | Lock result | `409 Conflict` | Redis SETNX, 30s TTL |
-| 4 | PromotionSvc | Verify session exists | sessionId | Boolean | Skip if not found | Redis EXISTS |
-| 5 | DataSvc | Transfer data | sessionId, userId | TransferResult | Log warning, continue | Best-effort transfer |
-| 6 | PromotionSvc | Blacklist anonymous token JTI | JTI string | Saved entity | Log warning, continue | Existing BlacklistRepository |
-| 7 | PromotionSvc | Delete anonymous session | sessionId | Deleted count | Log warning | Redis DEL |
-| 8 | PromotionSvc | Release lock | sessionId | - | Auto-expires at 30s | Redis DEL |
-
-### 4.4 State Machine — Anonymous Session Lifecycle
-
-```mermaid
-stateDiagram-v2
-    [*] --> ACTIVE : Create (UC-001)
-    ACTIVE --> ACTIVE : Store Data (UC-003)
-    ACTIVE --> ACTIVE : Renew Token (UC-004)
-    ACTIVE --> PROMOTED : Promote (UC-002)
-    ACTIVE --> EXPIRED : TTL expires
-    PROMOTED --> [*] : Session deleted
-    EXPIRED --> [*] : Redis auto-cleanup
-```
-
-| Transition | From | To | Trigger | Guard Condition | Side Effect |
-|-----------|------|-----|---------|----------------|------------|
-| Create | [*] | ACTIVE | POST /auth/anonymous | Rate limit passed | Redis session created, JWT issued |
-| Store Data | ACTIVE | ACTIVE | PUT /auth/anonymous/session/data | Data size ≤ 64KB | Redis data key created/updated |
-| Renew | ACTIVE | ACTIVE | POST /auth/anonymous/renew | Token valid, renewal count < max | New JWT issued, old JTI blacklisted |
-| Promote | ACTIVE | PROMOTED | POST /auth/login + sessionId | Credentials valid, lock acquired | Data transferred, token blacklisted |
-| Expire | ACTIVE | EXPIRED | Redis TTL | TTL reached | Automatic cleanup by Redis |
+| Step | Component | Action | Before | After | Performance Impact |
+|------|-----------|--------|--------|-------|--------------------|
+| 1 | DataSvc | Collect keys | 1 SCAN (multi-RTT) | 1 SCAN (same) | No change |
+| 2 | DataSvc | Read values | N × GET (N RTT) | 1 pipeline MGET (1 RTT) | -N+1 RTT |
+| 3 | DataSvc | Write to user namespace | N × SET (N RTT) | 1 pipeline MSET (1 RTT) | -N+1 RTT |
+| **Total** | | | **1 + 2N RTT** | **~3 RTT** | **-2(N-1) RTT** |
 
 ---
 
 ## 5. Luồng màn hình (Screen Flow)
 
-### 5.1 Screen Map
-
 ```
-N/A — This feature is a backend-only API.
-No UI screens are in scope.
-Client integration is handled by frontend teams.
-```
-
-### 5.2 API-Driven Flow
-
-```mermaid
-graph TD
-    Start["📱 App Start"] --> CheckToken{"Has valid token?"}
-    CheckToken -->|"No"| CreateAnon["POST /auth/anonymous"]
-    CheckToken -->|"Yes (anon)"| UseAnon["Use anonymous token"]
-    CheckToken -->|"Yes (auth)"| UseAuth["Use authenticated token"]
-    
-    CreateAnon --> UseAnon
-    UseAnon --> StoreData["PUT /auth/anonymous/session/data"]
-    UseAnon --> NearExpiry{"Token near expiry?"}
-    NearExpiry -->|"Yes"| Renew["POST /auth/anonymous/renew"]
-    Renew --> UseAnon
-    
-    UseAnon --> WantLogin{"User wants to login?"}
-    WantLogin -->|"Yes"| Login["POST /auth/login\n+ anonymousSessionId"]
-    Login --> UseAuth
-    
-    StoreData --> UseAnon
+N/A — Internal optimization. No UI changes.
+No API contract changes. Same endpoints, same request/response format.
 ```
 
 ---
 
 ## 6. API Specification
 
-### 6.1 Endpoint List
+### 6.1 No API Changes
 
-| # | Method | Path | Description | Auth | Request Body | Response |
-|---|--------|------|------------|------|-------------|----------|
-| 1 | `POST` | `/api/v1/auth/anonymous` | Create anonymous session | None (public) | `CreateAnonymousSessionRequest` | `AnonymousTokenResponse` (201) |
-| 2 | `POST` | `/api/v1/auth/anonymous/renew` | Renew anonymous token | Anonymous JWT | None | `AnonymousTokenResponse` (200) |
-| 3 | `PUT` | `/api/v1/auth/anonymous/session/data` | Store session data | Anonymous JWT | `StoreAnonymousDataRequest` | `StoreDataResponse` (200) |
-| 4 | `GET` | `/api/v1/auth/anonymous/session/data` | Read session data | Anonymous JWT | Query: `namespace` | `Map<String, Any>` (200) |
-| 5 | `DELETE` | `/api/v1/auth/anonymous/session/data` | Delete session data key | Anonymous JWT | Query: `namespace`, `key` | 204 |
-| 6 | `POST` | `/api/v1/auth/login` | Login (extended with promotion) | None (public) | `LoginRequest` (extended) | `AuthResponse` (extended) (200) |
+All optimizations are internal — no endpoint, request, or response changes.
 
-### 6.2 Request/Response chi tiết
-
-#### POST /api/v1/auth/anonymous
-
-**Request:**
-```json
-{
-  "deviceFingerprint": "string (optional, max 64 chars)"
-}
-```
-
-**Response (201 Created):**
-```json
-{
-  "token": "eyJhbGciOiJSUzI1NiIsImtpZCI6ImF1dGgtc2VydmljZS1rZXktMSJ9...",
-  "sessionId": "550e8400-e29b-41d4-a716-446655440000",
-  "tokenType": "Bearer",
-  "expiresIn": 3600
-}
-```
-
-**Error Response (429 Too Many Requests):**
-```json
-{
-  "type": "https://api.auth-service.com/errors/rate-limit",
-  "title": "Rate Limit Exceeded",
-  "status": 429,
-  "detail": "Too many anonymous session requests from this IP. Try again later.",
-  "instance": "/api/v1/auth/anonymous",
-  "retryAfter": 1800
-}
-```
-
-#### POST /api/v1/auth/anonymous/renew
-
-**Request:** None (token in Authorization header)
-
-**Response (200 OK):**
-```json
-{
-  "token": "eyJhbGciOiJSUzI1NiIs...(new token)",
-  "sessionId": "550e8400-e29b-41d4-a716-446655440000",
-  "tokenType": "Bearer",
-  "expiresIn": 3600
-}
-```
-
-#### PUT /api/v1/auth/anonymous/session/data
-
-**Request:**
-```json
-{
-  "namespace": "string (required, e.g. 'cart', 'preferences')",
-  "key": "string (required, e.g. 'items', 'locale')",
-  "value": "any (required, JSON serializable, max 64KB total per session)"
-}
-```
-
-**Response (200 OK):**
-```json
-{
-  "stored": true,
-  "namespace": "cart",
-  "key": "items",
-  "sessionId": "550e8400-e29b-41d4-a716-446655440000"
-}
-```
-
-#### GET /api/v1/auth/anonymous/session/data?namespace=cart
-
-**Response (200 OK):**
-```json
-{
-  "namespace": "cart",
-  "data": {
-    "items": [{"sku": "ABC", "qty": 2}]
-  }
-}
-```
-
-#### POST /api/v1/auth/login (extended)
-
-**Request (extended with anonymousSessionId):**
-```json
-{
-  "username": "string (required)",
-  "password": "string (required)",
-  "anonymousSessionId": "string (optional, UUID of anonymous session to promote)",
-  "captchaToken": "string (optional)",
-  "domainCode": "string (optional)",
-  "deviceFingerprint": "string (optional)"
-}
-```
-
-**Response (200 OK — with promotion):**
-```json
-{
-  "accessToken": "eyJhbGciOi...",
-  "refreshToken": "eyJhbGciOi...",
-  "tokenType": "Bearer",
-  "expiresIn": 900,
-  "userId": 123456789,
-  "username": "john",
-  "activeDomain": "default",
-  "roles": ["USER"],
-  "permissions": ["read:profile", "write:profile"],
-  "promotedFromAnonymous": true,
-  "dataTransferred": {
-    "itemCount": 3,
-    "namespaces": ["cart", "preferences"]
-  }
-}
-```
-
-### 6.3 Error Response Format (RFC 7807)
-
-| HTTP Status | Error Type | Khi nào |
-|-------------|-----------|---------|
-| 400 | Validation Error | Invalid request body |
-| 401 | Unauthorized | Invalid/expired anonymous token |
-| 404 | Not Found | Anonymous session not found in Redis |
-| 409 | Conflict | Concurrent promotion attempt |
-| 413 | Payload Too Large | Session data exceeds 64KB limit |
-| 429 | Rate Limit Exceeded | Too many anonymous token requests |
-| 500 | Internal Server Error | System error |
-| 503 | Service Unavailable | Redis connection failure |
+| # | Endpoint | Change | Impact |
+|---|---------|--------|--------|
+| 1 | POST `/api/v1/auth/anonymous` | Internal: pipeline + Lua rate limit | Faster response, same contract |
+| 2 | PUT `/api/v1/auth/anonymous/session/data` | Internal: running size counter | Faster response, same contract |
+| 3 | POST `/api/v1/auth/login` | Internal: batch transfer + safe lock | Faster promotion, same contract |
+| 4 | POST `/api/v1/auth/anonymous/renew` | No change in this optimization | N/A |
 
 ---
 
 ## 7. Security Considerations
 
-### 7.1 Authentication Flow
+### 7.1 No Security Changes
 
-```mermaid
-graph TB
-    Request["Incoming Request"] --> Filter["JwtAuthFilter"]
-    Filter -->|"No token"| AnonEndpoint{"Anonymous endpoint?"}
-    AnonEndpoint -->|"Yes"| Allow["Allow (public)"]
-    AnonEndpoint -->|"No"| Reject["401 Unauthorized"]
-    
-    Filter -->|"Has token"| Parse["Parse JWT"]
-    Parse --> CheckType{"type claim?"}
-    CheckType -->|"anonymous"| AnonAuth["Set AnonymousAuthentication\n(limited authorities)"]
-    CheckType -->|"(none/access)"| FullAuth["Set FullAuthentication\n(roles + permissions)"]
-    CheckType -->|"mfa"| MfaAuth["Set MfaAuthentication"]
-    
-    AnonAuth --> AnonGuard{"Endpoint allows anonymous?"}
-    AnonGuard -->|"Yes"| Process["Process Request"]
-    AnonGuard -->|"No"| Reject403["403 Forbidden"]
-```
+All optimizations are performance/reliability improvements. Security model remains unchanged:
+- Same RS256 JWT tokens
+- Same rate limiting rules (different algorithm, same limits)
+- Same distributed lock pattern (stronger ownership verification)
 
-### 7.2 Authorization Matrix
+### 7.2 Security Improvements
 
-| Role | Create Anonymous (UC-001) | Store Data (UC-003) | Renew Token (UC-004) | Promote/Login (UC-002) | Admin Cleanup |
-|------|:---:|:---:|:---:|:---:|:---:|
-| No Auth (public) | ✅ | ❌ | ❌ | ✅ (login is public) | ❌ |
-| Anonymous Token | ❌ | ✅ | ✅ | ✅ | ❌ |
-| Authenticated User | ❌ | ❌ | ❌ | N/A | ❌ |
-| Admin | ❌ | ❌ | ❌ | N/A | ✅ |
-
-### 7.3 Data Protection
-
-- **Anonymous tokens** use the same RS256 signing as authenticated tokens — tamper-proof
-- **Anonymous session data** stored in Redis — protected by Redis AUTH password and TLS (if configured)
-- **No PII** should be stored in anonymous sessions — anonymous sessions are for transient application state only
-- **Rate limiting** prevents IP-based abuse of anonymous token creation
-- **Token blacklisting** prevents reuse of promoted/renewed anonymous tokens
-- **Distributed lock** prevents race conditions during session promotion
-- **Data size limit** (64KB) prevents Redis memory abuse
+| Improvement | Before | After | Benefit |
+|-------------|--------|-------|---------|
+| Lock ownership verification | Static "locked" value — any process can release | UUID value — only owner can release via Lua | Prevents accidental cross-process unlock |
+| Rate limiting accuracy | Fixed window — burst-at-boundary possible | Sliding window — smooth enforcement | Better abuse prevention at window boundaries |
 
 ---
 
 ## 8. Performance Requirements
 
-| Metric | Target | Measurement Method |
-|--------|--------|-------------------|
-| Anonymous token generation (P95) | < 100ms | APM monitoring |
-| Session data read/write (P95) | < 20ms | Redis latency metrics |
-| Promotion overhead on login (P95) | < 50ms additional | Before/after comparison |
-| Token renewal (P95) | < 50ms | APM monitoring |
-| Concurrent anonymous sessions | 10,000+ | Load test |
-| Redis memory per session | < 100KB | Redis memory analysis |
+| Metric | Current | Target | Improvement | How |
+|--------|---------|--------|-------------|-----|
+| Session creation P95 | ~100ms | < 50ms | 50%+ reduction | Pipeline + Lua rate limit |
+| Data transfer P95 (10 keys) | ~50ms | < 10ms | 80%+ reduction | Batch MGET/MSET |
+| Rate limit check P95 | ~10ms (2 RTT) | < 5ms (1 RTT) | 50% reduction | Lua script |
+| Data store (with size check) P95 | ~20ms (SCAN+STRLEN) | < 5ms (HGET) | 75% reduction | Running counter |
+| Redis memory per session | ~500 bytes | ~520 bytes | +4% (dataSize field) | Acceptable trade-off |
 
 ---
 
 ## 9. Agent Implementation Notes
 
-> **Section này dành cho AI agent** — chỉ rõ code cần tạo để agent dev trực tiếp.
+> **Section này dành cho AI agent** — chỉ rõ code cần sửa đổi để agent dev trực tiếp.
 
 ### 9.1 Classes to Create
 
-| # | Class | Package | Type | Extends/Implements | Mô tả |
-|---|-------|---------|------|-------------------|--------|
-| 1 | `AnonymousAuthController` | `auth.adapter.in.web` | @RestController | - | Anonymous session endpoints (create, renew, data CRUD) |
-| 2 | `AnonymousSessionHandler` | `auth.application.command` | @Component | `CommandHandler<CreateAnonymousSessionCommand, AnonymousTokenResult>` | Creates anonymous session + generates token |
-| 3 | `RenewAnonymousTokenHandler` | `auth.application.command` | @Component | `CommandHandler<RenewAnonymousTokenCommand, AnonymousTokenResult>` | Renews anonymous token, blacklists old |
-| 4 | `SessionPromotionService` | `auth.application` | @Service | - | Orchestrates session promotion: lock → transfer → blacklist → delete |
-| 5 | `AnonymousSessionDataService` | `auth.application` | @Service | - | CRUD operations on anonymous session data in Redis |
-| 6 | `AnonymousRateLimitService` | `auth.application` | @Service | - | IP-based rate limiting for anonymous token creation |
-| 7 | `CreateAnonymousSessionCommand` | `auth.application.command` | Data class | - | Command: deviceFingerprint, ipAddress |
-| 8 | `RenewAnonymousTokenCommand` | `auth.application.command` | Data class | - | Command: currentTokenJti, sessionId |
-| 9 | `AnonymousTokenResult` | `auth.application` | Sealed class | - | Result: Success(token, sessionId, expiresIn) |
-| 10 | `AnonymousTokenResponse` | `auth.adapter.in.web.dto` | Data class | - | API response DTO |
-| 11 | `CreateAnonymousSessionRequest` | `auth.adapter.in.web.dto` | Data class | - | API request DTO |
-| 12 | `StoreAnonymousDataRequest` | `auth.adapter.in.web.dto` | Data class | - | API request DTO for data storage |
-| 13 | `StoreDataResponse` | `auth.adapter.in.web.dto` | Data class | - | API response DTO for data storage |
-| 14 | `PromotionResult` | `auth.application` | Data class | - | Result of session promotion (success, itemCount, namespaces) |
-| 15 | `AnonymousProperties` | `shared.config` | Data class | - | Config: tokenTtlSeconds, sessionDataTtlSeconds, maxDataSizeBytes, rateLimit |
+| # | Class | Package | Type | Mô tả |
+|---|-------|---------|------|--------|
+| 1 | `RedisLuaScriptConfig` | `shared.config` | @Configuration | Define `DefaultRedisScript<Long>` beans for Lua scripts |
+| 2 | `sliding_window_rate_limit.lua` | `resources/redis/` | Lua file | Sliding window counter Lua script |
+| 3 | `safe_lock_release.lua` | `resources/redis/` | Lua file | Conditional lock release Lua script |
 
 ### 9.2 Classes to Modify
 
 | # | Class | Package | Change | Mô tả |
 |---|-------|---------|--------|--------|
-| 1 | `JwtService` | `auth.application` | Add method | `generateAnonymousToken(sessionId: String): String` — generates JWT with `type=anonymous`, `sub=sessionId` |
-| 2 | `JwtService` | `auth.application` | Add method | `parseAnonymousToken(token: String): Claims` — validates token and checks `type=anonymous` |
-| 3 | `LoginCommand` | `auth.application.command` | Add field | `anonymousSessionId: String?` — optional anonymous session to promote |
-| 4 | `LoginHandler` | `auth.application.command` | Add promotion | After successful auth, if `anonymousSessionId` present, call `SessionPromotionService.promoteSession()` |
-| 5 | `LoginResult.Success` | `auth.application` | Add field | `promotionResult: PromotionResult?` — promotion metadata |
-| 6 | `AuthResponse` | `auth.adapter.in.web.dto` | Add fields | `promotedFromAnonymous: Boolean`, `dataTransferred: DataTransferSummary?` |
-| 7 | `SecurityConfig` | `shared.config` | Add paths | Add `/api/v1/auth/anonymous` to `permitAll()` list |
-| 8 | `SecurityProperties` | `shared.config` | Add block | Add `anonymous: AnonymousProperties` configuration |
-| 9 | `JwtAuthFilter` | `shared.security` | Extend | Recognize `type=anonymous` tokens and set limited `ROLE_ANONYMOUS` authority |
-| 10 | `CqrsAuthController` | `auth.adapter.in.web` | Extend | Pass `anonymousSessionId` from request to `LoginCommand` |
+| 1 | `AnonymousSessionHandler` | `auth.application.command` | Refactor | Replace sequential HSET+EXPIRE with `executePipelined()`. Add `dataSize=0` to initial session hash. |
+| 2 | `AnonymousRateLimitService` | `auth.application` | Refactor | Replace INCR+EXPIRE with Lua sliding window counter script execution. Change key pattern to include window ID. |
+| 3 | `AnonymousSessionDataService` | `auth.application` | Refactor | (a) Replace `getSessionDataSize()` SCAN+STRLEN with HGET `dataSize`. (b) Add HINCRBY after storeData/deleteData. (c) Replace per-key transfer loop with pipeline MGET+MSET in `transferData()`. |
+| 4 | `SessionPromotionService` | `auth.application` | Refactor | (a) Store UUID as lock value instead of static "locked". (b) Replace `delete(lockKey)` with Lua safe release script. |
+| 5 | `SecurityProperties.AnonymousProperties` | `shared.config` | Add field | Add `slidingWindowEnabled: Boolean = true` for feature flag / fallback. |
 
-### 9.3 Pattern References
+### 9.3 Lua Scripts to Create
+
+#### `resources/redis/sliding_window_rate_limit.lua`
+
+```lua
+-- Sliding window counter rate limiting
+-- KEYS[1] = current window key (anon:rate:{ip}:{currentWindow})
+-- KEYS[2] = previous window key (anon:rate:{ip}:{prevWindow})
+-- ARGV[1] = max attempts
+-- ARGV[2] = window size in seconds
+-- ARGV[3] = elapsed seconds in current window
+-- Returns: weighted count (or -1 if rate limited)
+
+local current_key = KEYS[1]
+local prev_key = KEYS[2]
+local max_attempts = tonumber(ARGV[1])
+local window_seconds = tonumber(ARGV[2])
+local elapsed = tonumber(ARGV[3])
+
+-- Increment current window counter
+local current = tonumber(redis.call('INCR', current_key)) or 0
+if current == 1 then
+    -- Set TTL to 2× window to keep for next window's calculation
+    redis.call('EXPIRE', current_key, window_seconds * 2)
+end
+
+-- Get previous window count
+local prev = tonumber(redis.call('GET', prev_key)) or 0
+
+-- Calculate weighted sum
+local weight = math.max(0, (window_seconds - elapsed) / window_seconds)
+local count = prev * weight + current
+
+if count > max_attempts then
+    return -1
+end
+
+return math.floor(count)
+```
+
+#### `resources/redis/safe_lock_release.lua`
+
+```lua
+-- Safe lock release with ownership verification
+-- KEYS[1] = lock key
+-- ARGV[1] = expected owner UUID
+-- Returns: 1 if released, 0 if not owner
+
+if redis.call('GET', KEYS[1]) == ARGV[1] then
+    redis.call('DEL', KEYS[1])
+    return 1
+end
+return 0
+```
+
+### 9.4 Pattern References
 
 | Pattern | Reference | Ghi chú |
 |---------|----------|---------|
-| CQRS Handler | `auth.application.command.LoginHandler` | Follow same CommandHandler<C,R> pattern |
-| Token Generation | `auth.application.JwtService.generateMfaToken()` | Same pattern — custom claims, configurable TTL |
-| Rate Limiting | `auth.application.LoginRateLimitService` | Same Redis-based sliding window pattern |
-| Redis Operations | `auth.application.MfaRateLimitService` | Same `StringRedisTemplate` usage pattern |
-| Controller | `auth.adapter.in.web.CqrsAuthController` | Same REST controller conventions |
-| Config Properties | `shared.config.SecurityProperties` | Nested data class pattern |
-| Error Handling | `shared.exception.*` | Custom exceptions extending `BaseException` |
+| Pipeline usage | Spring Data Redis `executePipelined(RedisCallback)` | Return null from callback; results in List<Object> |
+| Lua script execution | `StringRedisTemplate.execute(RedisScript<T>, keys, args)` | Use DefaultRedisScript with cached SHA1 |
+| Sliding window algorithm | Redis Labs rate limiting documentation | Two-counter weighted formula |
+| Safe lock release | Kleppmann's distributed locking analysis | UUID ownership + Lua conditional DEL |
+| Running counter | Redis HINCRBY command | Atomic increment on hash field |
+| Observation spans | Micrometer `Observation.createNotStarted(name, registry)` | Start/stop around critical sections |
 
-### 9.4 Integration Points
-
-| Integration | Type | Protocol | Endpoint | Data Format |
-|------------|------|----------|----------|------------|
-| `JwtService.generateAnonymousToken()` | Sync | Internal call | - | Kotlin method |
-| `StringRedisTemplate` | Sync | Redis | Redis server | String/Hash |
-| `TokenBlacklistRepository` | Sync | JPA | PostgreSQL | Entity |
-| `CaptchaGateway` | Sync | HTTP | CAPTCHA provider | REST API |
-| `LoginHandler` (extended) | Sync | CQRS | Internal | `LoginCommand` → `LoginResult` |
-
-### 9.5 Configuration Properties (to add to application.yml)
+### 9.5 Configuration Properties Changes
 
 ```yaml
+# No new config properties needed — optimization uses existing config values.
+# Optional: add feature flag for sliding window
 app:
   security:
     anonymous:
-      enabled: true
-      token-ttl-seconds: 3600          # Anonymous JWT TTL (1 hour)
-      session-data-ttl-seconds: 86400  # Redis session data TTL (24 hours)
-      max-data-size-bytes: 65536       # Max 64KB per anonymous session
-      max-renewals: 24                 # Max token renewals per session
+      # Existing config — unchanged
+      token-ttl-seconds: ${ANON_TOKEN_TTL:3600}
+      session-ttl-seconds: ${ANON_SESSION_TTL:86400}
+      max-data-size-bytes: ${ANON_MAX_DATA_SIZE:65536}
+      max-renewals: ${ANON_MAX_RENEWALS:24}
+      promoted-data-ttl-seconds: ${ANON_PROMOTED_TTL:604800}
       rate-limit:
-        max-attempts: 5                # Max anonymous tokens per IP per window
-        window-seconds: 3600           # Rate limit window (1 hour)
-        lock-seconds: 1800             # Lockout duration (30 min)
-      captcha-threshold: 3             # Require CAPTCHA after N attempts
+        max-attempts: 5
+        window-seconds: 3600
+        lock-seconds: 0
+      # NEW: feature flag for sliding window (optional)
+      # sliding-window-enabled: ${ANON_SLIDING_WINDOW:true}
 ```
 
 ### 9.6 Test Cases (high-level)
 
 | # | Test | Type | Scenario | Expected |
 |---|------|------|----------|----------|
-| 1 | Create anonymous session | Integration | Valid request, first time | 201 + token + sessionId; Redis session created |
-| 2 | Create — rate limited | Integration | 6th request from same IP within 1 hour | 429 + retryAfter header |
-| 3 | Create — CAPTCHA required | Integration | 4th request from same IP | 429 + captcha_required flag |
-| 4 | Store session data | Integration | Valid anonymous token, valid data | 200 + data stored in Redis |
-| 5 | Store — session expired | Integration | Token valid but Redis session TTL expired | 404 |
-| 6 | Store — data too large | Integration | Data exceeds 64KB limit | 413 |
-| 7 | Read session data | Integration | Valid anonymous token, existing namespace | 200 + data map |
-| 8 | Renew token | Integration | Valid token, session exists | 200 + new token, old JTI blacklisted |
-| 9 | Renew — expired token | Integration | Expired anonymous token | 401 |
-| 10 | Renew — max renewals | Integration | 25th renewal attempt | 429 or 400 |
-| 11 | Login with promotion | Integration | Valid credentials + valid anonymousSessionId | 200 + auth tokens + promotedFromAnonymous=true + dataTransferred |
-| 12 | Login with expired session | Integration | Valid credentials + expired anonymousSessionId | 200 + auth tokens + promotedFromAnonymous=false |
-| 13 | Login without anonymousSessionId | Integration | Valid credentials, no anonymous session | 200 + auth tokens + promotedFromAnonymous=false (existing behavior) |
-| 14 | Concurrent promotion | Integration | Two simultaneous login requests with same sessionId | One succeeds, other gets 409 or degraded result |
-| 15 | Token reuse after promotion | Integration | Use anonymous token after promotion | 401 (JTI blacklisted) |
-| 16 | Anonymous token in JwtAuthFilter | Unit | Anonymous JWT parsed correctly | SecurityContext has ROLE_ANONYMOUS, limited authorities |
-| 17 | Anonymous access to protected endpoint | Integration | Anonymous token accessing authenticated-only endpoint | 403 Forbidden |
-| 18 | Redis unavailable | Integration | Redis down during session creation | 503 Service Unavailable |
+| 1 | Pipeline session creation | Integration | Create anonymous session | Same result, fewer Redis RTTs; verify HSET+EXPIRE in pipeline |
+| 2 | Pipeline fallback | Unit | executePipelined throws | Fallback to sequential calls, session still created |
+| 3 | Sliding window - within limit | Unit | 3 requests in 1 window | All allowed, count = 3 |
+| 4 | Sliding window - at boundary | Unit | 5 requests at end of window + 1 at start of next | 6th request denied (weighted count > 5) |
+| 5 | Sliding window - Redis down | Unit | Redis unavailable | Fail-open, request allowed |
+| 6 | Batch transfer - 10 keys | Integration | Promote session with 10 data keys | All 10 transferred, 3 RTTs (SCAN + pipeline GET + pipeline SET) |
+| 7 | Batch transfer - 0 keys | Integration | Promote session with no data | Graceful handling, itemCount=0 |
+| 8 | Safe lock release - owner | Unit | Release lock with correct UUID | Lock deleted, return 1 |
+| 9 | Safe lock release - not owner | Unit | Release lock with wrong UUID | Lock NOT deleted, return 0 |
+| 10 | Safe lock release - expired | Unit | Release lock that already expired | Lock not found, return 0 (graceful) |
+| 11 | Running size counter - store | Integration | Store 1KB data | dataSize incremented by 1024 |
+| 12 | Running size counter - delete | Integration | Delete data key | dataSize decremented by removed size |
+| 13 | Running size counter - limit | Integration | Store data exceeding 64KB | AnonymousDataLimitExceededException via HGET check |
+| 14 | Running size counter - init | Integration | New session | dataSize = 0 in session hash |
+| 15 | Observation spans | Integration | Create session, store data, promote | Spans visible in test observation registry |
+
+### 9.7 Code Change Examples
+
+#### Before → After: AnonymousSessionHandler (Pipeline)
+
+```kotlin
+// BEFORE (3 sequential calls)
+val sessionData = mapOf("deviceFingerprint" to ..., "ipAddress" to ..., "createdAt" to ..., "renewalCount" to "0")
+redisTemplate.opsForHash<String, String>().putAll(sessionKey, sessionData)
+redisTemplate.expire(sessionKey, sessionTtl)
+
+// AFTER (1 pipelined call)
+val sessionData = mapOf(
+    "deviceFingerprint" to ..., "ipAddress" to ..., "createdAt" to ...,
+    "renewalCount" to "0", "dataSize" to "0"  // NEW field
+)
+redisTemplate.executePipelined { connection ->
+    val keyBytes = sessionKey.toByteArray()
+    sessionData.forEach { (field, value) ->
+        connection.hashCommands().hSet(keyBytes, field.toByteArray(), value.toByteArray())
+    }
+    connection.keyCommands().expire(keyBytes, sessionTtl.seconds)
+    null
+}
+```
+
+#### Before → After: AnonymousRateLimitService (Lua)
+
+```kotlin
+// BEFORE (2 sequential calls, fixed window)
+val attempts = ops.increment(key) ?: 1
+if (attempts == 1L) redisTemplate.expire(key, Duration.ofSeconds(config.windowSeconds))
+if (attempts > config.maxAttempts) throw AnonymousRateLimitedException(...)
+
+// AFTER (1 Lua EVAL, sliding window)
+val windowId = System.currentTimeMillis() / (config.windowSeconds * 1000)
+val currentKey = "$RATE_PREFIX$ipAddress:$windowId"
+val prevKey = "$RATE_PREFIX$ipAddress:${windowId - 1}"
+val elapsed = (System.currentTimeMillis() % (config.windowSeconds * 1000)) / 1000
+
+val result = redisTemplate.execute(
+    slidingWindowScript,
+    listOf(currentKey, prevKey),
+    config.maxAttempts.toString(),
+    config.windowSeconds.toString(),
+    elapsed.toString()
+)
+
+if (result == -1L) throw AnonymousRateLimitedException(retryAfterSeconds = config.windowSeconds - elapsed)
+```
+
+#### Before → After: SessionPromotionService (Safe Lock)
+
+```kotlin
+// BEFORE (simple DEL)
+private fun releaseLock(sessionId: String) {
+    redisTemplate.delete("$LOCK_PREFIX$sessionId")
+}
+
+// AFTER (Lua conditional DEL)
+private fun releaseLock(sessionId: String, ownerUuid: String) {
+    redisTemplate.execute(
+        safeLockReleaseScript,
+        listOf("$LOCK_PREFIX$sessionId"),
+        ownerUuid
+    )
+}
+```
 
 ---
 

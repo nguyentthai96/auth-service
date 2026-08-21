@@ -2,8 +2,32 @@ features:
   anonymous-login-optimization: completed
   api-response-i18n-standard: completed
   auth-core-features: completed
-  erp-iam-system: completed
-lessons: []
-total_failures: 11
-total_records: 54
-total_successes: 43
+  erp-iam-system: failed
+lessons:
+- action: 'Mitigate ''PROXY_DOWN'' errors in wf_brainstorm_openspec. Common errors:
+    Error code: 502 - {''type'': ''error'', ''error'': {''type'': ''api_error'', ''message'':
+    ''All upstream endpoint; Error code: 502 - {''type'': ''error'', ''error'': {''type'':
+    ''api_error'', ''message'': ''All upstream endpoint'
+  description: 'Workflow ''wf_brainstorm_openspec'' fails with ''PROXY_DOWN'' across
+    features: erp-iam-system, auth-core-features'
+  fingerprint:
+  - wf_brainstorm_openspec
+  - PROXY_DOWN
+  frequency: 2
+  id: L001
+  type: failure_pattern
+- action: 'Mitigate ''PROXY_DOWN'' errors in wf_openspec. Common errors: Error code:
+    502 - {''type'': ''error'', ''error'': {''type'': ''api_error'', ''message'':
+    ''All upstream endpoint; Error code: 502 - {''type'': ''error'', ''error'': {''type'':
+    ''api_error'', ''message'': ''All upstream endpoint'
+  description: 'Workflow ''wf_openspec'' fails with ''PROXY_DOWN'' across features:
+    erp-iam-system, auth-core-features'
+  fingerprint:
+  - wf_openspec
+  - PROXY_DOWN
+  frequency: 2
+  id: L002
+  type: failure_pattern
+total_failures: 21
+total_records: 90
+total_successes: 69

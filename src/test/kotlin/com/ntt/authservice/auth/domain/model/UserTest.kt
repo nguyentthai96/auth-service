@@ -9,6 +9,7 @@ import org.junit.jupiter.api.Nested
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.assertThrows
 import java.time.Instant
+import java.time.temporal.ChronoUnit
 
 /**
  * Domain model unit tests — pure Kotlin, NO Spring context.
@@ -161,7 +162,7 @@ class UserTest {
         }
 
         @Test
-        fun `should skip MFA when device is trusted`() {
+        fun `should skip MFA when device is trusted with valid TTL`() {
             val user = User(
                 id = UserId(1L),
                 username = "testuser",
@@ -170,7 +171,8 @@ class UserTest {
                 fullName = "Test User",
                 mfaEnabled = true,
                 mfaMethod = "TOTP",
-                trustedDeviceHash = "trusted-hash-123"
+                trustedDeviceHash = "trusted-hash-123",
+                trustedDeviceSetAt = Instant.now()
             )
             assertFalse(user.requiresMfa("trusted-hash-123"))
         }
@@ -179,6 +181,105 @@ class UserTest {
         fun `should not require MFA when disabled`() {
             val user = createUser(mfaEnabled = false)
             assertFalse(user.requiresMfa(null))
+        }
+    }
+
+    @Nested
+    @DisplayName("Trusted Device TTL (FR-005)")
+    inner class TrustedDeviceTtlTests {
+
+        private val trustedHash = "sha256-trusted-device-hash"
+
+        private fun createMfaUser(
+            trustedDeviceHash: String? = trustedHash,
+            trustedDeviceSetAt: Instant? = null
+        ) = User(
+            id = UserId(1L),
+            username = "testuser",
+            email = Email("test@example.com"),
+            passwordHash = PasswordHash("\$2a\$10\$encoded"),
+            fullName = "Test User",
+            mfaEnabled = true,
+            mfaMethod = "TOTP",
+            trustedDeviceHash = trustedDeviceHash,
+            trustedDeviceSetAt = trustedDeviceSetAt
+        )
+
+        @Test
+        fun `should skip MFA when trusted device within TTL`() {
+            val user = createMfaUser(
+                trustedDeviceSetAt = Instant.now().minus(10, ChronoUnit.DAYS)
+            )
+            assertFalse(user.requiresMfa(trustedHash, 30))
+        }
+
+        @Test
+        fun `should require MFA when trusted device TTL expired`() {
+            val user = createMfaUser(
+                trustedDeviceSetAt = Instant.now().minus(31, ChronoUnit.DAYS)
+            )
+            assertTrue(user.requiresMfa(trustedHash, 30))
+        }
+
+        @Test
+        fun `should require MFA when trustedDeviceSetAt is null`() {
+            val user = createMfaUser(trustedDeviceSetAt = null)
+            assertTrue(user.requiresMfa(trustedHash, 30))
+        }
+
+        @Test
+        fun `should skip MFA when device just trusted`() {
+            val user = createMfaUser(
+                trustedDeviceSetAt = Instant.now()
+            )
+            assertFalse(user.requiresMfa(trustedHash, 30))
+        }
+
+        @Test
+        fun `should require MFA when TTL is 1 day and device set 2 days ago`() {
+            val user = createMfaUser(
+                trustedDeviceSetAt = Instant.now().minus(2, ChronoUnit.DAYS)
+            )
+            assertTrue(user.requiresMfa(trustedHash, 1))
+        }
+
+        @Test
+        fun `should require MFA when no device hash provided`() {
+            val user = createMfaUser()
+            assertTrue(user.requiresMfa(null, 30))
+        }
+
+        @Test
+        fun `should require MFA when wrong device hash provided`() {
+            val user = createMfaUser(
+                trustedDeviceSetAt = Instant.now()
+            )
+            assertTrue(user.requiresMfa("wrong-hash", 30))
+        }
+
+        @Test
+        fun `should use default TTL of 30 days when not specified`() {
+            val user = createMfaUser(
+                trustedDeviceSetAt = Instant.now().minus(29, ChronoUnit.DAYS)
+            )
+            // Default ttlDays=30, 29 days ago → still valid
+            assertFalse(user.requiresMfa(trustedHash))
+        }
+
+        @Test
+        fun `should not require MFA when MFA is disabled regardless of TTL`() {
+            val user = User(
+                id = UserId(1L),
+                username = "testuser",
+                email = Email("test@example.com"),
+                passwordHash = PasswordHash("\$2a\$10\$encoded"),
+                fullName = "Test User",
+                mfaEnabled = false,
+                mfaMethod = "NONE",
+                trustedDeviceHash = trustedHash,
+                trustedDeviceSetAt = Instant.now().minus(100, ChronoUnit.DAYS)
+            )
+            assertFalse(user.requiresMfa(null, 30))
         }
     }
 }

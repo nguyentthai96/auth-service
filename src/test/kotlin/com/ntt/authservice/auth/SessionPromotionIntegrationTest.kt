@@ -33,6 +33,7 @@ class SessionPromotionIntegrationTest {
     @Mock private lateinit var tokenBlacklistRepository: TokenBlacklistRepository
     @Mock private lateinit var securityProperties: SecurityProperties
     @Mock private lateinit var valueOps: ValueOperations<String, String>
+    @Mock private lateinit var safeLockReleaseScript: org.springframework.data.redis.core.script.DefaultRedisScript<Long>
 
     @Captor private lateinit var blacklistCaptor: ArgumentCaptor<TokenBlacklistEntity>
 
@@ -50,12 +51,12 @@ class SessionPromotionIntegrationTest {
     @BeforeEach
     fun setUp() {
         meterRegistry = SimpleMeterRegistry()
-        lenient().whenever(securityProperties.anonymous).thenReturn(anonymousProps)
-        lenient().whenever(redisTemplate.opsForValue()).thenReturn(valueOps)
+        whenever(securityProperties.anonymous).thenReturn(anonymousProps)
+        whenever(redisTemplate.opsForValue()).thenReturn(valueOps)
 
         promotionService = SessionPromotionService(
             redisTemplate, anonymousSessionDataService, tokenBlacklistRepository,
-            securityProperties, meterRegistry
+            securityProperties, meterRegistry, safeLockReleaseScript
         )
     }
 

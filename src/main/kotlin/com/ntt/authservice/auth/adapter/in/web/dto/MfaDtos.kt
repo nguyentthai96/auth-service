@@ -61,3 +61,15 @@ data class RecoveryCodesResponse(
     val totalCodes: Int = codes.size,
     val message: String = "Store these codes securely. Each code can only be used once."
 )
+
+/**
+ * Recovery code verify request (FR-001).
+ * Used to verify a single-use recovery code as MFA fallback.
+ */
+data class RecoveryCodeVerifyRequest(
+    @field:NotBlank(message = "MFA token is required")
+    val mfaToken: String,
+
+    @field:NotBlank(message = "Recovery code is required")
+    val code: String
+)

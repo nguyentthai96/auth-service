@@ -50,11 +50,16 @@ class AuthControllerAdvice(
         val args = extractMessageArgs(ex)
 
         // Resolve i18n message using AuthErrorCode.msgCode as message key
-        val detail = resolveMessage(
-            ex.authError.toErrorCodeBase().getMsgCode(),
-            args,
+        val msgCode = ex.authError.toErrorCodeBase().getMsgCode() ?: ""
+        val detail = if (msgCode.isNotBlank()) {
+            resolveMessage(
+                msgCode,
+                args,
+                ex.message ?: ex.authError.toErrorCodeBase().getDesc() ?: "Authentication error"
+            )
+        } else {
             ex.message ?: ex.authError.toErrorCodeBase().getDesc() ?: "Authentication error"
-        )
+        }
 
         val problem = ProblemDetail.forStatusAndDetail(ex.httpStatus, detail)
         problem.title = ex.authError.getErrorCode()
@@ -119,22 +124,5 @@ class AuthControllerAdvice(
             is AnonymousDataLimitExceededException -> arrayOf(ex.currentSize, ex.maxSize)
             else -> null
         }
-    }
-
-    /**
-     * Resolve i18n message using MessageSource.
-     * Falls back to defaultMessage if no translation is found.
-     */
-    private fun resolveMessage(msgCode: String?, args: Array<Any>?, defaultMessage: String): String {
-        if (msgCode.isNullOrBlank()) return defaultMessage
-        return messageSource.getMessage(msgCode, args, defaultMessage, LocaleContextHolder.getLocale())
-            ?: defaultMessage
-    }
-
-    /**
-     * Set Content-Language header based on current locale.
-     */
-    private fun setContentLanguageHeader(response: HttpServletResponse) {
-        response.setHeader("Content-Language", LocaleContextHolder.getLocale().toLanguageTag())
     }
 }

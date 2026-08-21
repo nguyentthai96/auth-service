@@ -19,6 +19,9 @@ import java.util.*
  * Follows LoginHandler pattern — CQRS CommandHandler.
  *
  * Flow: checkRateLimit → generate sessionId → generate JWT → init Redis session → return result.
+ * Session initialization uses Redis pipeline for HSET+EXPIRE in single RTT (FR-001).
+ * Initializes dataSize=0 running counter for O(1) size tracking (FR-005).
+ * Falls back to sequential Redis calls on pipeline failure (FR-010).
  */
 @Component
 class AnonymousSessionHandler(
@@ -57,11 +60,24 @@ class AnonymousSessionHandler(
             "deviceFingerprint" to (command.deviceFingerprint ?: ""),
             "ipAddress" to command.ipAddress,
             "createdAt" to Instant.now().toString(),
-            "renewalCount" to "0"
+            "renewalCount" to "0",
+            "dataSize" to "0"  // FR-005: running counter initialization
         )
 
-        redisTemplate.opsForHash<String, String>().putAll(sessionKey, sessionData)
-        redisTemplate.expire(sessionKey, sessionTtl)
+        // FR-001: Pipeline HSET+EXPIRE in single RTT. FR-010: Fallback to sequential on failure.
+        try {
+            redisTemplate.executePipelined { connection ->
+                val rawKey = sessionKey.toByteArray()
+                val rawData = sessionData.map { (k, v) -> k.toByteArray() to v.toByteArray() }.toMap()
+                connection.hashCommands().hMSet(rawKey, rawData)
+                connection.keyCommands().expire(rawKey, sessionTtl.seconds)
+                null
+            }
+        } catch (ex: Exception) {
+            log.warn("Pipeline failed for session creation, falling back to sequential: {}", ex.message)
+            redisTemplate.opsForHash<String, String>().putAll(sessionKey, sessionData)
+            redisTemplate.expire(sessionKey, sessionTtl)
+        }
 
         // Metrics: session created
         meterRegistry.counter("auth.anonymous.sessions.created").increment()

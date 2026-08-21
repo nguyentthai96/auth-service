@@ -1,0 +1,149 @@
+created_at: '2026-08-21T06:46:39.973169+00:00'
+enriched:
+  created_at: '2026-08-21T06:47:08.747961+00:00'
+  enriched_content: 'Build a production-grade **Authentication Service** based on
+    the **Event Sourcing** architectural pattern, designed to serve as a foundational
+    security module within a microservices ecosystem. The service integrates with
+    a `base-core` module that provides auto-configuration capabilities for infrastructure
+    components.
+
+
+    **Core Authentication & Authorization:**
+
+    The system must implement JWT (JSON Web Tokens) for stateless authentication with
+    configurable expiry policies. OAuth2 protocol support (Authorization Code, Client
+    Credentials, Implicit flows) enables third-party identity provider integration
+    (Google, GitHub, etc.). Refresh Token Rotation ensures that each token refresh
+    cycle invalidates the previous refresh token and issues a new one, mitigating
+    token theft risks. Role-Based Access Control (RBAC) and Policy-Based Access Control
+    (PBAC) are combined to provide fine-grained permission management — roles define
+    coarse-grained access while policies handle attribute/context-aware decisions
+    (e.g., time-based, resource-owner-based rules).
+
+
+    **Event Sourcing Architecture:**
+
+    All state changes within the authentication domain (user registration, login,
+    logout, token revocation, role assignment, password changes) are captured as immutable
+    domain events stored in an event store. The current state of any aggregate (User,
+    Session, Role, Policy) is derived by replaying events. This enables full audit
+    trails, temporal queries, and the ability to rebuild projections at any point
+    in time. CQRS (Command Query Responsibility Segregation) naturally complements
+    this pattern — commands mutate state via events, queries read from optimized read-model
+    projections.
+
+
+    **Cache Optimization — Local & Redis:**
+
+    A two-tier caching strategy is applied: Local (in-process) cache (e.g., Caffeine)
+    for ultra-low-latency access to hot data (active JWT public keys, frequently accessed
+    role/permission sets), and Redis as the distributed cache layer for shared state
+    across service instances (token blacklists, session metadata, refresh token registry).
+    The `base-core` module provides auto-configuration for both cache layers, including
+    TTL policies, eviction strategies, and cache-aside/write-through patterns.
+
+
+    **Base-Core Module Auto-Configuration:**
+
+    The `base-core` module acts as a Spring Boot-style auto-configuration library
+    providing: Redis connection pooling, local cache bean registration, JWT utility
+    beans, event store connectivity, and security filter chain configuration — all
+    activated via conditional annotations (`@ConditionalOnProperty`, `@ConditionalOnMissingBean`),
+    enabling plug-and-play integration across multiple services.
+
+
+    **Non-functional concerns:** The system targets horizontal scalability, sub-millisecond
+    cache reads, event replay consistency, token security hardening (short-lived access
+    tokens, RS256 signing), and observability via event-driven audit logs.
+
+
+    ---'
+  enrichment_method: brainstorm
+  key_topics:
+  - event sourcing
+  - CQRS
+  - authentication service
+  - JWT
+  - OAuth2
+  - refresh token rotation
+  - token blacklist
+  - RBAC
+  - PBAC
+  - policy-based access control
+  - role management
+  - Redis cache
+  - local cache (Caffeine)
+  - two-tier caching
+  - base-core auto-configuration
+  - Spring Boot
+  - microservices security
+  - event store
+  - domain events
+  - aggregate
+  - projection
+  - read model
+  - token revocation
+  - RS256
+  - authorization server
+  - identity provider
+  - audit trail
+  - distributed cache
+  - cache eviction
+  - 'conditional beans
+
+
+    ---'
+  suggested_features:
+  - '`user_registration_event`'
+  - '`user_login_event`'
+  - '`user_logout_event`'
+  - '`jwt_token_issuance`'
+  - '`jwt_token_validation`'
+  - '`jwt_refresh_token_rotation`'
+  - '`token_blacklist_management`'
+  - '`oauth2_authorization_code_flow`'
+  - '`oauth2_client_credentials_flow`'
+  - '`oauth2_social_login_integration`'
+  - '`rbac_role_management`'
+  - '`rbac_permission_assignment`'
+  - '`pbac_policy_engine`'
+  - '`pbac_context_evaluation`'
+  - '`event_store_persistence`'
+  - '`event_replay_mechanism`'
+  - '`cqrs_command_handler`'
+  - '`cqrs_query_projection`'
+  - '`local_cache_configuration`'
+  - '`redis_cache_configuration`'
+  - '`two_tier_cache_strategy`'
+  - '`cache_ttl_policy_management`'
+  - '`session_metadata_store`'
+  - '`aggregate_state_reconstruction`'
+  - '`domain_event_publisher`'
+  - '`audit_log_projection`'
+  - '`base_core_redis_autoconfigure`'
+  - '`base_core_jwt_autoconfigure`'
+  - '`base_core_security_filter_autoconfigure`'
+  - '`base_core_local_cache_autoconfigure`'
+  - '`password_change_event`'
+  - '`role_assignment_event`'
+  - '`token_revocation_event`'
+  - '`user_aggregate`'
+  - '`session_aggregate`'
+  - '`role_aggregate`'
+  - '`policy_aggregate`'
+  - '`rs256_key_rotation`'
+  - '`oauth2_token_introspection`'
+  - '`multi_tenant_rbac_support`
+
+
+    ---'
+id: 66254b32-556a-4e44-bf88-26e412f42bee
+input:
+  metadata:
+    char_count: 215
+    word_count: 32
+  mode: idea
+  raw_content: Xây dựng hệ thống event sourcing cho authentication service with JWT,
+    OAuth2, refresh token rotation, and role-based access control RBAC/PBAC cùng với
+    tối ưu cache Local/Redis với các autoconfig của base-core module
+  source: cli

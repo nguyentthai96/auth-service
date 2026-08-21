@@ -68,7 +68,8 @@ class CqrsAuthController(
 
     @PostMapping("/register")
     fun register(
-        @Valid @RequestBody request: com.ntt.authservice.auth.adapter.`in`.web.dto.RegisterRequestDto
+        @Valid @RequestBody request: com.ntt.authservice.auth.adapter.`in`.web.dto.RegisterRequestDto,
+        httpRequest: HttpServletRequest
     ): ResponseEntity<AuthResponse> {
         val anonymousTokenJti = extractAnonymousTokenJti(request.anonymousToken)
 
@@ -80,7 +81,10 @@ class CqrsAuthController(
             phone = request.phone,
             domainCode = request.domainCode,
             anonymousSessionId = request.anonymousSessionId,
-            anonymousTokenJti = anonymousTokenJti
+            anonymousTokenJti = anonymousTokenJti,
+            ipAddress = extractClientIp(httpRequest),
+            userAgent = httpRequest.getHeader("User-Agent"),
+            correlationId = httpRequest.getHeader("X-Correlation-ID")
         )
         val result = registerHandler.handle(command)
 

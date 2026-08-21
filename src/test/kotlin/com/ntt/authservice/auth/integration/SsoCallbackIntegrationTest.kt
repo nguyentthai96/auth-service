@@ -16,6 +16,8 @@ import org.junit.jupiter.api.Assertions.*
 import org.junit.jupiter.api.extension.ExtendWith
 import org.mockito.Mock
 import org.mockito.junit.jupiter.MockitoExtension
+import org.mockito.junit.jupiter.MockitoSettings
+import org.mockito.quality.Strictness
 import org.mockito.kotlin.*
 import java.util.*
 
@@ -25,6 +27,7 @@ import java.util.*
  * Uses Mockito for external dependencies — covers full SsoAdapter logic.
  */
 @ExtendWith(MockitoExtension::class)
+@MockitoSettings(strictness = Strictness.LENIENT)
 @DisplayName("SSO Callback Integration Tests")
 class SsoCallbackIntegrationTest {
 

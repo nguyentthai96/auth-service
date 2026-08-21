@@ -77,3 +77,47 @@ class PolicyEvaluationException(
     message = message,
     httpStatus = HttpStatus.FORBIDDEN
 )
+
+class EventStorePersistException(
+    message: String = "Failed to persist event to event store"
+) : AuthException(
+    authError = AuthErrorCode.EVENT_STORE_PERSIST_FAILED,
+    message = message,
+    httpStatus = HttpStatus.INTERNAL_SERVER_ERROR
+)
+
+class EventNotFoundException(
+    aggregateType: String,
+    aggregateId: Long
+) : AuthException(
+    authError = AuthErrorCode.EVENT_NOT_FOUND,
+    message = "No events found for $aggregateType with id: $aggregateId",
+    httpStatus = HttpStatus.NOT_FOUND
+)
+
+// --- Inter-service Auth Exceptions (FR-021) ---
+
+class ServiceTokenInvalidException(
+    message: String = "Invalid or expired service authentication token"
+) : AuthException(
+    authError = AuthErrorCode.INVALID_SERVICE_TOKEN,
+    message = message,
+    httpStatus = HttpStatus.UNAUTHORIZED
+)
+
+class ServiceInsufficientScopeException(
+    serviceName: String,
+    requiredScope: String
+) : AuthException(
+    authError = AuthErrorCode.INSUFFICIENT_SCOPE,
+    message = "Service '$serviceName' does not have scope '$requiredScope'",
+    httpStatus = HttpStatus.FORBIDDEN
+)
+
+class ServiceNotRegisteredException(
+    serviceName: String
+) : AuthException(
+    authError = AuthErrorCode.SERVICE_NOT_REGISTERED,
+    message = "Service '$serviceName' is not registered for inter-service communication",
+    httpStatus = HttpStatus.FORBIDDEN
+)

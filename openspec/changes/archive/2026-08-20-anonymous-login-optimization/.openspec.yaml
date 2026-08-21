@@ -2,7 +2,7 @@ name: anonymous-login-optimization
 type: MAINTENANCE
 flow: Non-Financial
 status: complete
-created: 2025-01-20
+created: 2025-07-15
 artifacts:
   - id: impact_analysis
     type: markdown
@@ -32,7 +32,7 @@ context:
   rules: 0
   skills: 0
 frs:
-  total: 13
-  idea: 8
+  total: 14
+  idea: 9
   enriched: 5
   user_added: 0

@@ -1,68 +1,84 @@
+# Proposal: Anonymous Login Optimization
+
+[CHANGED] Scope entirely new vs archive v1 (which covered JTI fix, ThreadLocal removal, metrics, tests). This version covers Redis performance optimization + data integrity hardening.
+
 ## Why
 
-[CHANGED] Auth-service đã có anonymous login feature FULLY IMPLEMENTED (12 classes ADD + 10 classes MODIFY). Tuy nhiên, Phase B code scan phát hiện các vấn đề cần khắc phục trước khi production-ready:
+Auth-service anonymous login feature is fully implemented and functionally correct (post archive v1 fixes). However, research analysis (`wf_feature_research`) identified 6 optimization areas and 2 critical data integrity issues:
 
-1. **🔴 BUG — JTI Placeholder**: `LoginHandler` (L160) và `RegisterHandler` (L94) truyền `anonymousJti = ""` vào `SessionPromotionService`, dẫn đến anonymous token **KHÔNG được blacklist** sau promotion. Token có thể tái sử dụng — vi phạm FR-005.
-2. **🔴 GAP — Zero Test Coverage**: Toàn bộ anonymous feature (12 classes mới + 10 classes sửa) không có test. Rủi ro regression cao cho feature security-critical.
-3. **🟡 SMELL — ThreadLocal in RegisterHandler**: Dùng `ThreadLocal<PromotionResult?>` để truyền promotion result từ handler → controller. Fragile với pooled/virtual threads, violates SRP.
-4. **🟡 GAP — No Observability**: Không có Micrometer metrics cho anonymous session lifecycle. Operations team không thể monitor, detect abuse, hay alert resource exhaustion.
+1. **🔴 BUG — TOCTOU Race Condition**: `AnonymousSessionDataService.storeData()` (L37-57) performs non-atomic `getSessionDataSize()` → check → `set()`. Concurrent requests can exceed the 64KB data size limit.
+2. **🔴 BUG — Unsafe Lock Release**: `SessionPromotionService.releaseLock()` (L140-147) uses simple `DELETE` with static `LOCK_VALUE = "locked"`. If lock TTL expires and another process acquires it, first process's `finally` block deletes the wrong lock.
+3. **🟡 PERF — Sequential Redis Calls**: `AnonymousSessionHandler` makes 2 sequential calls (HSET+EXPIRE) that can be pipelined into 1 RTT.
+4. **🟡 PERF — Fixed Window Rate Limiting**: `AnonymousRateLimitService` uses INCR+EXPIRE which allows burst-at-boundary attacks.
+5. **🟡 PERF — N+1 Data Transfer**: `AnonymousSessionDataService.transferData()` iterates per-key GET+SET in a loop — O(2N) RTTs instead of O(3) with pipelining.
+6. **🟡 PERF — O(N) Size Calculation**: `getSessionDataSize()` does SCAN+STRLEN loop (O(N)) instead of maintaining a running counter (O(1)).
+
+Additionally, `token_blacklist` table has no cleanup scheduler for expired anonymous entries, and configuration lacks feature flags for gradual rollout.
 
 ## Changes
 
-[CHANGED] Scope reassessed from EXTEND → **MAINTENANCE** (post-implementation hardening).
+**Phase 1 — Data Integrity (MUST)**:
+- **FR-004**: Safe distributed lock release — UUID lock value + Lua conditional DEL
+- **FR-007**: Atomic size check + data write via Lua script (TOCTOU fix)
+- **FR-008**: `RedisLuaScriptConfig` Spring @Configuration for 3 Lua script beans
+- **FR-009**: 3 Lua script files: `sliding_window_rate_limit.lua`, `safe_lock_release.lua`, `atomic_data_store.lua`
 
-- **FIX-001: JTI Blacklisting Fix** — Add `anonymousToken: String?` field to `LoginRequestDto`/`RegisterRequestDto`. Add `anonymousTokenJti: String?` to `LoginCommand`/`RegisterCommand`. Controller extracts JTI via `jwtService.parseAnonymousToken()`. Handlers pass real JTI to `SessionPromotionService`. Remove empty-string placeholder.
-- **FIX-002: Remove ThreadLocal from RegisterHandler** — Create `RegisterResult` sealed class (mirrors `LoginResult`). `RegisterHandler` returns `RegisterResult` instead of `AuthToken`. Update `CqrsAuthController.register()` to unwrap `RegisterResult`. Remove ThreadLocal + `lastPromotionResult`.
-- **FIX-003: Add Observability Metrics** — Inject `MeterRegistry` into all 5 anonymous service classes. Add Micrometer counters: sessions created/renewed/promoted/rate-limited/data-stored/data-exceeded. Add timers: promotion duration, token generation duration.
-- **TEST-001: Integration Test Suite** — Create `AnonymousSessionIntegrationTest.kt`, `SessionPromotionIntegrationTest.kt`. Cover: create session, rate limiting, store/read/delete data, renew token, promotion on login/register, concurrent promotion, expired session, token reuse after blacklisting.
-- **TEST-002: Unit Test Suite** — Create `JwtServiceAnonymousTest.kt`, `AnonymousSessionDataServiceTest.kt`, `SessionPromotionServiceTest.kt`, `AnonymousRateLimitServiceTest.kt`.
+**Phase 2 — Performance**:
+- **FR-001**: Pipeline HSET+EXPIRE in `AnonymousSessionHandler`
+- **FR-002**: Sliding window Lua rate limiting in `AnonymousRateLimitService`
+- **FR-003**: Pipeline MGET+MSET for batch data transfer in `AnonymousSessionDataService`
+- **FR-005**: Running `dataSize` counter via HINCRBY (combined with FR-007 in Lua)
+
+**Phase 3 — Reliability & Operations**:
+- **FR-010**: Pipeline fallback to sequential on failure
+- **FR-011**: Lua script fallback to fixed-window on failure
+- **FR-013**: TokenBlacklist cleanup scheduler (extend `SessionCleanupScheduler`)
+- **FR-014**: Config enhancements (`slidingWindowEnabled`, `scanCount`)
+
+**Phase 4 — Nice-to-have (deferred)**:
+- **FR-006**: Micrometer Observation spans (existing metrics adequate)
+- **FR-012**: Running counter periodic reconciliation (Lua atomicity eliminates primary drift risk)
 
 ## Capabilities
 
 ### Fixed Capabilities
-- `session-promotion-jti-blacklisting`: Anonymous token JTI correctly blacklisted after promotion (FIX-001)
-- `register-handler-thread-safety`: RegisterHandler returns composite result type instead of ThreadLocal (FIX-002)
+- `anonymous-data-integrity`: TOCTOU race condition eliminated via Lua atomic check-and-set (FR-007)
+- `anonymous-lock-safety`: Lock release is ownership-verified — zero cross-process lock releases (FR-004)
 
 ### New Capabilities
-- `anonymous-observability`: Micrometer counters and timers for anonymous session lifecycle (FIX-003)
-- `anonymous-test-coverage`: Integration + unit test suites for entire anonymous feature (TEST-001, TEST-002)
+- `redis-lua-scripting`: Infrastructure for Lua script execution via Spring Data Redis (FR-008, FR-009)
+- `sliding-window-rate-limiting`: Precise rate limiting without burst-at-boundary vulnerability (FR-002)
+- `redis-pipelining`: Reduced RTTs for session creation and data transfer (FR-001, FR-003)
+- `running-data-counter`: O(1) session data size calculation (FR-005)
+- `token-blacklist-cleanup`: Automated cleanup of expired blacklist entries (FR-013)
 
 ### Unchanged Capabilities
-- `anonymous-session-creation` — no changes needed (working correctly)
-- `anonymous-session-data` — no changes needed (working correctly)
-- `anonymous-token-renewal` — no changes needed (working correctly)
-- `anonymous-rate-limiting` — no changes needed (working correctly, metrics added)
-- `anonymous-security-role` — no changes needed (working correctly)
-- `promotion-distributed-lock` — no changes needed (working correctly)
+- All existing anonymous login functionality — zero API contract changes
+- All existing error handling — same exceptions, same HTTP status codes
+- All existing authentication/authorization flow — optimization is internal only
 
 ## Impact
 
 ### Backend (auth-service)
 
-**MODIFY** (11 existing files):
-- `LoginHandler.kt` — replace `anonymousJti = ""` with `command.anonymousTokenJti` (~2 lines changed)
-- `RegisterHandler.kt` — replace `anonymousJti = ""` + remove ThreadLocal + change return type (~20 lines changed)
-- `LoginCommand.kt` — add `anonymousTokenJti: String? = null` field (~1 line)
-- `RegisterCommand.kt` — add `anonymousTokenJti: String? = null` field (~1 line)
-- `CqrsAuthController.kt` — extract JTI from token, pass to commands, handle RegisterResult (~15 lines)
-- `RequestDtos.kt` — add `anonymousToken: String? = null` to LoginRequestDto + RegisterRequestDto (~2 lines)
-- `AnonymousSessionHandler.kt` — inject MeterRegistry, add counter (~5 lines)
-- `RenewAnonymousTokenHandler.kt` — inject MeterRegistry, add counter (~5 lines)
-- `SessionPromotionService.kt` — inject MeterRegistry, add counter + timer (~10 lines)
-- `AnonymousRateLimitService.kt` — inject MeterRegistry, add counter (~5 lines)
-- `AnonymousSessionDataService.kt` — inject MeterRegistry, add counters (~8 lines)
+**MODIFY** (7 existing files):
+- `AnonymousSessionHandler.kt` — pipeline HSET+EXPIRE, add `dataSize=0`, pipeline fallback
+- `AnonymousRateLimitService.kt` — Lua sliding window, Lua fallback
+- `AnonymousSessionDataService.kt` — Lua atomic store, pipeline transfer, HGET counter
+- `SessionPromotionService.kt` — UUID lock + Lua safe release
+- `SessionCleanupScheduler.kt` — add blacklist cleanup method + TokenBlacklistRepository dependency
+- `SecurityProperties.kt` — add `slidingWindowEnabled`, `scanCount` to AnonymousProperties
+- `Repositories.kt` — add `deleteByExpiresAtBefore()` to TokenBlacklistRepository
 
-**NEW** (7 files):
-- `RegisterResult.kt` — sealed class for register handler return type
-- `AnonymousSessionIntegrationTest.kt` — integration tests
-- `SessionPromotionIntegrationTest.kt` — integration tests
-- `AnonymousRateLimitServiceTest.kt` — unit tests
-- `JwtServiceAnonymousTest.kt` — unit tests
-- `AnonymousSessionDataServiceTest.kt` — unit tests
-- `SessionPromotionServiceTest.kt` — unit tests
+**NEW** (4 files):
+- `RedisLuaScriptConfig.kt` — Spring @Configuration for Lua script beans
+- `sliding_window_rate_limit.lua` — Sliding window rate limit script
+- `safe_lock_release.lua` — Safe lock release script
+- `atomic_data_store.lua` — Atomic data store + size counter script
 
 ### Database
-- **No changes** — no new tables, no migrations
+- **No schema changes** — `deleteByExpiresAtBefore()` uses existing `expires_at` column in `token_blacklist` table
 
 ### External Systems
-- **No changes** — same Redis key namespaces, same PostgreSQL table usage
+- **Redis**: Same key namespaces. New key pattern `anon:rate:{ip}:{windowId}` (old keys auto-expire). New `dataSize` field in session hash (backward compatible — null → 0).
+- **No new dependencies** — all optimizations use existing Spring Data Redis APIs.

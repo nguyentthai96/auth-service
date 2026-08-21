@@ -1,0 +1,17 @@
+{
+  "feature": "`user_login_event`",
+  "workflow": "wf_openspec",
+  "outcome": "failure",
+  "timestamp": "2026-08-21T08:36:33.509866+00:00",
+  "duration_seconds": 322,
+  "tokens_used": 0,
+  "prompt_layer_tokens": {},
+  "output_artifacts": [],
+  "errors": [
+    "Error code: 502 - {'type': 'error', 'error': {'type': 'api_error', 'message': 'All upstream endpoints failed'}}",
+    "Error code: 502 - {'type': 'error', 'error': {'type': 'api_error', 'message': 'All upstream endpoints failed'}}",
+    "Output validation failed: Required file missing: /home/nguyentthai96/Desktop/bigbang/boilerplate/services/auth-service/openspec/changes/`user_login_event`/proposal.md; Required file missing: /home/nguyentthai96/Desktop/bigbang/boilerplate/services/auth-service/openspec/changes/`user_login_event`/design.md; Required file missing: /home/nguyentthai96/Desktop/bigbang/boilerplate/services/auth-service/openspec/changes/`user_login_event`/tasks.md"
+  ],
+  "lesson_extracted": null,
+  "recovery_pattern": null
+}

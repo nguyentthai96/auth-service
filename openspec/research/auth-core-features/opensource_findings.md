@@ -9,7 +9,7 @@
 | Mục | Nội dung |
 |-----|----------|
 | **Tính năng** | Auth Core Features (MFA, SSO, RS256 JWT, Password Policy) |
-| **Ngày tìm kiếm** | 2026-08-19 |
+| **Ngày tìm kiếm** | 2026-08-22 |
 | **Số dự án tìm thấy** | 8 |
 | **Số dự án đánh giá chi tiết** | 5 |
 | **Tech stack mục tiêu** | Kotlin/Java, Spring Boot 3.2+, PostgreSQL 17, Redis |
@@ -61,11 +61,11 @@
 
 | Tiêu chí | Điểm (1-10) | Trọng số | Điểm × Trọng số | Ghi chú |
 |----------|------------|----------|----------------|---------|
-| Feature completeness | 9 | 20% | 1.80 | Secret gen, QR code, TOTP verify, configurable window |
-| Applicability | 9 | 15% | 1.35 | Java/Kotlin native, Maven Central, Spring Boot starter |
+| Feature completeness | 9 | 20% | 1.80 | Secret gen, QR code URI, TOTP verify, configurable window |
+| Applicability | 9 | 15% | 1.35 | Java/Kotlin native, Maven Central, clean API |
 | Activity | 7 | 15% | 1.05 | GitHub 404 but package still on Maven Central 1.7.1 (2024) |
 | Documentation | 8 | 15% | 1.20 | Good README + examples, JavaDoc |
-| Code quality | 8 | 15% | 1.20 | Clean API, tested |
+| Code quality | 8 | 15% | 1.20 | Clean API, tested, small footprint |
 | Community | 7 | 10% | 0.70 | ~800 stars |
 | Popularity | 8 | 10% | 0.80 | Widely used in Spring Boot MFA tutorials |
 | **Tổng điểm** | | | **8.10/10** | |
@@ -87,11 +87,11 @@
 
 | Tiêu chí | Điểm (1-10) | Trọng số | Điểm × Trọng số | Ghi chú |
 |----------|------------|----------|----------------|---------|
-| Feature completeness | 10 | 20% | 2.00 | Length, char rules, history, dictionary, custom rules |
+| Feature completeness | 10 | 20% | 2.00 | Length, char rules, history, dictionary, custom rules, CharacterCharacteristicsRule |
 | Applicability | 9 | 15% | 1.35 | Java native, thread-safe, factory pattern friendly |
-| Activity | 8 | 15% | 1.20 | Regular releases, Apache project heritage |
+| Activity | 8 | 15% | 1.20 | Regular releases, Apache project heritage (vt-middleware) |
 | Documentation | 9 | 15% | 1.35 | Full website (passay.org), examples, API docs |
-| Code quality | 9 | 15% | 1.35 | Well-tested, clean architecture |
+| Code quality | 9 | 15% | 1.35 | Well-tested, clean architecture, composable |
 | Community | 6 | 10% | 0.60 | ~300 stars (niche but authoritative) |
 | Popularity | 8 | 10% | 0.80 | Industry standard for Java password validation |
 | **Tổng điểm** | | | **8.65/10** | |
@@ -100,11 +100,11 @@
 
 | Tiêu chí | Điểm (1-10) | Trọng số | Điểm × Trọng số | Ghi chú |
 |----------|------------|----------|----------------|---------|
-| Feature completeness | 10 | 20% | 2.00 | All JWT algorithms, JWS, JWE, JWK, claims builder |
+| Feature completeness | 10 | 20% | 2.00 | All JWT algorithms, JWS, JWE, JWK, claims builder, key rotation |
 | Applicability | 10 | 15% | 1.50 | Already in use in project |
 | Activity | 9 | 15% | 1.35 | Regular releases, active maintenance |
-| Documentation | 9 | 15% | 1.35 | Excellent README, migration guides |
-| Code quality | 10 | 15% | 1.50 | Comprehensive tests, fluent API |
+| Documentation | 9 | 15% | 1.35 | Excellent README, migration guides, fluent API docs |
+| Code quality | 10 | 15% | 1.50 | Comprehensive tests, fluent API, type-safe |
 | Community | 10 | 10% | 1.00 | ~10000+ stars |
 | Popularity | 10 | 10% | 1.00 | De-facto standard for Java JWT |
 | **Tổng điểm** | | | **9.70/10** | |
@@ -146,14 +146,14 @@
 | TOTP Secret Generation | ✅ | | Base32 encoded, configurable length | - |
 | QR Code URI Generation | ✅ | | `otpauth://` URI format, `QrData.Builder` | - |
 | TOTP Verification | ✅ | | Configurable window (drift tolerance) | - |
-| OTP SMS/Email | | ❌ | - | Not supported — need custom OtpService |
-| Spring Boot Starter | ✅ | | Available on Maven Central | - |
-| AES-256 Encryption | | ❌ | - | No built-in secret encryption — need custom |
+| OTP SMS/Email | | ❌ | - | Not supported — custom OtpService needed |
+| Spring Boot Integration | ✅ | | Available on Maven Central | - |
+| AES-256 Encryption | | ❌ | - | No built-in secret encryption — custom TotpService handles this |
 | Repository Maintenance | | ❌ | - | GitHub repo 404 — package still on Maven Central |
 
 **Verdict**: Dùng trực tiếp cho TOTP, supplement với custom OtpService cho SMS/Email
 **Recommendation**: Dùng trực tiếp
-**Reasoning**: API hiện đại, duy nhất library có QR code support built-in, đã integrate thành công trong project.
+**Reasoning**: API hiện đại, duy nhất library có QR code URI support built-in, đã integrate thành công trong project. TOTP là stable protocol (RFC 6238) — library ít cần update.
 
 ### GoogleAuth — Gap Analysis
 
@@ -163,7 +163,7 @@
 | Aspect | Có (✅) | Thiếu (❌) | Điểm mạnh | Điểm yếu |
 |--------|:---:|:---:|-----------|----------|
 | TOTP Generation | ✅ | | RFC 6238 compliant | - |
-| Scratch/Backup Codes | ✅ | | Built-in recovery codes | - |
+| Scratch/Backup Codes | ✅ | | Built-in recovery codes concept | - |
 | QR Code Support | | ❌ | - | No QR generation — manual setup |
 | Spring Boot Integration | | ❌ | - | No starter, manual wiring |
 | Active Maintenance | ⚠️ | | Stable but infrequent | Last commit 2023 |
@@ -171,7 +171,7 @@
 
 **Verdict**: Tham khảo pattern (scratch codes concept)
 **Recommendation**: Tham khảo pattern
-**Reasoning**: Scratch codes concept đáng tham khảo cho recovery flow, nhưng core API kém hơn `dev.samstevens.totp`.
+**Reasoning**: Scratch codes concept đáng tham khảo cho recovery flow, nhưng core API kém hơn `dev.samstevens.totp`. Recovery codes đã được implement custom trong MfaService.
 
 ### Passay — Gap Analysis
 
@@ -187,12 +187,13 @@
 | Custom Rules | ✅ | | `Rule` interface for domain-specific logic | - |
 | Thread-safe Validator | ✅ | | `PasswordValidator` is thread-safe — cache per domain | - |
 | i18n Messages | ✅ | | Custom `MessageResolver` | - |
-| DB-backed Config Storage | | ❌ | - | No built-in policy entity — need custom `PasswordPolicyEntity` |
-| Per-Domain Factory | | ❌ | - | No built-in domain scoping — need custom factory pattern |
+| Whitespace Rule | ✅ | | `WhitespaceRule` — no spaces allowed | - |
+| DB-backed Config | | ❌ | - | No built-in policy entity — custom `PasswordPolicyEntity` |
+| Per-Domain Factory | | ❌ | - | No built-in domain scoping — custom factory via `ConcurrentHashMap` |
 
 **Verdict**: Dùng trực tiếp + custom wrapper
 **Recommendation**: Dùng trực tiếp
-**Reasoning**: Industry standard, composable rules, thread-safe. Chỉ cần custom `PasswordPolicyEntity` + factory pattern (đã implement).
+**Reasoning**: Industry standard, composable rules, thread-safe. Custom `PasswordPolicyEntity` + `PasswordPolicyService` + `ConcurrentHashMap<Long, PasswordValidator>` cache đã implement.
 
 ### JJWT — Gap Analysis
 
@@ -203,14 +204,15 @@
 |--------|:---:|:---:|-----------|----------|
 | RS256 Signing | ✅ | | `Jwts.SIG.RS256`, native support | - |
 | HMAC-SHA256 | ✅ | | Legacy support for migration | - |
-| JWKS Generation | ⚠️ | | Can extract public key components | No auto JWKS endpoint |
+| JWKS Generation | ⚠️ | | Can extract RSA public key components | No auto JWKS endpoint — custom via `JwtService.getJwks()` |
 | Key Rotation (kid) | ✅ | | `header().keyId()` builder | - |
-| Claims Builder | ✅ | | Fluent API, custom claims | - |
-| Token Parsing | ✅ | | Multi-algorithm parser | - |
+| Claims Builder | ✅ | | Fluent API, custom claims (roles, permissions, domain) | - |
+| Token Parsing | ✅ | | Multi-algorithm parser with verifier | - |
+| MFA Token Type | ✅ | | Custom claims: `type=mfa`, `method=TOTP` | - |
 
 **Verdict**: Dùng trực tiếp (already in use)
 **Recommendation**: Dùng trực tiếp
-**Reasoning**: Đã sử dụng trong project, hỗ trợ RS256 natively — chỉ cần đổi key type.
+**Reasoning**: Đã sử dụng trong project, hỗ trợ RS256 natively, dual-key (RS256 primary + HMAC fallback) đã implement.
 
 ### Spring Security OAuth2 — Gap Analysis
 
@@ -220,15 +222,15 @@
 | Aspect | Có (✅) | Thiếu (❌) | Điểm mạnh | Điểm yếu |
 |--------|:---:|:---:|-----------|----------|
 | OAuth2 Client Flow | ✅ | | Full authorization code flow | - |
-| OIDC Support | ✅ | | Auto claims mapping | - |
+| OIDC Support | ✅ | | Auto claims mapping (sub, email, name) | - |
 | Auto JWKS Fetching | ✅ | | `issuer-uri` based discovery | - |
-| JIT Provisioning | ✅ | | Custom `OidcUserService` | - |
+| JIT Provisioning | ✅ | | Custom `OidcUserService` / manual via `OAuth2TokenExchanger` | - |
 | Multi-provider | ✅ | | Google, Microsoft, Keycloak via config | - |
 | Spring Security Integration | ✅ | | Native filter chain, SecurityContext | - |
 
 **Verdict**: Dùng trực tiếp (already in build.gradle)
 **Recommendation**: Dùng trực tiếp
-**Reasoning**: Native Spring Security integration, no third-party adapter needed. Keycloak adapter deprecated since v21+.
+**Reasoning**: Native Spring Security integration, no third-party adapter needed. Keycloak adapter deprecated since v21+. Custom `OAuth2TokenExchanger` handles code exchange.
 
 ---
 
@@ -248,9 +250,9 @@
 
 | Quyết định | Lý do | Evidence |
 |-----------|-------|---------|
-| **BUILD from scratch** (using open source libraries) | Tất cả libraries cần thiết đã available, high-quality, actively maintained. Custom code chỉ cần cho orchestration (MfaService, OtpService, SsoAdapter) và data layer (entities, migrations). | Scoring matrix: all top libraries ≥ 8.10/10. All already integrated in project. |
+| **BUILD from scratch** (using open source libraries) | Tất cả libraries cần thiết đã available, high-quality, actively maintained. Custom code chỉ cần cho orchestration (MfaService, OtpService, SsoAdapter, PasswordPolicyService) và data layer (entities, migrations). | Scoring matrix: all top libraries ≥ 8.10/10. All already integrated in project. Recovery codes pattern tham khảo từ GoogleAuth concept nhưng implement custom. |
 
 ---
 
-> **Sources**: Tất cả URLs đã verify tại thời điểm 2026-08-19 (⚠️ `dev.samstevens.totp` GitHub repo returns 404 — package still available on Maven Central)
+> **Sources**: Tất cả URLs đã verify tại thời điểm 2026-08-22 (⚠️ `dev.samstevens.totp` GitHub repo returns 404 — package still available on Maven Central)
 > **Next step**: Comparison Analysis (comparison_analysis.md)

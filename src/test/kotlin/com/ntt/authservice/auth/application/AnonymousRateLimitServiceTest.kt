@@ -9,6 +9,8 @@ import org.junit.jupiter.api.*
 import org.junit.jupiter.api.extension.ExtendWith
 import org.mockito.Mock
 import org.mockito.junit.jupiter.MockitoExtension
+import org.mockito.junit.jupiter.MockitoSettings
+import org.mockito.quality.Strictness
 import org.mockito.kotlin.*
 import org.springframework.data.redis.RedisConnectionFailureException
 import org.springframework.data.redis.core.StringRedisTemplate
@@ -20,12 +22,14 @@ import java.time.Duration
  * under limit, at limit, Redis failure (fail-open).
  */
 @ExtendWith(MockitoExtension::class)
+@MockitoSettings(strictness = Strictness.LENIENT)
 @DisplayName("AnonymousRateLimitService Tests")
 class AnonymousRateLimitServiceTest {
 
     @Mock private lateinit var redisTemplate: StringRedisTemplate
     @Mock private lateinit var securityProperties: SecurityProperties
     @Mock private lateinit var valueOps: ValueOperations<String, String>
+    @Mock private lateinit var slidingWindowRateLimitScript: org.springframework.data.redis.core.script.DefaultRedisScript<Long>
 
     private lateinit var meterRegistry: MeterRegistry
     private lateinit var rateLimitService: AnonymousRateLimitService
@@ -42,16 +46,17 @@ class AnonymousRateLimitServiceTest {
         maxDataSizeBytes = 65536,
         maxRenewals = 24,
         promotedDataTtlSeconds = 604800,
+        slidingWindowEnabled = false,
         rateLimit = rateLimitConfig
     )
 
     @BeforeEach
     fun setUp() {
         meterRegistry = SimpleMeterRegistry()
-        lenient().whenever(securityProperties.anonymous).thenReturn(anonymousProps)
-        lenient().whenever(redisTemplate.opsForValue()).thenReturn(valueOps)
+        whenever(securityProperties.anonymous).thenReturn(anonymousProps)
+        whenever(redisTemplate.opsForValue()).thenReturn(valueOps)
 
-        rateLimitService = AnonymousRateLimitService(redisTemplate, securityProperties, meterRegistry)
+        rateLimitService = AnonymousRateLimitService(redisTemplate, securityProperties, meterRegistry, slidingWindowRateLimitScript)
     }
 
     @Nested

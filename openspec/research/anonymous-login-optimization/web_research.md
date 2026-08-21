@@ -9,11 +9,11 @@
 | Mục | Nội dung |
 |-----|----------|
 | **Tính năng** | Anonymous Login Optimization |
-| **Ngày nghiên cứu** | 2025-01-20 |
+| **Ngày nghiên cứu** | 2025-07-15 |
 | **Số iterations** | 3 |
 | **Tổng sources** | 8 unique |
-| **Keywords ban đầu** | `anonymous authentication`, `guest session`, `session promotion`, `anonymous JWT`, `lazy registration` |
-| **Keywords phát triển** | `progressive authentication`, `ephemeral session Redis`, `anonymous token lifecycle`, `session merge strategy`, `identity linking`, `anonymous abuse prevention` |
+| **Keywords ban đầu** | `Redis pipelining`, `sliding window rate limiting`, `distributed lock reliability`, `Redis Lua scripting`, `batch operations` |
+| **Keywords phát triển** | `Redis pipeline Spring Data`, `token bucket vs sliding window`, `Redlock vs SETNX`, `SCAN cursor batch`, `Redis hash ziplist encoding`, `OpenTelemetry Redis` |
 
 ---
 
@@ -25,15 +25,15 @@
 
 | # | Query | Kết quả quan trọng | Keywords mới |
 |---|-------|-------------------|-------------|
-| 1 | `"anonymous authentication session promotion Spring Boot best practices"` | Spring Security provides `AnonymousAuthenticationFilter` for in-memory anonymous principals; no JWT-based anonymous token or session promotion support out-of-the-box | `AnonymousAuthenticationFilter`, `AnonymousAuthenticationToken` |
-| 2 | `"guest session to authenticated user migration JWT Redis patterns"` | Common pattern in e-commerce: generate short-lived anonymous JWT → store temp data in Redis keyed by anonymous session ID → on login, transfer Redis keys to user ID namespace → delete anonymous keys | `session handoff`, `key migration`, `Redis namespace` |
-| 3 | `"anonymous user session promotion enterprise IAM patterns"` | Firebase Auth's `signInAnonymously()` + `linkWithCredential()` is the industry gold standard; Supabase GoTrue uses `is_anonymous` flag on user record + identity linking | `identity linking`, `linkWithCredential`, `is_anonymous claim` |
+| 1 | `"Redis pipelining Spring Data Redis performance optimization"` | Spring Data Redis provides `executePipelined(RedisCallback)` and `executePipelined(SessionCallback)` for batching Redis commands. Lettuce (default client) supports auto-pipelining. Key insight: pipelining reduces network round-trips by 60-80% for multi-command operations. | `executePipelined`, `RedisCallback`, `auto-pipelining`, `Lettuce` |
+| 2 | `"sliding window rate limiting Redis algorithm comparison"` | Three main approaches: (1) Fixed window — simple but burst-at-boundary, (2) Sliding window log — precise but memory-heavy (uses ZRANGEBYSCORE), (3) Sliding window counter — balanced approach using two adjacent fixed windows with weighted count. Redis Labs recommends sliding window counter for high-throughput. | `ZRANGEBYSCORE`, `sliding window counter`, `weighted count`, `token bucket` |
+| 3 | `"distributed lock Redis reliability SETNX vs Redlock"` | Martin Kleppmann's famous critique of Redlock (2016): Redlock is not safe for correctness guarantees without fencing tokens. For single-node Redis, SETNX with value-based ownership and WATCH/MULTI for safe release is sufficient. Redlock adds complexity without true safety guarantees. | `fencing token`, `value-based ownership`, `DEL with Lua check`, `WATCH/MULTI` |
 
 **Takeaways Iteration 1:**
-- No standalone library exists for anonymous session promotion in Spring Boot — must build custom
-- Firebase's API design (`signInAnonymously` → `linkWithCredential`) is the most mature pattern
-- Supabase's `is_anonymous` JWT claim approach is practical and directly applicable
-- Redis is the universally recommended store for ephemeral anonymous session data
+- Redis pipelining via `executePipelined()` is well-supported in Spring Data Redis — straightforward to adopt
+- Sliding window counter is the recommended algorithm for rate limiting (balance of accuracy and performance)
+- Redlock is controversial and overkill for single-node Redis; SETNX with ownership verification (Lua-based safe release) is sufficient
+- Lua scripts are the recommended approach for atomic multi-command operations
 
 ---
 
@@ -43,17 +43,17 @@
 
 | # | URL | Title | Key Insights | Relevance (1-10) |
 |---|-----|-------|-------------|:-:|
-| 1 | https://firebase.google.com/docs/auth/web/anonymous-auth | Authenticate with Firebase Anonymously | Firebase creates a temporary anonymous user account with a unique UID; `linkWithCredential()` converts anonymous to permanent; auto-cleanup of old anonymous accounts is configurable; anonymous users get same Firebase ID tokens as authenticated users | 9 |
-| 2 | https://supabase.com/docs/guides/auth/auth-anonymous | Anonymous Sign-Ins (Supabase) | `signInAnonymously()` creates a user record with `is_anonymous=true`; JWT includes `is_anonymous` claim; promotion via `updateUser()` with email/password; supports captcha for abuse prevention; RLS policies can differentiate anonymous vs authenticated | 9 |
-| 3 | https://docs.spring.io/spring-security/reference/servlet/authentication/anonymous.html | Anonymous Authentication (Spring Security) | `AnonymousAuthenticationFilter` injects `AnonymousAuthenticationToken` when no other auth present; in-memory only; useful for Spring Security ACL/SpEL expressions; does NOT persist anonymous identity or support session promotion | 7 |
-| 4 | https://www.keycloak.org/docs/latest/server_admin/#_anonymous_access | Keycloak Anonymous Access | Keycloak supports "anonymous" via unauthenticated client tokens (client credentials grant with limited scope); no true anonymous user concept; requires running Keycloak server | 6 |
-| 5 | https://auth0.com/docs/manage-users/user-accounts/user-account-linking | Auth0 Account Linking | Auth0's account linking feature allows merging identities; similar concept to session promotion but focused on linking multiple OAuth providers to one user; provides `Link Accounts` API | 7 |
+| 1 | https://redis.io/docs/latest/develop/use/pipelining/ | Redis Pipelining (official docs) | Pipelining sends N commands without waiting for replies, then reads N replies. Not atomic — use Lua EVAL for atomicity. Reduces RTT from N×RTT to 1×RTT. Lettuce auto-pipelines when using reactive/async API; sync API requires explicit pipeline mode. | 9 |
+| 2 | https://redis.io/glossary/rate-limiting/ | Rate Limiting Patterns (Redis) | Redis Labs documents 4 algorithms: (1) Fixed window (INCR+EXPIRE), (2) Sliding window log (ZADD+ZRANGEBYSCORE), (3) Sliding window counter (two counters with weighted sum), (4) Token bucket (DECR with periodic refill). Recommends sliding window counter for most use cases. | 9 |
+| 3 | https://martin.kleppmann.com/2016/02/08/how-to-do-distributed-locking.html | How to do distributed locking (Kleppmann) | Critique of Redlock: GC pauses, clock drift, and network delays can cause safety violations. For single-node: SETNX with UUID value + Lua-based conditional DEL is safe. Fencing tokens (monotonic counter) provide stronger guarantees. | 8 |
+| 4 | https://docs.spring.io/spring-data/redis/reference/redis/pipelining.html | Spring Data Redis Pipelining | `executePipelined(RedisCallback<?>)` batches commands. Results returned as `List<Object>`. Cannot read intermediate results. For Lua: `execute(RedisScript<T>, keys, args)`. RedisScript cached by SHA1 hash for efficiency. | 9 |
+| 5 | https://redis.io/docs/latest/develop/interact/programmability/eval-intro/ | Redis Lua Scripting Guide | EVAL/EVALSHA for atomic operations. Scripts are cached server-side. KEYS[] and ARGV[] parameter passing. Scripts block other commands — keep short. No external I/O from scripts. | 8 |
 
 **Takeaways Iteration 2:**
-- **Approach 1 (Firebase model)**: Create anonymous user record in DB → issue JWT with anonymous UID → on login, link credentials to existing anonymous record → all data automatically associated. Pros: simple data model. Cons: creates "garbage" user records that need cleanup.
-- **Approach 2 (Supabase model)**: Add `is_anonymous` flag to existing user table → issue standard JWT with `is_anonymous=true` claim → promotion updates the flag and adds credentials. Pros: clean, uses existing user model. Cons: anonymous users pollute user table.
-- **Approach 3 (Ephemeral/Redis-only model)**: Do NOT create user record for anonymous sessions → store all anonymous data in Redis with TTL → on login, transfer Redis data to authenticated user → anonymous session auto-expires. Pros: no DB pollution, self-cleaning. Cons: more complex transfer logic, data loss if Redis evicts.
-- **Conflicting info**: Firebase creates user records for anonymous users (persisted), while Redis-only approach avoids DB writes. Trade-off: DB persistence gives durability but creates cleanup burden.
+- **Pipelining approach**: Use `StringRedisTemplate.executePipelined()` to batch HSET+EXPIRE in session creation. For data transfer, collect all keys via SCAN first, then use pipeline for batch GET, then pipeline for batch SET.
+- **Sliding window counter**: Implement using two Redis keys (current window + previous window) with Lua script for atomic increment + weighted count. Formula: `count = (prev_count × overlap_ratio) + current_count`.
+- **Lock improvement**: Replace simple `delete(lockKey)` with Lua-based conditional delete: `if redis.call('GET', KEYS[1]) == ARGV[1] then redis.call('DEL', KEYS[1]) end`. Store UUID as lock value for ownership verification.
+- **Lua scripts vs pipelining**: Lua provides atomicity (no interleaving). Pipelining provides batching (no atomicity). Use Lua for rate limiting (needs atomicity). Use pipelining for session creation (doesn't need atomicity, just batching).
 
 ---
 
@@ -63,11 +63,11 @@
 
 | # | Query (nguồn gốc) | Kết quả | Gap filled? |
 |---|-------------------|---------|:-:|
-| 1 | `"anonymous session abuse prevention rate limiting"` (security gap) | Best practices: IP-based rate limiting for anonymous token creation (e.g., max 5 anonymous sessions per IP per hour); CAPTCHA on suspicious patterns; short TTL (15-60 min for anonymous tokens, 24h for session data in Redis); resource quotas per anonymous session | ✅ |
-| 2 | `"anonymous to authenticated session merge conflict resolution"` (data merge gap) | Three strategies: (1) Last-write-wins — authenticated user data takes precedence, (2) Merge — combine anonymous + existing data, (3) Prompt user — ask user to choose when conflict detected. E-commerce typically uses Merge for cart items and Last-write-wins for preferences | ✅ |
-| 3 | `"JWT anonymous token claims structure best practices"` (JWT structure gap) | Recommended claims for anonymous tokens: `sub` = anonymous session ID (UUID), `type` = "anonymous", `iat`, `exp` (short TTL), `jti` for idempotency; do NOT include user roles/permissions; include `session_id` for Redis data lookup | ✅ |
+| 1 | `"Redis hash ziplist encoding memory optimization"` (memory gap) | Redis uses ziplist encoding for hashes with ≤128 fields and values ≤64 bytes. Ziplist is ~10x more memory-efficient than hashtable encoding. Anonymous session hashes (4 fields, short values) qualify for ziplist. Key insight: keep field names short to maximize ziplist eligibility. | ✅ |
+| 2 | `"Spring Data Redis executePipelined Kotlin example"` (implementation gap) | Kotlin usage: `redisTemplate.executePipelined { connection -> connection.hashCommands().hSet(...); connection.keyCommands().expire(...); null }`. Return type `List<Object>` contains results. Must return `null` from callback. | ✅ |
+| 3 | `"OpenTelemetry Redis instrumentation Spring Boot"` (observability gap) | Lettuce supports OpenTelemetry instrumentation via `io.opentelemetry.instrumentation:opentelemetry-lettuce-5.1`. Spring Boot 3.x auto-configures Micrometer observation with `management.observations.key-values`. For custom spans: use `Observation.createNotStarted("anonymous.session.create", registry)`. | ✅ |
 
-**Stop reason**: All critical questions answered; remaining gaps are implementation-specific details
+**Stop reason**: All critical optimization questions answered; remaining details are implementation-specific.
 
 ---
 
@@ -75,14 +75,14 @@
 
 | # | Loại | Title | URL | Key Insights | Relevance | Pros | Cons |
 |---|------|-------|-----|-------------|:-:|------|------|
-| 1 | Docs | Firebase Anonymous Auth | https://firebase.google.com/docs/auth/web/anonymous-auth | Gold standard for anonymous → authenticated flow; `signInAnonymously()` + `linkWithCredential()` pattern | 9 | Complete implementation, battle-tested at Google scale | Proprietary, not embeddable |
-| 2 | Docs | Supabase Anonymous Sign-Ins | https://supabase.com/docs/guides/auth/auth-anonymous | `is_anonymous` JWT claim, identity linking for promotion, RLS policy differentiation | 9 | Open source (GoTrue), PostgreSQL-based, clean design | Go implementation, REST API only |
-| 3 | Docs | Spring Security Anonymous Auth | https://docs.spring.io/spring-security/reference/servlet/authentication/anonymous.html | `AnonymousAuthenticationFilter`, `AnonymousAuthenticationToken`, SpEL integration | 7 | Native Spring integration, familiar pattern | No JWT support, no persistence, no promotion |
-| 4 | Docs | Auth0 Account Linking | https://auth0.com/docs/manage-users/user-accounts/user-account-linking | Identity linking API, merging multiple auth providers | 7 | Enterprise-grade, well-documented | SaaS-only, different use case (multi-provider vs anonymous) |
-| 5 | Docs | Keycloak Anonymous Access | https://www.keycloak.org/docs/latest/server_admin/ | Client credentials approach for anonymous access, session management | 6 | Production-proven at enterprise scale | Heavyweight, requires dedicated server |
-| 6 | Article | Redis Session Management Patterns | https://redis.io/docs/latest/develop/use/patterns/ | Redis key patterns for session data, TTL management, key expiration notifications | 8 | Directly applicable to ephemeral session storage | General Redis patterns, not auth-specific |
-| 7 | Docs | Spring Data Redis | https://docs.spring.io/spring-data/redis/reference/redis.html | RedisTemplate, @RedisHash, TTL configuration, key serialization | 8 | Already in tech stack, native Spring Boot support | Requires careful key design |
-| 8 | Docs | JJWT Library | https://github.com/jwtk/jjwt | Custom claims support, RS256 signing, token parsing | 8 | Already used in project, supports custom claims | No anonymous-specific features |
+| 1 | Docs | Redis Pipelining | https://redis.io/docs/latest/develop/use/pipelining/ | RTT reduction, not atomic, Lettuce auto-pipeline for async | 9 | Official, authoritative | Doesn't cover Spring Data wrapper |
+| 2 | Docs | Redis Rate Limiting | https://redis.io/glossary/rate-limiting/ | 4 algorithm comparison, sliding window counter recommended | 9 | Algorithm-agnostic, clear trade-offs | No implementation code |
+| 3 | Article | Distributed Locking (Kleppmann) | https://martin.kleppmann.com/2016/02/08/how-to-do-distributed-locking.html | SETNX + UUID ownership + Lua conditional DEL is sufficient for single-node | 8 | Industry-leading analysis, well-reasoned | Long article, academic tone |
+| 4 | Docs | Spring Data Redis Pipelining | https://docs.spring.io/spring-data/redis/reference/redis/pipelining.html | executePipelined API, RedisScript caching | 9 | Directly applicable, same stack | Sparse examples |
+| 5 | Docs | Redis Lua Scripting | https://redis.io/docs/latest/develop/interact/programmability/eval-intro/ | EVAL/EVALSHA, parameter passing, server-side caching | 8 | Official, covers all Lua capabilities | Complex for beginners |
+| 6 | Docs | Redis Hash Memory Optimization | https://redis.io/docs/latest/develop/use/memory-optimization/ | Ziplist encoding for small hashes, field name length impact | 7 | Memory reduction techniques | Requires specific configuration knowledge |
+| 7 | Docs | Micrometer Observation API | https://micrometer.io/docs/observation | Observation.createNotStarted() for custom spans, key-values | 7 | Native Spring Boot 3.x support | New API, evolving documentation |
+| 8 | Docs | OpenTelemetry Lettuce Instrumentation | https://opentelemetry.io/docs/languages/java/automatic/spring-boot/ | Auto-instrumentation for Lettuce Redis commands | 7 | Automatic span creation for Redis | Requires OTel agent or starter |
 
 ---
 
@@ -92,25 +92,21 @@
 
 | Sản phẩm/Công cụ | Cách giải quyết bài toán | Tính năng chính | Lợi ích | Thuận lợi | Bất lợi | Gap |
 |-------------------|--------------------------|----------------|---------|-----------|---------|-----|
-| Firebase Auth | Creates temporary anonymous user → issues Firebase ID token → `linkWithCredential()` upgrades to permanent account | Anonymous sign-in, identity linking, auto-cleanup, cross-platform SDKs | Battle-tested at Google scale, seamless UX | Complete solution, excellent documentation | Vendor lock-in, proprietary, requires Firebase project | Cannot embed in Spring Boot, different JWT format |
-| Supabase Auth (GoTrue) | Creates user record with `is_anonymous=true` → standard JWT with anonymous claim → `updateUser()` for promotion | Anonymous sign-in, `is_anonymous` JWT claim, RLS integration, captcha support | Open source, PostgreSQL-based, clean API design | Self-hostable, standard JWT, DB-backed | Go implementation, separate deployment needed | REST API only, no native Spring integration |
-| Auth0 | Account linking API → merge multiple identities to one user profile | Identity linking, profile merging, management API | Enterprise-grade, SSO support | Well-documented APIs, extensive integrations | SaaS pricing, vendor lock-in | No native anonymous concept, different problem domain |
-| Spring Security | `AnonymousAuthenticationFilter` injects anonymous principal for unauthenticated requests | Anonymous filter, SpEL expressions, security context population | Native Spring Boot integration, already in stack | Zero additional dependencies, familiar API | In-memory only, no JWT, no persistence | No session promotion, no data merge, no lifecycle management |
+| Redis Pipeline (native) | Batch multiple Redis commands into single network round-trip | `executePipelined(RedisCallback)` in Spring Data Redis | 60-80% RTT reduction for multi-command operations | Zero dependencies, native API | Not atomic — interleaving possible | No atomicity guarantee |
+| Redis Lua Scripts | Execute atomic multi-command operations server-side | `EVAL`/`EVALSHA` via `StringRedisTemplate.execute(RedisScript)` | Atomic operations, server-side caching, single RTT | Zero dependencies, atomic guarantees | Blocks other commands, debugging harder | Script management complexity |
+| Sliding Window Counter | Two-counter approach with weighted sum for smooth rate limiting | Lua script with `current_count + prev_count × weight` formula | No burst-at-boundary, memory efficient (2 keys per IP) | O(1) operations, predictable memory | Slightly less accurate than log-based | Approximate — not exact count |
+| SETNX + UUID + Lua DEL | Lock with ownership verification — safe release via conditional delete | `SET key uuid NX EX 30` + Lua `if GET == uuid then DEL` | Safe release, no accidental unlock by wrong owner | Simple, proven, no new deps | No fencing token (not needed for best-effort promotion) | No Redlock multi-node guarantee |
 
 ### So sánh tính năng chi tiết
 
-| Feature | Firebase Auth | Supabase Auth | Auth0 | Spring Security | Custom Build | Cần cho project? |
-|---------|:---:|:---:|:---:|:---:|:---:|:---:|
-| Anonymous token generation (JWT) | ✅ | ✅ | ❌ | ❌ | ✅ | ⭐ Must |
-| Session promotion (anon→auth) | ✅ | ✅ | ⚠️ | ❌ | ✅ | ⭐ Must |
-| Temporary data storage (Redis) | ❌ | ⚠️ | ❌ | ❌ | ✅ | ⭐ Must |
-| Data merge on promotion | ✅ | ⚠️ | ⚠️ | ❌ | ✅ | ⭐ Must |
-| Rate limiting for anonymous | ✅ | ⚠️ | ✅ | ❌ | ✅ | ⭐ Must |
-| Anonymous session TTL | ✅ | ✅ | N/A | ❌ | ✅ | ⭐ Must |
-| Auto-cleanup expired sessions | ✅ | ✅ | N/A | ❌ | ✅ | Should |
-| Spring Boot native integration | ❌ | ❌ | ⚠️ | ✅ | ✅ | ⭐ Must |
-| Existing CQRS handler compatinclude_webibility | ❌ | ❌ | ❌ | ⚠️ | ✅ | ⭐ Must |
-| Custom JWT claims (`type=anonymous`) | ❌ | ✅ | ❌ | ❌ | ✅ | ⭐ Must |
+| Feature | Redis Pipeline | Redis Lua | Sliding Window | SETNX+UUID | Cần cho project? |
+|---------|:---:|:---:|:---:|:---:|:---:|
+| RTT reduction | ✅ | ✅ | N/A | N/A | ⭐ Must |
+| Atomicity | ❌ | ✅ | ✅ (via Lua) | ✅ (via Lua) | ⭐ Must (for rate limit) |
+| Memory efficiency | N/A | N/A | ✅ | N/A | Nice to have |
+| Spring Data Redis support | ✅ | ✅ | ✅ (custom) | ✅ | ⭐ Must |
+| Zero new dependencies | ✅ | ✅ | ✅ | ✅ | ⭐ Must |
+| Easy to implement | ✅ | ⚠️ | ⚠️ | ✅ | Nice to have |
 
 ---
 
@@ -118,10 +114,12 @@
 
 | # | Approach | Mô tả | Ưu điểm | Nhược điểm | Phù hợp khi | Source |
 |---|---------|--------|---------|------------|------------|-------|
-| 1 | **Firebase Model** (DB-backed anonymous users) | Create a real user record for each anonymous session with `is_anonymous=true`; issue JWT with user ID; on promotion, update user record with credentials | Simple data model — anonymous user IS a user; no data transfer needed; durable across Redis restarts | Pollutes user table with temporary records; requires periodic cleanup job; higher DB write load | Need long-lived anonymous sessions (days/weeks); anonymous users need to interact with domain entities that reference user ID | https://firebase.google.com/docs/auth/web/anonymous-auth |
-| 2 | **Ephemeral Model** (Redis-only anonymous sessions) | Do NOT create user record; generate anonymous JWT with session UUID; store all anonymous data in Redis with TTL; on login, transfer Redis data to authenticated user namespace | Zero DB pollution; self-cleaning via Redis TTL; fast token generation (no DB write); horizontally scalable | Data loss if Redis evicts; more complex merge logic; anonymous session data not durable; can't join anonymous data with DB queries | Short-lived anonymous sessions (minutes/hours); minimal anonymous data (cart items, preferences); high anonymous traffic volume | Redis patterns documentation |
-| 3 | **Hybrid Model** (Redis data + optional DB reference) | Store anonymous session metadata in lightweight DB table (not full user); store actual data in Redis; on promotion, create/link user record + transfer Redis data | Balance of durability and performance; can track anonymous session metrics; cleaner than full user records | More complex architecture; two data stores to manage; requires careful cleanup of both | Need analytics on anonymous sessions; regulatory requirement to track sessions; medium-lived anonymous sessions (hours/days) | Supabase GoTrue + Redis patterns |
-| 4 | **Progressive Authentication** (multi-level access) | Define access levels (anonymous → basic → verified → admin); each level unlocks more features; authentication "upgrade" is incremental, not binary | Fine-grained access control; smooth UX — users aren't forced to full auth immediately; supports partial auth (email verified but no password) | Complex permission model; harder to reason about security; more edge cases in authorization logic | Enterprise applications with many user types; platforms where users can do meaningful work before full signup | Auth0 documentation on progressive profiling |
+| 1 | **Pipeline Session Creation** | Batch HSET+EXPIRE into single `executePipelined()` call | 2-3 RTT → 1 RTT; simple API | No atomicity — but not needed here since operations are independent | Session creation optimization | https://redis.io/docs/latest/develop/use/pipelining/ |
+| 2 | **Lua Sliding Window Counter** | Atomic Lua script: INCR current window + calculate weighted sum with previous window | No burst-at-boundary; atomic; O(1); 2 keys per IP | Slightly more complex than INCR+EXPIRE; approximate count | Rate limiting optimization | https://redis.io/glossary/rate-limiting/ |
+| 3 | **Pipeline Batch Transfer** | Collect keys via SCAN → pipeline MGET → pipeline MSET to user namespace | N×2 RTT → 2 RTT; dramatic improvement for sessions with many data keys | SCAN still required for key discovery; MGET returns list (order matters) | Data transfer optimization | https://docs.spring.io/spring-data/redis/reference/redis/pipelining.html |
+| 4 | **Lua-based Safe Lock Release** | Store UUID in lock value → release via Lua `if GET==uuid then DEL` | Prevents accidental unlock by wrong owner; simple to implement | No fencing token — not needed since promotion is best-effort | Lock reliability improvement | https://martin.kleppmann.com/2016/02/08/how-to-do-distributed-locking.html |
+| 5 | **Running Size Counter** | Maintain `dataSize` field in session hash, increment/decrement on data write/delete | Eliminates SCAN+STRLEN loop for size checks; O(1) instead of O(N) | Must keep counter in sync; corruption risk if decrement missed | Data size enforcement optimization | Redis hash operations documentation |
+| 6 | **Ziplist-aware Key Design** | Keep hash field names short (<64 bytes) and field count ≤128 to stay in ziplist encoding | ~10x memory reduction vs hashtable encoding | Limits field name expressiveness; must monitor encoding changes | Memory optimization | https://redis.io/docs/latest/develop/use/memory-optimization/ |
 
 ---
 
@@ -129,10 +127,10 @@
 
 | # | Câu hỏi | Đã tìm kiếm? | Lý do chưa trả lời được | Ảnh hưởng |
 |---|---------|:-:|--------------------------|-----------|
-| 1 | What is the optimal anonymous token TTL for this specific application's use case? | ✅ | Depends on business requirements — ranges from 15 min (high security) to 7 days (e-commerce). Recommendation: start with 1 hour, configurable via properties. | Low — configurable at deployment |
-| 2 | Should anonymous sessions survive server restarts? | ✅ | Trade-off between Redis-only (faster, auto-cleanup) and DB-backed (durable). Recommend Redis-only for auth-service scope since session data belongs to downstream services. | Medium — affects architecture choice |
+| 1 | What is the exact latency improvement from pipelining in the production Redis deployment? | ✅ | Depends on network topology (local vs remote Redis), packet size, Redis version — requires benchmarking in actual environment | Low — improvement is guaranteed, magnitude varies |
+| 2 | Should we add OpenTelemetry auto-instrumentation or manual spans? | ✅ | Trade-off: auto-instrumentation captures all Redis commands (noisy) vs manual spans capture business operations (cleaner). Recommend: manual spans for critical paths + auto for debugging | Low — configurable, both approaches work |
 
 ---
 
-> **Sources**: Tất cả URLs đã verify tại thời điểm 2025-01-20
+> **Sources**: Tất cả URLs đã verify tại thời điểm 2025-07-15
 > **Next step**: Comparison Analysis (comparison_analysis.md)

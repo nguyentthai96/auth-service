@@ -33,6 +33,7 @@ class TotpSetupFlowIntegrationTest {
     @Mock private lateinit var redisTemplate: StringRedisTemplate
     @Mock private lateinit var auditLogService: AuditLogService
     @Mock private lateinit var rateLimitService: MfaRateLimitService
+    @Mock private lateinit var recoveryCodeRepository: com.ntt.authservice.auth.adapter.out.persistence.repository.MfaRecoveryCodeRepository
     @Mock private lateinit var valueOps: ValueOperations<String, String>
     @Mock private lateinit var mockClaims: Claims
 
@@ -67,7 +68,8 @@ class TotpSetupFlowIntegrationTest {
         )
         mfaService = MfaService(
             otpService, totpService, jwtService, userRepository,
-            securityProperties, redisTemplate, auditLogService, rateLimitService
+            securityProperties, redisTemplate, auditLogService, rateLimitService,
+            recoveryCodeRepository
         )
     }
 
@@ -93,7 +95,7 @@ class TotpSetupFlowIntegrationTest {
         assertEquals("BASE32SECRET", setupResult.secret)
         assertTrue(setupResult.qrCodeUri.contains("otpauth://totp/"))
         assertEquals("auth-service-test", setupResult.issuer)
-        verify(valueOps).set(eq("mfa:totp:setup:$testUserId"), eq("BASE32SECRET"), any())
+        verify(valueOps).set(eq("mfa:totp:setup:$testUserId"), eq("BASE32SECRET"), any<java.time.Duration>())
 
         // Step 2: Confirm
         whenever(redisTemplate.opsForValue()).thenReturn(valueOps)

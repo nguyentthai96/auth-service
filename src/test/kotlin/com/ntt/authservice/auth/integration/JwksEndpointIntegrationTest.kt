@@ -39,7 +39,7 @@ class JwksEndpointIntegrationTest {
 
         val result = jwtService.getJwks()
 
-        assertNotNull(result)
+        Assertions.assertNotNull(result)
         assertTrue(result.containsKey("keys"))
 
         @Suppress("UNCHECKED_CAST")
@@ -49,7 +49,7 @@ class JwksEndpointIntegrationTest {
         val key = keys[0]
         assertEquals("RSA", key["kty"])
         assertEquals("auth-service-key-1", key["kid"])
-        assertNotNull(key["n"])
+        Assertions.assertNotNull(key["n"])
         assertEquals("AQAB", key["e"])
         assertEquals("RS256", key["alg"])
         assertEquals("sig", key["use"])

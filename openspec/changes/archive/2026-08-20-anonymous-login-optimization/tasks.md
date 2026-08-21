@@ -6,261 +6,441 @@
 
 # Tasks: anonymous-login-optimization
 
-> **Type**: MAINTENANCE | **Flow**: Non-Financial | **FRs**: 13 (all implemented — hardening only)
-> **Direction**: Approach D — Post-Implementation Hardening (Bug Fixes + Tests + Observability)
+> **Type**: MAINTENANCE | **Flow**: Non-Financial | **FRs**: 14 (12 active, 2 deferred)
+> **Direction**: Approach D — Balanced Optimization v3 — 3-Lua-Script Architecture with 4-Phase Delivery
 
 ## Changes
 
-[CHANGED] Scope reassessed from EXTEND → MAINTENANCE. Feature is fully implemented. This tasks.md covers post-implementation hardening:
+[CHANGED] Entire scope changed from archive v1 (JTI fix, ThreadLocal, metrics, tests → completed) to v2 (Redis pipelining, Lua scripting, data integrity hardening).
 
-**FIX-001** (🔴 BUG): JTI blacklisting — 6 files modified
-**FIX-002** (🟡 SMELL): ThreadLocal removal — 3 files (1 new + 2 modified)
-**FIX-003** (🟡 GAP): Observability metrics — 5 files modified
-**TEST-001** (🔴 GAP): Integration tests — 2 new test files
-**TEST-002** (🔴 GAP): Unit tests — 4 new test files
+**Phase 1** (Data Integrity — MUST, ~1-2 days): FR-004, FR-007, FR-008, FR-009
+**Phase 2** (Performance, ~1-2 days): FR-001, FR-002, FR-003, FR-005
+**Phase 3** (Reliability & Operations, ~1 day): FR-010, FR-011, FR-013, FR-014
+**Phase 4** (Deferred): FR-006, FR-012
 
-**Total**: 12 files modified, 7 files new (1 production + 6 test)
+**Total**: 7 files modified, 4 files new
+
+| Metric | Value |
+|--------|-------|
+| Modified files | 7 |
+| New files | 4 |
+| Active FRs | 12 |
+| Deferred FRs | 2 |
+| New dependencies | 0 |
+| Database migrations | 0 |
 
 ---
 
-## Phase 1: FIX-001 — JTI Blacklisting Fix (🔴 Critical)
+## Phase 1: Data Integrity — Lua Infrastructure + Critical Fixes
 
-- [x] **Task 1: Add anonymousToken field to LoginRequestDto and RegisterRequestDto**
-  - File: `src/main/kotlin/com/ntt/authservice/auth/adapter/in/web/dto/RequestDtos.kt` | Action: [MODIFY]
-  - FR: FR-005 — Blacklist anonymous token JTI sau promotion
-  - Pattern: Optional nullable field `val anonymousToken: String? = null` (follows existing `anonymousSessionId` pattern)
+- [x] **Task 1: Add config fields to AnonymousProperties** `[MODIFY]`
+  - File: `src/main/kotlin/com/ntt/authservice/shared/config/SecurityProperties.kt` | Action: [MODIFY]
+  - FR: FR-014 — Configuration enhancements
   - Details:
-    - Add `val anonymousToken: String? = null` to `LoginRequestDto` after `anonymousSessionId` field
-    - Add `val anonymousToken: String? = null` to `RegisterRequestDto` after `anonymousSessionId` field
-    - No validation annotation needed — token is validated server-side via `jwtService.parseAnonymousToken()`
-  - ✅ VALIDATED: Both DTOs have `val anonymousToken: String? = null` field
+    - Add `val slidingWindowEnabled: Boolean = true` after `rateLimit` field in `AnonymousProperties` data class (L191-203)
+    - Add `val scanCount: Int = 100` after `slidingWindowEnabled`
+    - Both fields have sensible defaults — application starts without explicit configuration
+  - Dependencies: None — this is a leaf change consumed by other tasks
 
-- [x] **Task 2: Add anonymousTokenJti field to LoginCommand and RegisterCommand**
-  - File: `src/main/kotlin/com/ntt/authservice/auth/application/command/LoginCommand.kt` | Action: [MODIFY]
-  - File: `src/main/kotlin/com/ntt/authservice/auth/application/command/RegisterCommand.kt` | Action: [MODIFY]
-  - FR: FR-005 — Pass JTI through CQRS command
-  - Base: `Command<R>` from `com.ntt.eventsourcingutils.lib.cqrs.command`
-  - Pattern: Optional nullable field `val anonymousTokenJti: String? = null` (backward compatible)
+- [x] **Task 2: Add deleteByExpiresAtBefore to TokenBlacklistRepository** `[MODIFY]`
+  - File: `src/main/kotlin/com/ntt/authservice/rbac/adapter/out/persistence/repository/Repositories.kt` | Action: [MODIFY]
+  - FR: FR-013 — TokenBlacklist cleanup
   - Details:
-    - Add field after existing `anonymousSessionId` field in both commands
-    - Default null ensures backward compatibility — existing code creating these commands unaffected
-  - ✅ VALIDATED: Both commands have `val anonymousTokenJti: String? = null`
+    - Add `fun deleteByExpiresAtBefore(cutoff: java.time.Instant): Int` to `TokenBlacklistRepository` interface (after L84 `existsByTokenJti`)
+    - Import `java.time.Instant` if not already imported
+    - Spring Data JPA auto-generates the query from method name — no `@Query` needed
+    - Add `@Modifying` and `@Transactional` annotations for delete operations
+  - Dependencies: `TokenBlacklistEntity` has `expiresAt: Instant` field (verified in `PermissionEntities.kt`)
 
-- [x] **Task 3: Extract JTI from anonymous token in CqrsAuthController**
-  - File: `src/main/kotlin/com/ntt/authservice/auth/adapter/in/web/CqrsAuthController.kt` | Action: [MODIFY]
-  - FR: FR-005 — Controller extracts JTI before dispatching to handler
-  - Base: `CqrsAuthController` from `com.ntt.authservice.auth.adapter.in.web`
-  - Dependencies: `JwtService.parseAnonymousToken()` (already exists at L154+)
+- [x] **Task 3: Create Lua script files** `[NEW]`
+  - File: `src/main/resources/redis/sliding_window_rate_limit.lua` | Action: [NEW]
+  - File: `src/main/resources/redis/safe_lock_release.lua` | Action: [NEW]
+  - File: `src/main/resources/redis/atomic_data_store.lua` | Action: [NEW]
+  - FR: FR-009 — Lua script files
   - Details:
-    - `extractAnonymousTokenJti()` private method handles JTI extraction with try-catch
-    - In `login()` method: calls `extractAnonymousTokenJti(request.anonymousToken)` → passes to `LoginCommand`
-    - In `register()` method: same extraction pattern → passes to `RegisterCommand`
-    - Wrap parsing in try-catch — if anonymous token is invalid/expired, log warning and set `anonymousTokenJti = null` (promotion gracefully skipped)
-  - ✅ VALIDATED: `extractAnonymousTokenJti()` at L56-64, used in both `login()` and `register()`
+    - **`sliding_window_rate_limit.lua`** (~27 lines):
+      - KEYS[1] = `anon:rate:{ip}:{currentWindow}`, KEYS[2] = `anon:rate:{ip}:{prevWindow}`
+      - ARGV[1] = maxAttempts, ARGV[2] = windowSeconds, ARGV[3] = elapsedSeconds
+      - Logic: `local current = redis.call('INCR', KEYS[1])` → if first → `EXPIRE 2×window` → `local prev = tonumber(redis.call('GET', KEYS[2]) or '0')` → `weight = math.max(0, (window - elapsed) / window)` → `count = prev * weight + current` → if `count > max` return `-1` else return `math.floor(count)`
+      - Returns: Long (-1 = denied, ≥0 = weighted count)
+    - **`safe_lock_release.lua`** (~8 lines):
+      - KEYS[1] = lock key, ARGV[1] = ownerUUID
+      - Logic: `if redis.call('GET', KEYS[1]) == ARGV[1] then redis.call('DEL', KEYS[1]) return 1 else return 0 end`
+      - Returns: Long (1 = released, 0 = not owner)
+    - **`atomic_data_store.lua`** (~15 lines):
+      - KEYS[1] = session hash key, KEYS[2] = data key to write
+      - ARGV[1] = maxDataSizeBytes, ARGV[2] = value, ARGV[3] = ttlSeconds
+      - Logic: `local currentSize = tonumber(redis.call('HGET', KEYS[1], 'dataSize') or '0')` → `local newSize = #ARGV[2]` → if `currentSize + newSize > tonumber(ARGV[1])` return `-1` → `redis.call('SET', KEYS[2], ARGV[2], 'EX', tonumber(ARGV[3]))` → `redis.call('HINCRBY', KEYS[1], 'dataSize', newSize)` → return `currentSize + newSize`
+      - Returns: Long (-1 = limit exceeded, ≥0 = new total size)
+  - Dependencies: None — pure Lua files
 
-- [x] **Task 4: Fix LoginHandler to use real JTI**
-  - File: `src/main/kotlin/com/ntt/authservice/auth/application/command/LoginHandler.kt` | Action: [MODIFY]
-  - FR: FR-005 — Correct JTI passed to SessionPromotionService
-  - Base: `LoginHandler` from `com.ntt.authservice.auth.application.command`
+- [x] **Task 4: Create RedisLuaScriptConfig** `[NEW]`
+  - File: `src/main/kotlin/com/ntt/authservice/shared/config/RedisLuaScriptConfig.kt` | Action: [NEW]
+  - FR: FR-008 — RedisLuaScriptConfig configuration class
+  - Base: Spring `@Configuration` class in `com.ntt.authservice.shared.config` package
+  - Pattern: Follows existing `RedisConfig.kt` naming convention
   - Details:
-    - Uses `anonymousJti = command.anonymousTokenJti ?: ""` in `promoteSession()` call
-    - If `anonymousTokenJti` is null (client didn't send token) → falls back to `""` (existing behavior — no breaking change)
-  - ✅ VALIDATED: L160 `anonymousJti = command.anonymousTokenJti ?: ""`
+    - `@Configuration` class with 3 `@Bean` methods
+    - `@Bean fun slidingWindowRateLimitScript(): DefaultRedisScript<Long>` — loads `ClassPathResource("redis/sliding_window_rate_limit.lua")`, result type `Long::class.java`
+    - `@Bean fun safeLockReleaseScript(): DefaultRedisScript<Long>` — loads `ClassPathResource("redis/safe_lock_release.lua")`, result type `Long::class.java`
+    - `@Bean fun atomicDataStoreScript(): DefaultRedisScript<Long>` — loads `ClassPathResource("redis/atomic_data_store.lua")`, result type `Long::class.java`
+    - SHA1 caching is automatic with `DefaultRedisScript` — Redis EVALSHA used after first execution
+  - Dependencies: `org.springframework.data.redis.core.script.DefaultRedisScript`, `org.springframework.core.io.ClassPathResource`
+  - Imports: `org.springframework.context.annotation.Bean`, `org.springframework.context.annotation.Configuration`
 
-- [x] **Task 5: Fix RegisterHandler to use real JTI**
-  - File: `src/main/kotlin/com/ntt/authservice/auth/application/command/RegisterHandler.kt` | Action: [MODIFY]
-  - FR: FR-005 — Correct JTI passed to SessionPromotionService
-  - Base: `RegisterHandler` from `com.ntt.authservice.auth.application.command`
-  - Details:
-    - Uses `anonymousJti = command.anonymousTokenJti ?: ""` in `promoteSession()` call
-    - Same backward-compatible pattern as LoginHandler
-  - ✅ VALIDATED: L89 `anonymousJti = command.anonymousTokenJti ?: ""`
-
-## Phase 2: FIX-002 — Remove ThreadLocal from RegisterHandler (🟡 Smell)
-
-- [x] **Task 6: Create RegisterResult sealed class**
-  - File: `src/main/kotlin/com/ntt/authservice/auth/application/RegisterResult.kt` | Action: [NEW]
-  - FR: FR-013 — Promotion metadata in register response
-  - Base: Pattern from `LoginResult` in `com.ntt.authservice.auth.application`
-  - Pattern: Sealed class with `Success` data class containing `authToken: AuthToken` and `promotionResult: PromotionResult? = null`
-  - Dependencies: `AuthToken` from `com.ntt.authservice.auth.domain.model`, `PromotionResult` from `com.ntt.authservice.auth.application`
-  - ✅ VALIDATED: `RegisterResult` sealed class with `Success(authToken, promotionResult)` exists
-
-- [x] **Task 7: Refactor RegisterHandler to return RegisterResult**
-  - File: `src/main/kotlin/com/ntt/authservice/auth/application/command/RegisterHandler.kt` | Action: [MODIFY]
-  - FR: FR-003, FR-013 — Clean promotion result passing
-  - Base: `CommandHandler<RegisterCommand, RegisterResult>` (changed from `AuthToken`)
-  - Details:
-    - No ThreadLocal — returns `RegisterResult.Success(authToken, promotionResult)` directly
-    - Class declaration: `CommandHandler<RegisterCommand, RegisterResult>`
-    - Return type: `RegisterResult`
-  - ✅ VALIDATED: No ThreadLocal, returns `RegisterResult.Success(authToken, promotionResult)` at L96
-
-- [x] **Task 8: Update CqrsAuthController.register() for RegisterResult**
-  - File: `src/main/kotlin/com/ntt/authservice/auth/adapter/in/web/CqrsAuthController.kt` | Action: [MODIFY]
-  - FR: FR-013 — Controller unwraps RegisterResult
-  - Details:
-    - Uses `when (result)` to unwrap `RegisterResult.Success`
-    - Builds `AuthResponse` with promotion metadata from `result.promotionResult`
-    - No reference to `registerHandler.lastPromotionResult`
-  - ✅ VALIDATED: `register()` method at L68-104 uses `when (result)` pattern
-
-## Phase 3: FIX-003 — Observability Metrics (🟡 Gap)
-
-- [x] **Task 9: Add metrics to AnonymousSessionHandler**
-  - File: `src/main/kotlin/com/ntt/authservice/auth/application/command/AnonymousSessionHandler.kt` | Action: [MODIFY]
-  - FR: FR-001 — Anonymous session creation metrics
-  - Dependencies: `io.micrometer.core.instrument.MeterRegistry`
-  - Pattern: Constructor injection, counter/timer after successful operation
-  - Details:
-    - `private val meterRegistry: MeterRegistry` in constructor
-    - After successful session creation: `meterRegistry.counter("auth.anonymous.sessions.created").increment()`
-    - Token generation timed: `Timer.start(meterRegistry)` → `sample.stop(meterRegistry.timer("auth.anonymous.token.generation.duration"))`
-  - ✅ VALIDATED: MeterRegistry injected, counter at L69, timer at L53-55
-
-- [x] **Task 10: Add metrics to RenewAnonymousTokenHandler**
-  - File: `src/main/kotlin/com/ntt/authservice/auth/application/command/RenewAnonymousTokenHandler.kt` | Action: [MODIFY]
-  - FR: FR-008 — Token renewal metrics
-  - Dependencies: `io.micrometer.core.instrument.MeterRegistry`
-  - Details:
-    - `private val meterRegistry: MeterRegistry` in constructor
-    - After successful renewal: `meterRegistry.counter("auth.anonymous.sessions.renewed").increment()`
-  - ✅ VALIDATED: MeterRegistry injected, counter at L87
-
-- [x] **Task 11: Add metrics to SessionPromotionService**
+- [x] **Task 5: Implement safe distributed lock release in SessionPromotionService** `[MODIFY]`
   - File: `src/main/kotlin/com/ntt/authservice/auth/application/SessionPromotionService.kt` | Action: [MODIFY]
-  - FR: FR-003, FR-004, FR-010 — Promotion metrics
-  - Dependencies: `io.micrometer.core.instrument.MeterRegistry`
+  - FR: FR-004 — Safe distributed lock release
+  - Base: `SessionPromotionService` from `com.ntt.authservice.auth.application`
   - Details:
-    - `private val meterRegistry: MeterRegistry` in constructor
-    - Timer: `val sample = Timer.start(meterRegistry)` at start of `promoteSession()`
-    - After success: `meterRegistry.counter("auth.anonymous.sessions.promoted", "status", "SUCCESS").increment()`
-    - After partial: `meterRegistry.counter("auth.anonymous.sessions.promoted", "status", "PARTIAL").increment()`
-    - After failure: `meterRegistry.counter("auth.anonymous.sessions.promoted", "status", "FAILED").increment()`
-    - After conflict: `meterRegistry.counter("auth.anonymous.sessions.promoted", "status", "CONFLICT").increment()`
-    - Duration timer: `sample.stop(meterRegistry.timer("auth.anonymous.promotion.duration"))`
-  - ✅ VALIDATED: MeterRegistry injected, timer at L49, counters for all statuses (SUCCESS/PARTIAL/FAILED/CONFLICT)
+    - Add constructor dependency: `private val safeLockReleaseScript: DefaultRedisScript<Long>` (injected from RedisLuaScriptConfig)
+    - Remove `private const val LOCK_VALUE = "locked"` from companion object (L35)
+    - Change `acquireLock(sessionId): Boolean` to `acquireLock(sessionId): String?` — returns ownerUUID on success, null on failure:
+      ```kotlin
+      private fun acquireLock(sessionId: String): String? {
+          val lockKey = "$LOCK_PREFIX$sessionId"
+          val ownerUUID = java.util.UUID.randomUUID().toString()
+          return try {
+              val acquired = redisTemplate.opsForValue().setIfAbsent(
+                  lockKey, ownerUUID, Duration.ofSeconds(LOCK_TTL_SECONDS)
+              ) == true
+              if (acquired) ownerUUID else null
+          } catch (ex: Exception) {
+              log.error("Failed to acquire promotion lock for session={}: {}", sessionId, ex.message)
+              null
+          }
+      }
+      ```
+    - Change `releaseLock(sessionId)` to `releaseLock(sessionId, ownerUUID)`:
+      ```kotlin
+      private fun releaseLock(sessionId: String, ownerUUID: String) {
+          val lockKey = "$LOCK_PREFIX$sessionId"
+          try {
+              val released = redisTemplate.execute(
+                  safeLockReleaseScript, listOf(lockKey), ownerUUID
+              )
+              if (released == 0L) {
+                  log.warn("Lock for session={} owned by different process — skipped release", sessionId)
+              }
+          } catch (ex: Exception) {
+              log.warn("Failed to release lock for session={} via Lua — will auto-expire in {}s", sessionId, LOCK_TTL_SECONDS)
+          }
+      }
+      ```
+    - Update `promoteSession()`: `val ownerUUID = acquireLock(sessionId)` → null check instead of boolean → pass `ownerUUID` to `releaseLock` in finally block
+  - Dependencies: Task 3 (Lua files), Task 4 (RedisLuaScriptConfig)
 
-- [x] **Task 12: Add metrics to AnonymousRateLimitService**
-  - File: `src/main/kotlin/com/ntt/authservice/auth/application/AnonymousRateLimitService.kt` | Action: [MODIFY]
-  - FR: FR-009 — Rate limiting metrics
-  - Dependencies: `io.micrometer.core.instrument.MeterRegistry`
-  - Details:
-    - `private val meterRegistry: MeterRegistry` in constructor
-    - On rate limit exceeded: `meterRegistry.counter("auth.anonymous.rate_limited").increment()`
-  - ✅ VALIDATED: MeterRegistry injected, counter at L60
-
-- [x] **Task 13: Add metrics to AnonymousSessionDataService**
+- [x] **Task 6: Implement atomic storeData via Lua in AnonymousSessionDataService** `[MODIFY]`
   - File: `src/main/kotlin/com/ntt/authservice/auth/application/AnonymousSessionDataService.kt` | Action: [MODIFY]
-  - FR: FR-006, FR-007 — Session data metrics
-  - Dependencies: `io.micrometer.core.instrument.MeterRegistry`
+  - FR: FR-007 — TOCTOU fix, FR-005 — Running data size counter
+  - Base: `AnonymousSessionDataService` from `com.ntt.authservice.auth.application`
   - Details:
-    - `private val meterRegistry: MeterRegistry` in constructor
-    - After data stored: `meterRegistry.counter("auth.anonymous.data.stored").increment()`
-    - After size exceeded: `meterRegistry.counter("auth.anonymous.data.size_exceeded").increment()`
-  - ✅ VALIDATED: MeterRegistry injected, counters at L58 and L51
+    - Add constructor dependency: `private val atomicDataStoreScript: DefaultRedisScript<Long>` (injected from RedisLuaScriptConfig)
+    - Rewrite `storeData()` (L37-60) to use Lua atomic check-and-set:
+      ```kotlin
+      fun storeData(sessionId: String, namespace: String, key: String, value: String) {
+          if (!verifySessionExists(sessionId)) {
+              throw AnonymousSessionExpiredException(sessionId)
+          }
+          val sessionKey = "$SESSION_PREFIX$sessionId"
+          val dataKey = dataKey(sessionId, namespace, key)
+          val maxSize = securityProperties.anonymous.maxDataSizeBytes
+          val sessionTtl = redisTemplate.getExpire(sessionKey)
+              ?: securityProperties.anonymous.sessionTtlSeconds
 
-## Phase 4: TEST-001 — Integration Tests (🔴 Gap)
+          val result = redisTemplate.execute(
+              atomicDataStoreScript,
+              listOf(sessionKey, dataKey),
+              maxSize.toString(),
+              value,
+              sessionTtl.toString()
+          )
 
-- [x] **Task 14: Create AnonymousSessionIntegrationTest**
-  - File: `src/test/kotlin/com/ntt/authservice/auth/AnonymousSessionIntegrationTest.kt` | Action: [NEW]
-  - FR: FR-001, FR-002, FR-008, FR-009, FR-011
-  - Pattern: JUnit 5 + Mockito (integration-style with mocked Redis)
-  - Details — test cases:
-    - TC-001: Create session → token + sessionId + expiresIn returned, Redis session created, metrics recorded
-    - TC-002: Rate limit exceeded → AnonymousRateLimitedException thrown
-    - TC-007/TC-008: Renew token → new token with same sessionId, old JTI blacklisted, renewal count incremented
-    - TC-010-012: Token generation metrics recorded
-  - ✅ VALIDATED: 205 lines, 4 nested test classes, all test cases covered
+          if (result == -1L) {
+              meterRegistry.counter("auth.anonymous.data.size_exceeded").increment()
+              val currentSize = redisTemplate.opsForHash<String, String>()
+                  .get(sessionKey, "dataSize")?.toLongOrNull() ?: 0L
+              throw AnonymousDataLimitExceededException(
+                  currentSize + value.toByteArray().size.toLong(),
+                  maxSize
+              )
+          }
+          meterRegistry.counter("auth.anonymous.data.stored").increment()
+      }
+      ```
+    - Update `deleteData()` (L78-83) to decrement running counter:
+      ```kotlin
+      fun deleteData(sessionId: String, namespace: String, key: String) {
+          if (!verifySessionExists(sessionId)) {
+              throw AnonymousSessionExpiredException(sessionId)
+          }
+          val dataKey = dataKey(sessionId, namespace, key)
+          // Get size before deletion for counter decrement
+          val deletedSize = redisTemplate.opsForValue().size(dataKey) ?: 0L
+          redisTemplate.delete(dataKey)
+          if (deletedSize > 0) {
+              val sessionKey = "$SESSION_PREFIX$sessionId"
+              redisTemplate.opsForHash<String, String>()
+                  .increment(sessionKey, "dataSize", -deletedSize)
+          }
+      }
+      ```
+    - Replace `getSessionDataSize()` O(N) SCAN+STRLEN (L135-160) with O(1) HGET:
+      ```kotlin
+      fun getSessionDataSize(sessionId: String): Long {
+          val sessionKey = "$SESSION_PREFIX$sessionId"
+          return try {
+              redisTemplate.opsForHash<String, String>()
+                  .get(sessionKey, "dataSize")?.toLongOrNull() ?: 0L
+          } catch (ex: Exception) {
+              log.warn("Error reading dataSize for session={}", sessionId, ex)
+              0L
+          }
+      }
+      ```
+    - Note: Keep old SCAN+STRLEN implementation as `private fun getSessionDataSizeScan(sessionId)` for potential reconciliation (FR-012 deferred)
+  - Dependencies: Task 3 (Lua files), Task 4 (RedisLuaScriptConfig)
 
-- [x] **Task 15: Create SessionPromotionIntegrationTest**
-  - File: `src/test/kotlin/com/ntt/authservice/auth/SessionPromotionIntegrationTest.kt` | Action: [NEW]
-  - FR: FR-003, FR-004, FR-005, FR-010, FR-013
-  - Pattern: JUnit 5 + Mockito (integration-style)
-  - Details — test cases:
-    - TC-013: Login with anonymousSessionId + anonymousToken → SUCCESS + data transferred
-    - TC-014: Login without anonymousSessionId → no promotion service interaction (backward compat)
-    - TC-016: Login with expired anonymousSessionId → FAILED
-    - TC-017: Concurrent promotion → CONFLICT (lock held)
-    - TC-018: After promotion → anonymous token JTI in token_blacklist (FIX-001 verification)
-    - Partial transfer scenarios
-  - ✅ VALIDATED: 236 lines, 6 nested test classes, all test cases covered
+## Phase 2: Performance — Pipelining + Sliding Window
 
-## Phase 5: TEST-002 — Unit Tests (🔴 Gap)
+- [x] **Task 7: Pipeline HSET+EXPIRE in AnonymousSessionHandler** `[MODIFY]`
+  - File: `src/main/kotlin/com/ntt/authservice/auth/application/command/AnonymousSessionHandler.kt` | Action: [MODIFY]
+  - FR: FR-001 — Pipeline session creation, FR-005 — Initialize dataSize=0
+  - Base: `AnonymousSessionHandler` from `com.ntt.authservice.auth.application.command`
+  - Details:
+    - Add `"dataSize" to "0"` to `sessionData` map (L57-62):
+      ```kotlin
+      val sessionData = mapOf(
+          "deviceFingerprint" to (command.deviceFingerprint ?: ""),
+          "ipAddress" to command.ipAddress,
+          "createdAt" to Instant.now().toString(),
+          "renewalCount" to "0",
+          "dataSize" to "0"  // ← FR-005: running counter init
+      )
+      ```
+    - Replace sequential `putAll` + `expire` (L63-64) with pipeline:
+      ```kotlin
+      try {
+          redisTemplate.executePipelined { connection ->
+              val rawKey = sessionKey.toByteArray()
+              val rawData = sessionData.map { (k, v) -> k.toByteArray() to v.toByteArray() }.toMap()
+              connection.hashCommands().hMSet(rawKey, rawData)
+              connection.keyCommands().expire(rawKey, sessionTtl.seconds)
+              null
+          }
+      } catch (ex: Exception) {
+          log.warn("Pipeline failed for session creation, falling back to sequential: {}", ex.message)
+          redisTemplate.opsForHash<String, String>().putAll(sessionKey, sessionData)
+          redisTemplate.expire(sessionKey, sessionTtl)
+      }
+      ```
+    - FR-010 fallback is built into the try/catch above
+  - Dependencies: None — uses existing `StringRedisTemplate`
 
-- [x] **Task 16: Create JwtServiceAnonymousTest**
-  - File: `src/test/kotlin/com/ntt/authservice/auth/application/JwtServiceAnonymousTest.kt` | Action: [NEW]
-  - FR: FR-001, FR-008
-  - Pattern: JUnit 5 + Mockito
-  - Details — test cases:
-    - generateAnonymousToken: correct claims (type=anonymous, sub=sessionId, jti, exp)
-    - generateAnonymousToken: unique JTI per token
-    - parseAnonymousToken: valid token → correct claims extracted
-    - parseAnonymousToken: non-anonymous token → exception
-    - parseAnonymousToken: tampered token → exception
-    - parseAnonymousToken: expiration claim set correctly
-  - ✅ VALIDATED: 152 lines, 2 nested test classes, 6 test methods
+- [x] **Task 8: Implement sliding window rate limiting in AnonymousRateLimitService** `[MODIFY]`
+  - File: `src/main/kotlin/com/ntt/authservice/auth/application/AnonymousRateLimitService.kt` | Action: [MODIFY]
+  - FR: FR-002 — Sliding window rate limiting, FR-011 — Lua fallback
+  - Base: `AnonymousRateLimitService` from `com.ntt.authservice.auth.application`
+  - Details:
+    - Add constructor dependencies:
+      - `private val slidingWindowRateLimitScript: DefaultRedisScript<Long>` (injected from RedisLuaScriptConfig)
+      - `private val securityProperties: SecurityProperties` (already present)
+    - Rewrite `checkRateLimit()` (L36-70):
+      ```kotlin
+      fun checkRateLimit(ipAddress: String) {
+          val config = securityProperties.anonymous.rateLimit
+          try {
+              if (securityProperties.anonymous.slidingWindowEnabled) {
+                  checkSlidingWindow(ipAddress, config)
+              } else {
+                  checkFixedWindow(ipAddress, config)
+              }
+          } catch (ex: AnonymousRateLimitedException) {
+              throw ex
+          } catch (ex: RedisConnectionFailureException) {
+              log.error("Redis unavailable for rate limit — fail-open, ip={}", ipAddress, ex)
+          } catch (ex: Exception) {
+              log.error("Unexpected error in rate limit — fail-open, ip={}", ipAddress, ex)
+          }
+      }
+      ```
+    - New `private fun checkSlidingWindow(ip, config)`:
+      - Calculate `currentWindowId = System.currentTimeMillis() / (config.windowSeconds * 1000)`
+      - Calculate `prevWindowId = currentWindowId - 1`
+      - Calculate `elapsedSeconds = (System.currentTimeMillis() % (config.windowSeconds * 1000)) / 1000`
+      - Keys: `"$RATE_PREFIX$ip:$currentWindowId"`, `"$RATE_PREFIX$ip:$prevWindowId"`
+      - Execute: `redisTemplate.execute(slidingWindowRateLimitScript, keys, config.maxAttempts.toString(), config.windowSeconds.toString(), elapsedSeconds.toString())`
+      - If result == -1L → increment metric, throw `AnonymousRateLimitedException`
+      - Wrap in try/catch — on Lua failure → `log.warn("Lua failed, fallback")` → call `checkFixedWindow()` (FR-011)
+    - Extract existing INCR+EXPIRE logic into `private fun checkFixedWindow(ip, config)` (existing code from L40-70)
+  - Dependencies: Task 1 (slidingWindowEnabled config), Task 3 (Lua files), Task 4 (RedisLuaScriptConfig)
 
-- [x] **Task 17: Create AnonymousSessionDataServiceTest**
-  - File: `src/test/kotlin/com/ntt/authservice/auth/application/AnonymousSessionDataServiceTest.kt` | Action: [NEW]
-  - FR: FR-004, FR-006, FR-007
-  - Pattern: JUnit 5 + Mockito (mock StringRedisTemplate)
-  - Details — test cases:
-    - storeData: valid → Redis SET called with correct key + TTL
-    - storeData: size exceeded → AnonymousDataLimitExceededException
-    - storeData: session not found → AnonymousSessionExpiredException
-    - getData: exists → correct value returned
-    - getData: not exists → null
-    - deleteData: Redis DEL called
-    - verifySessionExists: true/false
-  - ✅ VALIDATED: 179 lines, 4 nested test classes, 7 test methods
+- [x] **Task 9: Pipeline batch data transfer in AnonymousSessionDataService** `[MODIFY]`
+  - File: `src/main/kotlin/com/ntt/authservice/auth/application/AnonymousSessionDataService.kt` | Action: [MODIFY]
+  - FR: FR-003 — Batch data transfer
+  - Base: `AnonymousSessionDataService` from `com.ntt.authservice.auth.application`
+  - Details:
+    - Rewrite `transferData()` (L88-130) to use pipeline MGET + pipeline MSET:
+      ```kotlin
+      fun transferData(sessionId: String, userId: Long): DataTransferResult {
+          val pattern = "$DATA_PREFIX$sessionId:*"
+          val promotedTtl = Duration.ofSeconds(securityProperties.anonymous.promotedDataTtlSeconds)
+          val scanCount = securityProperties.anonymous.scanCount
+          val namespaces = mutableSetOf<String>()
 
-- [x] **Task 18: Create SessionPromotionServiceTest**
-  - File: `src/test/kotlin/com/ntt/authservice/auth/application/SessionPromotionServiceTest.kt` | Action: [NEW]
-  - FR: FR-003, FR-004, FR-005, FR-010
-  - Pattern: JUnit 5 + Mockito (mock Redis, TokenBlacklistRepository)
-  - Details — test cases:
-    - promoteSession: happy path → lock acquired, data transferred, JTI blacklisted, session deleted, lock released
-    - promoteSession: lock held → PromotionResult.CONFLICT
-    - promoteSession: session expired → PromotionResult.FAILED
-    - promoteSession: transfer partial failure → PromotionResult.PARTIAL + log warning
-    - promoteSession: DB failure on blacklist → PromotionResult.SUCCESS (best-effort for blacklist)
-    - promoteSession: with real JTI → TokenBlacklistEntity has correct tokenJti (FIX-001 verification)
-    - promoteSession: with empty JTI → TokenBlacklistEntity has empty tokenJti (backward compat)
-  - ✅ VALIDATED: 249 lines, 5 nested test classes, 7 test methods
+          // Step 1: SCAN collect all keys
+          val allKeys = mutableListOf<String>()
+          try {
+              redisTemplate.execute { connection ->
+                  val cursor = connection.scan(
+                      ScanOptions.scanOptions().match(pattern).count(scanCount.toLong()).build()
+                  )
+                  cursor.use {
+                      while (cursor.hasNext()) {
+                          allKeys.add(String(cursor.next()))
+                      }
+                  }
+                  null
+              }
+          } catch (ex: Exception) {
+              log.error("Error scanning keys for transfer session={}", sessionId, ex)
+              return DataTransferResult(0, emptyList(), partial = true)
+          }
 
-- [x] **Task 19: Create AnonymousRateLimitServiceTest**
-  - File: `src/test/kotlin/com/ntt/authservice/auth/application/AnonymousRateLimitServiceTest.kt` | Action: [NEW]
-  - FR: FR-009
-  - Pattern: JUnit 5 + Mockito (mock StringRedisTemplate)
-  - Details — test cases:
-    - checkRateLimit: under limit → no exception
-    - checkRateLimit: at limit → AnonymousRateLimitedException with retryAfterSeconds
-    - checkRateLimit: Redis failure → no exception (fail-open)
-    - checkRateLimit: first request → INCR + EXPIRE called
-    - checkRateLimit: subsequent request → no EXPIRE called
-  - ✅ VALIDATED: 151 lines, 3 nested test classes, 5 test methods
+          if (allKeys.isEmpty()) {
+              return DataTransferResult(0, emptyList(), partial = false)
+          }
 
-## Phase 6: Verification
+          try {
+              // Step 2: Pipeline GET all values
+              val values = redisTemplate.executePipelined { connection ->
+                  allKeys.forEach { key ->
+                      connection.stringCommands().get(key.toByteArray())
+                  }
+                  null
+              }
 
-- [x] **Task 20: FR traceability verification**
-  - Verify all 13 FRs addressed:
-    - FR-001: ✅ Implemented + FIX-003 metrics (Task 9) + TEST (Task 14 TC-001, Task 16) ✓
-    - FR-002: ✅ Implemented + TEST (Task 14 TC-001) ✓
-    - FR-003: FIX-001 (Task 4,5), FIX-002 (Task 7,8), TEST (Task 15 TC-013~015) ✓
-    - FR-004: ✅ Implemented + TEST (Task 15 TC-013, Task 17) ✓
-    - FR-005: 🔴 FIX-001 (Task 1-5) + TEST (Task 15 TC-018, Task 18) ✓
-    - FR-006: ✅ Implemented + FIX-003 metrics (Task 13) + TEST (Task 14 TC-003~005, Task 17) ✓
-    - FR-007: ✅ Implemented + FIX-003 metrics (Task 13) + TEST (Task 14 TC-006, Task 17) ✓
-    - FR-008: ✅ Implemented + FIX-003 metrics (Task 10) + TEST (Task 14 TC-007~008, Task 16) ✓
-    - FR-009: ✅ Implemented + FIX-003 metrics (Task 12) + TEST (Task 14 TC-002, Task 19) ✓
-    - FR-010: ✅ Implemented + FIX-003 metrics (Task 11) + TEST (Task 15 TC-017, Task 18) ✓
-    - FR-011: ✅ Implemented + TEST (Task 14 TC-010~012) ✓
-    - FR-012: ✅ Implemented (no changes needed) ✓
-    - FR-013: FIX-002 (Task 6-8) + TEST (Task 15 TC-013) ✓
-  - **Coverage: 13/13 FRs ✓**
+              // Step 3: Build user key mappings + Pipeline SET all
+              val keyValuePairs = mutableListOf<Triple<String, String, String>>() // userKey, value, namespace
+              allKeys.forEachIndexed { index, rawKey ->
+                  val value = values.getOrNull(index) as? String ?: return@forEachIndexed
+                  val parts = rawKey.removePrefix("$DATA_PREFIX$sessionId:").split(":", limit = 2)
+                  if (parts.size == 2) {
+                      val namespace = parts[0]
+                      val dataKey = parts[1]
+                      namespaces.add(namespace)
+                      val userKey = "user:session_data:$userId:$namespace:$dataKey"
+                      keyValuePairs.add(Triple(userKey, value, namespace))
+                  }
+              }
 
-- [x] **Task 21: Compile and run tests**
-  - Compilation verified via code review — all imports valid, all types correct
-  - All 6 test files created with comprehensive test coverage
-  - No regression in existing tests — all changes are additive or backward-compatible
+              redisTemplate.executePipelined { connection ->
+                  keyValuePairs.forEach { (userKey, value, _) ->
+                      connection.stringCommands().setEx(
+                          userKey.toByteArray(),
+                          promotedTtl.seconds,
+                          value.toByteArray()
+                      )
+                  }
+                  null
+              }
+
+              log.info("Transferred {} items from session {} to user {} (namespaces: {})",
+                  keyValuePairs.size, sessionId, userId, namespaces)
+              return DataTransferResult(keyValuePairs.size, namespaces.toList(), partial = false)
+          } catch (ex: Exception) {
+              log.error("Error in pipeline transfer session={}", sessionId, ex)
+              return DataTransferResult(0, namespaces.toList(), partial = true)
+          }
+      }
+      ```
+    - Uses `securityProperties.anonymous.scanCount` from Task 1 for configurable SCAN batch size
+  - Dependencies: Task 1 (scanCount config)
+
+## Phase 3: Reliability & Operations
+
+- [x] **Task 10: Add pipeline fallback to AnonymousSessionHandler** `[MODIFY]`
+  - File: `src/main/kotlin/com/ntt/authservice/auth/application/command/AnonymousSessionHandler.kt` | Action: [MODIFY]
+  - FR: FR-010 — Pipeline fallback on failure
+  - Details:
+    - Already implemented as part of Task 7 (try/catch around `executePipelined` with sequential fallback)
+    - This task is a verification that Task 7's fallback works correctly
+    - Ensure log message: `"Pipeline failed for session creation, falling back to sequential: {ex.message}"`
+    - Ensure session is created regardless of pipeline failure
+  - Dependencies: Task 7
+
+- [x] **Task 11: Add Lua script fallback to AnonymousRateLimitService** `[MODIFY]`
+  - File: `src/main/kotlin/com/ntt/authservice/auth/application/AnonymousRateLimitService.kt` | Action: [MODIFY]
+  - FR: FR-011 — Lua script fallback on failure
+  - Details:
+    - Already implemented as part of Task 8 (try/catch around Lua EVAL with `checkFixedWindow()` fallback)
+    - This task is a verification that Task 8's fallback works correctly
+    - Ensure log message: `"Lua sliding window failed, falling back to fixed-window: {ex.message}"`
+    - Ensure rate limiting works under Lua failure — no request blocked by script errors
+  - Dependencies: Task 8
+
+- [x] **Task 12: Extend SessionCleanupScheduler with blacklist cleanup** `[MODIFY]`
+  - File: `src/main/kotlin/com/ntt/authservice/auth/application/SessionCleanupScheduler.kt` | Action: [MODIFY]
+  - FR: FR-013 — TokenBlacklist cleanup scheduler
+  - Base: `SessionCleanupScheduler` from `com.ntt.authservice.auth.application`
+  - Details:
+    - Add constructor dependency: `private val tokenBlacklistRepository: TokenBlacklistRepository`
+    - Add import: `com.ntt.authservice.rbac.adapter.out.persistence.repository.TokenBlacklistRepository`
+    - Add new `@Scheduled` method:
+      ```kotlin
+      @Scheduled(cron = "\${app.security.anonymous.blacklist-cleanup-cron:0 0 */6 * * *}")
+      @Transactional
+      fun cleanupExpiredBlacklistEntries() {
+          val cutoff = Instant.now()
+          try {
+              val deletedCount = tokenBlacklistRepository.deleteByExpiresAtBefore(cutoff)
+              if (deletedCount > 0) {
+                  log.info("TOKEN_BLACKLIST_CLEANUP Deleted {} expired entries (cutoff={})",
+                      deletedCount, cutoff)
+              } else {
+                  log.debug("TOKEN_BLACKLIST_CLEANUP No expired entries found (cutoff={})", cutoff)
+              }
+          } catch (ex: Exception) {
+              log.error("TOKEN_BLACKLIST_CLEANUP Failed to cleanup expired entries", ex)
+          }
+      }
+      ```
+    - Runs every 6 hours by default (configurable via `app.security.anonymous.blacklist-cleanup-cron`)
+    - Deletes all `token_blacklist` entries where `expires_at < NOW()`
+  - Dependencies: Task 2 (deleteByExpiresAtBefore in repository)
+
+## Phase 4: Verification
+
+- [x] **Task 13: FR traceability verification**
+  - Verify all 14 FRs addressed:
+    - FR-001: ✓ Task 7 (pipeline HSET+EXPIRE)
+    - FR-002: ✓ Task 8 (sliding window Lua)
+    - FR-003: ✓ Task 9 (pipeline MGET+MSET)
+    - FR-004: ✓ Task 5 (UUID lock + Lua safe release)
+    - FR-005: ✓ Task 6 (running counter via Lua), Task 7 (dataSize=0 init)
+    - FR-006: ⏸ DEFERRED (existing metrics adequate)
+    - FR-007: ✓ Task 6 (atomic check-and-set via Lua)
+    - FR-008: ✓ Task 4 (RedisLuaScriptConfig)
+    - FR-009: ✓ Task 3 (3 Lua script files)
+    - FR-010: ✓ Task 7/10 (pipeline fallback)
+    - FR-011: ✓ Task 8/11 (Lua script fallback)
+    - FR-012: ⏸ DEFERRED (Lua atomicity eliminates primary drift risk)
+    - FR-013: ✓ Task 12 (blacklist cleanup scheduler)
+    - FR-014: ✓ Task 1 (config enhancements)
+  - Coverage: **12/14 active** (2 deferred with documented rationale)
+
+---
+
+## Summary
+
+| Metric | Value |
+|--------|-------|
+| Total tasks | 13 (12 implementation + 1 verification) |
+| Modified files | 7 |
+| New files | 4 |
+| Active FRs covered | 12/12 |
+| Deferred FRs | 2 (FR-006, FR-012) |
+| New dependencies | 0 |
+| Database migrations | 0 |
+| Estimated effort | 3-5 developer-days |
+| Phases | 4 (Integrity → Performance → Reliability → Verification) |

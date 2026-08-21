@@ -338,6 +338,15 @@ graph LR
 | **Tần suất** | Very high (every API request for introspection), rare (force logout) |
 | **Nhóm chức năng** | FR-003 Token |
 
+#### 4.2 Điều kiện
+
+| Loại | Mô tả |
+|------|--------|
+| **Pre-conditions** | Valid JWT or resource server credentials |
+| **Post-conditions (Success)** | Introspection: response with active status. Revoke: all sessions invalidated |
+| **Post-conditions (Failure)** | Error response returned |
+| **Invariants** | JWKS endpoint always available regardless of auth state |
+
 #### 4.3 Luồng chính (Basic Flow) — Introspection
 
 | Step | Actor Action | System Response | Data | Ghi chú |
@@ -345,6 +354,20 @@ graph LR
 | 1 | Resource server sends `POST /api/auth/introspect` | Parse token, extract claims | `IntrospectionRequest` | - |
 | 2 | - | Check jti in `token_blacklist` | DB query | - |
 | 3 | - | Return `IntrospectionResponse(active, sub, roles, permissions, exp)` | `IntrospectionResponse` | HTTP 200 |
+
+#### 4.5 Luồng ngoại lệ (Exception Flows)
+
+##### EF-001: Token Blacklisted
+- **Trigger**: Tại Step 2 khi jti found in blacklist
+- **Error**: N/A (not error — return `active: false`)
+- **Handling**: Return `IntrospectionResponse(active=false)`
+- **Post-condition**: Token rejected by resource server
+
+##### EF-002: Token Malformed
+- **Trigger**: Tại Step 1 khi token cannot be parsed
+- **Error**: N/A (return `active: false`)
+- **Handling**: Return `IntrospectionResponse(active=false)`
+- **Post-condition**: No session impact
 
 #### 4.6 Quy tắc nghiệp vụ (Business Rules)
 
@@ -371,6 +394,15 @@ graph LR
 | **Độ ưu tiên** | Medium |
 | **Tần suất** | On-demand (user-initiated) hoặc periodic (forced by expiry policy) |
 | **Nhóm chức năng** | FR-004 Password |
+
+#### 4.2 Điều kiện
+
+| Loại | Mô tả |
+|------|--------|
+| **Pre-conditions** | User authenticated (JWT), knows current password |
+| **Post-conditions (Success)** | Password updated, history entry added, `passwordChangedAt` updated |
+| **Post-conditions (Failure)** | No change to password or history |
+| **Invariants** | Password always stored as BCrypt hash (strength 12) |
 
 #### 4.3 Luồng chính (Basic Flow)
 
@@ -410,6 +442,134 @@ graph LR
 
 ---
 
+### UC-005: Thiết lập TOTP Authenticator
+
+#### 4.1 Thông tin chung
+
+| Mục | Nội dung |
+|-----|----------|
+| **Mã** | UC-005 |
+| **Tên** | Thiết lập TOTP Authenticator App |
+| **Mô tả ngữ nghĩa** | Cho phép người dùng thiết lập xác thực TOTP bằng ứng dụng Authenticator (Google Authenticator, Authy, Microsoft Authenticator). Quy trình gồm 2 bước: setup (nhận QR code) và confirm (xác nhận code từ app). |
+| **Actor** | End User |
+| **Trigger** | User chọn enable TOTP MFA trong settings |
+| **Độ ưu tiên** | High |
+| **Tần suất** | One-time per user (initial setup) |
+| **Nhóm chức năng** | FR-001 MFA |
+
+#### 4.2 Điều kiện
+
+| Loại | Mô tả |
+|------|--------|
+| **Pre-conditions** | User authenticated, TOTP not yet enabled |
+| **Post-conditions (Success)** | `totpSecretEncrypted` saved on user, `mfaEnabled = true`, `mfaMethod = TOTP` |
+| **Post-conditions (Failure)** | No changes to user entity |
+| **Invariants** | TOTP secret always AES-256-GCM encrypted before persistence |
+
+#### 4.3 Luồng chính (Basic Flow)
+
+| Step | Actor Action | System Response | Data | Ghi chú |
+|------|-------------|----------------|------|---------|
+| 1 | Call `POST /api/auth/mfa/totp/setup` | Generate TOTP secret (Base32) | `TotpSetupResponse` | dev.samstevens.totp |
+| 2 | - | Build `otpauth://` URI with issuer, account | QR code data | - |
+| 3 | - | Return QR URI + secret (display once) | HTTP 200 | Secret NOT yet persisted |
+| 4 | User scans QR code with Authenticator app | - | - | - |
+| 5 | User reads 6-digit code from app | - | - | - |
+| 6 | Call `POST /api/auth/mfa/totp/confirm` with code | Verify TOTP code against secret | `TotpConfirmRequest` | - |
+| 7 | - | AES-256-GCM encrypt secret, save to user entity | DB update | @Transactional |
+| 8 | - | Set `mfaEnabled = true`, `mfaMethod = TOTP` | `UserEntity` | - |
+| 9 | - | Return 200 OK with success confirmation | HTTP 200 | - |
+
+#### 4.5 Luồng ngoại lệ (Exception Flows)
+
+##### EF-001: TOTP Confirm Code Invalid
+- **Trigger**: Tại Step 6 khi TOTP code does not match generated secret
+- **Error**: `TOTP_CONFIRM_FAILED`
+- **Handling**: Return 400, user can retry with new code
+- **Post-condition**: Secret not persisted, setup can be retried
+
+#### 4.6 Quy tắc nghiệp vụ (Business Rules)
+
+| BR-ID | Quy tắc | Mô tả chi tiết | Validation |
+|-------|---------|----------------|-----------|
+| BR-019 | TOTP Secret Encryption | Secret phải AES-256-GCM encrypt trước khi persist | Code enforcement |
+| BR-020 | TOTP Confirm Required | Setup chưa hoàn tất cho đến khi user confirm bằng valid code | Two-step process |
+| BR-003 | TOTP Window | TOTP drift tolerance ±1 step (±30 giây) | `DefaultCodeVerifier.setAllowedTimePeriodDiscrepancy(1)` |
+
+#### 4.8 Mockup / Wireframe Description
+
+```
+┌─────────────────────────────────────┐
+│  Header: Setup Authenticator        │
+├─────────────────────────────────────┤
+│  Step 1: Scan QR Code              │
+│    ┌──────────┐                     │
+│    │ [QR CODE]│  Secret: JBSW...    │
+│    └──────────┘  (copy to clipboard)│
+│                                     │
+│  Step 2: Enter code from app        │
+│    [ 6-digit code: ______ ]         │
+│    [ Confirm ]  [ Cancel ]          │
+├─────────────────────────────────────┤
+│  Footer: Use Google Authenticator   │
+└─────────────────────────────────────┘
+```
+
+---
+
+### UC-006: Cấu hình Password Policy per Domain
+
+#### 4.1 Thông tin chung
+
+| Mục | Nội dung |
+|-----|----------|
+| **Mã** | UC-006 |
+| **Tên** | Cấu hình Password Policy per Domain |
+| **Mô tả ngữ nghĩa** | Admin cần cấu hình password policy khác nhau cho từng business domain. Domain "payment" cần chính sách nghiêm ngặt hơn domain "booking". |
+| **Actor** | System Administrator |
+| **Trigger** | Admin cần thay đổi password policy cho một domain |
+| **Độ ưu tiên** | Medium |
+| **Tần suất** | Rare (initial setup + occasional updates) |
+| **Nhóm chức năng** | FR-004 Password |
+
+#### 4.2 Điều kiện
+
+| Loại | Mô tả |
+|------|--------|
+| **Pre-conditions** | Admin authenticated with ADMIN role, domain exists |
+| **Post-conditions (Success)** | Policy saved/updated, Passay validator cache invalidated |
+| **Post-conditions (Failure)** | No changes to policy |
+| **Invariants** | One policy per domain (UNIQUE constraint on domain_id) |
+
+#### 4.3 Luồng chính (Basic Flow)
+
+| Step | Actor Action | System Response | Data | Ghi chú |
+|------|-------------|----------------|------|---------|
+| 1 | Call `GET /api/admin/domains/{id}/password-policy` | Load current policy (or defaults) | `PasswordPolicyEntity` | - |
+| 2 | Modify policy values | - | - | Admin UI |
+| 3 | Call `PUT /api/admin/domains/{id}/password-policy` | Validate policy values | `PasswordPolicyEntity` | Business validation |
+| 4 | - | Save/update policy | DB upsert | @Transactional |
+| 5 | - | Invalidate Passay validator cache for domain | Cache eviction | `ConcurrentHashMap.remove()` |
+| 6 | - | Return updated policy | HTTP 200 | - |
+
+#### 4.5 Luồng ngoại lệ (Exception Flows)
+
+##### EF-001: Invalid Policy Values
+- **Trigger**: Tại Step 3 khi validation fails (e.g., minLength > maxLength)
+- **Error**: `INVALID_POLICY_VALUES`
+- **Handling**: Return 400 with validation errors
+- **Post-condition**: No policy change
+
+#### 4.6 Quy tắc nghiệp vụ (Business Rules)
+
+| BR-ID | Quy tắc | Mô tả chi tiết | Validation |
+|-------|---------|----------------|-----------|
+| BR-015 | Default Policy | minLength=8, requireUppercase=true, requireDigit=true, historyCount=5 | Global fallback |
+| BR-021 | Policy Validation | minLength <= maxLength, historyCount >= 0, maxAgeDays > 0 | Input validation |
+| BR-022 | Cache Invalidation | After policy update, invalidate Passay validator cache for that domain | Immediate effect |
+
+---
+
 ## 5. Ma trận truy xuất (Traceability Matrix)
 
 | UC-ID | FR-ID | NFR-ID | BR-ID | Screen | API Endpoint | DB Entity |
@@ -418,8 +578,8 @@ graph LR
 | UC-002 | FR-002 | NFR-003 | BR-007..BR-010 | SSO Login | POST /api/auth/sso/callback, GET /api/auth/sso/providers | UserIdentityEntity |
 | UC-003 | FR-003 | NFR-004 | BR-011..BR-014 | N/A (API only) | POST /api/auth/introspect, GET /.well-known/jwks.json | TokenBlacklist |
 | UC-004 | FR-004 | NFR-005 | BR-015..BR-018 | Password Change | POST /api/auth/change-password | PasswordPolicyEntity, PasswordHistoryEntity |
-| UC-005 | FR-001 | NFR-002 | BR-003 | TOTP Setup | POST /api/auth/mfa/totp/setup, POST /api/auth/mfa/totp/confirm | UserEntity (totpSecretEncrypted) |
-| UC-006 | FR-004 | NFR-005 | BR-015 | Admin Policy | PUT /api/admin/domains/{id}/password-policy | PasswordPolicyEntity |
+| UC-005 | FR-001 | NFR-002 | BR-003, BR-019..BR-020 | TOTP Setup | POST /api/auth/mfa/totp/setup, POST /api/auth/mfa/totp/confirm | UserEntity (totpSecretEncrypted) |
+| UC-006 | FR-004 | NFR-005 | BR-015, BR-021..BR-022 | Admin Policy | PUT /api/admin/domains/{id}/password-policy | PasswordPolicyEntity |
 
 ---
 

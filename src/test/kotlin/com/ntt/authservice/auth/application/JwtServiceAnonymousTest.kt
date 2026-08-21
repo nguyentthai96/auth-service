@@ -9,9 +9,10 @@ import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.*
 import org.junit.jupiter.api.extension.ExtendWith
 import org.mockito.junit.jupiter.MockitoExtension
+import org.mockito.junit.jupiter.MockitoSettings
+import org.mockito.quality.Strictness
 import org.mockito.kotlin.whenever
 import org.mockito.Mock
-import org.mockito.kotlin.lenient
 
 /**
  * Unit tests for JwtService anonymous token methods:
@@ -20,6 +21,7 @@ import org.mockito.kotlin.lenient
  * Uses HMAC-SHA256 (legacy key) for simplicity — RS256 requires key pair setup.
  */
 @ExtendWith(MockitoExtension::class)
+@MockitoSettings(strictness = Strictness.LENIENT)
 @DisplayName("JwtService Anonymous Token Tests")
 class JwtServiceAnonymousTest {
 
@@ -48,8 +50,8 @@ class JwtServiceAnonymousTest {
             promotedDataTtlSeconds = 604800
         )
 
-        lenient().whenever(securityProperties.jwt).thenReturn(jwtProps)
-        lenient().whenever(securityProperties.anonymous).thenReturn(anonymousProps)
+        whenever(securityProperties.jwt).thenReturn(jwtProps)
+        whenever(securityProperties.anonymous).thenReturn(anonymousProps)
 
         jwtService = JwtService(securityProperties)
     }

@@ -52,7 +52,18 @@ enum class AuthErrorCode(
     ANONYMOUS_DATA_LIMIT_EXCEEDED("AUTH_041", "auth.anonymous_data_limit_exceeded", "Anonymous session data limit exceeded", HttpStatus.PAYLOAD_TOO_LARGE),
     ANONYMOUS_PROMOTION_CONFLICT("AUTH_042", "auth.anonymous_promotion_conflict", "Anonymous session promotion conflict", HttpStatus.CONFLICT),
     ANONYMOUS_RATE_LIMITED("AUTH_043", "auth.anonymous_rate_limited", "Anonymous token creation rate limited", HttpStatus.TOO_MANY_REQUESTS),
-    ANONYMOUS_MAX_RENEWALS("AUTH_044", "auth.anonymous_max_renewals", "Anonymous token maximum renewals exceeded", HttpStatus.TOO_MANY_REQUESTS);
+    ANONYMOUS_MAX_RENEWALS("AUTH_044", "auth.anonymous_max_renewals", "Anonymous token maximum renewals exceeded", HttpStatus.TOO_MANY_REQUESTS),
+
+    // --- Event Sourcing Error Codes — AUTH_050~053 ---
+    EVENT_STORE_PERSIST_FAILED("AUTH_050", "auth.event_store_persist_failed", "Event store write failure", HttpStatus.INTERNAL_SERVER_ERROR),
+    OUTBOX_PUBLISH_FAILED("AUTH_051", "auth.outbox_publish_failed", "Outbox Kafka publish failure", HttpStatus.INTERNAL_SERVER_ERROR),
+    EVENT_NOT_FOUND("AUTH_052", "auth.event_not_found", "Event not found", HttpStatus.NOT_FOUND),
+    OUTBOX_MAX_RETRIES_EXCEEDED("AUTH_053", "auth.outbox_max_retries", "Outbox max retries exceeded", HttpStatus.INTERNAL_SERVER_ERROR),
+
+    // --- Inter-service Auth Error Codes — AUTH_060~062 (FR-021) ---
+    INVALID_SERVICE_TOKEN("AUTH_060", "auth.invalid_service_token", "Invalid or expired service authentication token", HttpStatus.UNAUTHORIZED),
+    INSUFFICIENT_SCOPE("AUTH_061", "auth.insufficient_scope", "Service does not have sufficient scope for this operation", HttpStatus.FORBIDDEN),
+    SERVICE_NOT_REGISTERED("AUTH_062", "auth.service_not_registered", "Service is not registered for inter-service communication", HttpStatus.FORBIDDEN);
 
     /**
      * Bridge to base-core ErrorCodeBase via delegation.

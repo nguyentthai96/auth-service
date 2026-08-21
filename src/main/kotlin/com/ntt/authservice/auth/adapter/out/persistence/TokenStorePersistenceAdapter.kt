@@ -44,7 +44,6 @@ class TokenStorePersistenceAdapter(
     }
 
     override fun revokeAllForUser(userId: Long): Int {
-        // TODO: Add custom query findAllByUserIdAndRevokedFalse for batch revocation
-        return 0
+        return refreshTokenRepository.revokeAllByUserId(userId)
     }
 }

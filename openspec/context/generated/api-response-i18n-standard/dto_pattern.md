@@ -1,56 +1,47 @@
 # DTO Pattern
 
-_Generated: 2026-08-22_
+_Generated: 2026-08-25_
 
 ## Request DTO
 
-- `RegisterRequestDto` — `src/main/kotlin/com/ntt/authservice/auth/adapter/in/web/dto/RequestDtos.kt`
-  - Annotations: `@field:NotBlank`, `@field:Email`, `@field:Size(min = 8, max = 100)`
-  - Fields: username, email, password, fullName, phone?, domainCode, anonymousSessionId?, anonymousToken?
-
-- `LoginRequestDto` — `src/main/kotlin/com/ntt/authservice/auth/adapter/in/web/dto/RequestDtos.kt`
-  - Annotations: `@field:NotBlank`
-  - Fields: username, password, domainCode?, captchaToken?, trustedDeviceHash?, deviceFingerprint?, captchaPayload?, anonymousSessionId?, anonymousToken?
-
-- `RefreshTokenRequestDto` — `src/main/kotlin/com/ntt/authservice/auth/adapter/in/web/dto/RequestDtos.kt`
-  - Annotations: `@field:NotBlank`
-  - Fields: refreshToken
-
-- `SwitchDomainRequestDto` — `src/main/kotlin/com/ntt/authservice/auth/adapter/in/web/dto/RequestDtos.kt`
-  - Annotations: `@field:NotBlank`
-  - Fields: domainCode
-
-- `ChangePasswordRequestDto` — (referenced in CqrsAuthController, imported from command package)
-  - Fields: oldPassword, newPassword
-
-- `ForgotPasswordRequestDto` — (referenced in CqrsAuthController, imported from command package)
-  - Fields: email
+- RegisterRequestDto — `src/main/kotlin/com/ntt/authservice/auth/adapter/in/web/dto/RequestDtos.kt` — annotations: @Valid, @NotBlank, @Email, @Size
+- LoginRequestDto — `src/main/kotlin/com/ntt/authservice/auth/adapter/in/web/dto/RequestDtos.kt` — annotations: @Valid, @NotBlank
+- RefreshTokenRequestDto — `src/main/kotlin/com/ntt/authservice/auth/adapter/in/web/dto/RequestDtos.kt` — annotations: @NotBlank
+- SwitchDomainRequestDto — `src/main/kotlin/com/ntt/authservice/auth/adapter/in/web/dto/RequestDtos.kt` — annotations: @NotBlank
+- MfaVerifyRequest — `src/main/kotlin/com/ntt/authservice/auth/adapter/in/web/dto/MfaDtos.kt` — annotations: @Valid, @NotBlank
+- TotpConfirmRequest — `src/main/kotlin/com/ntt/authservice/auth/adapter/in/web/dto/MfaDtos.kt` — annotations: @Valid, @NotBlank
+- MfaResendRequest — `src/main/kotlin/com/ntt/authservice/auth/adapter/in/web/dto/MfaDtos.kt` — annotations: @Valid, @NotBlank
+- MfaSettingsRequest — `src/main/kotlin/com/ntt/authservice/auth/adapter/in/web/dto/MfaDtos.kt` — annotations: @Valid
+- IntrospectionRequest — `src/main/kotlin/com/ntt/authservice/auth/adapter/in/web/dto/TokenDtos.kt` — annotations: @Valid, @NotBlank
+- CreateAnonymousSessionRequest — `src/main/kotlin/com/ntt/authservice/auth/adapter/in/web/dto/AnonymousDtos.kt` — annotations: none (all optional)
+- StoreSessionDataRequest — `src/main/kotlin/com/ntt/authservice/auth/adapter/in/web/dto/AnonymousDtos.kt` — annotations: @Valid
+- SsoCallbackRequest — `src/main/kotlin/com/ntt/authservice/auth/adapter/in/web/dto/SsoDtos.kt` — annotations: @Valid, @NotBlank
+- SsoLinkRequest — `src/main/kotlin/com/ntt/authservice/auth/adapter/in/web/dto/SsoDtos.kt` — annotations: @Valid
+- DeletionRequest — `src/main/kotlin/com/ntt/authservice/auth/adapter/in/web/AccountLifecycleController.kt` — annotations: @Valid, @Size(max=1000)
+- ChangePasswordRequestDto — `src/main/kotlin/com/ntt/authservice/auth/adapter/in/web/AuthController.kt` — annotations: @Valid, @NotBlank, @Size
+- ForgotPasswordRequestDto — `src/main/kotlin/com/ntt/authservice/auth/adapter/in/web/AuthController.kt` — annotations: @Valid, @NotBlank, @Email
 
 ## Response DTO
 
-- `AuthResponse` — `src/main/kotlin/com/ntt/authservice/auth/adapter/in/web/dto/AuthResponse.kt`
-  - Pattern: `data class` with `companion object { fun from(AuthToken) }`
-  - Fields: accessToken, refreshToken?, tokenType, expiresIn, userId, username, activeDomain, roles, permissions, promotedFromAnonymous, dataTransferred?, message? (`@JsonInclude(NON_NULL)`)
-  - Note: `message` field is optional — used for i18n success message (FR-005)
+- AuthResponse — `src/main/kotlin/com/ntt/authservice/auth/adapter/in/web/dto/AuthResponse.kt` — data class with `message` field
+- SessionResponse — `src/main/kotlin/com/ntt/authservice/auth/adapter/in/web/SessionController.kt` — inline data class
+- AnonymousTokenResponse — `src/main/kotlin/com/ntt/authservice/auth/adapter/in/web/dto/AnonymousDtos.kt`
+- SessionDataResponse — `src/main/kotlin/com/ntt/authservice/auth/adapter/in/web/dto/AnonymousDtos.kt`
+- IntrospectionResponse — `src/main/kotlin/com/ntt/authservice/auth/adapter/in/web/dto/TokenDtos.kt`
+- RevokeSessionsResponse — `src/main/kotlin/com/ntt/authservice/auth/adapter/in/web/dto/TokenDtos.kt`
+- TotpSetupResponse — `src/main/kotlin/com/ntt/authservice/auth/adapter/in/web/dto/MfaDtos.kt`
+- MfaRequiredResponse — `src/main/kotlin/com/ntt/authservice/auth/adapter/in/web/dto/MfaDtos.kt`
+- MfaSettingsResponse — `src/main/kotlin/com/ntt/authservice/auth/adapter/in/web/dto/MfaDtos.kt`
 
-- `DataTransferredInfo` — `src/main/kotlin/com/ntt/authservice/auth/adapter/in/web/dto/AuthResponse.kt`
-  - Fields: itemCount, namespaces, status
-  - Purpose: Anonymous session promotion metadata
+## DTO Pattern Notes
 
-## Validation Pattern
-
-- Bean Validation (Jakarta): `@field:NotBlank`, `@field:Email`, `@field:Size`
-- Controller validation: `@Valid @RequestBody`
-- Validator: `LocalValidatorFactoryBean` injected into `BaseControllerAdvice`
-
-## DTO Naming Convention
-
-- Request DTOs: `*RequestDto` (e.g., `LoginRequestDto`, `RegisterRequestDto`)
-- Response DTOs: `*Response` (e.g., `AuthResponse`)
-- Grouped in files: `RequestDtos.kt`, `AuthResponse.kt`, `AnonymousDtos.kt`, `MfaDtos.kt`, `SsoDtos.kt`, `TokenDtos.kt`
-- Location: `auth/adapter/in/web/dto/`
+- Kotlin data classes (immutable by default)
+- Jakarta Bean Validation annotations (@Valid, @NotBlank, @Email, @Size)
+- No base class inheritance — all standalone data classes
+- Request DTOs in `dto/` package or inline in controller files (legacy pattern)
+- Response DTOs in `dto/` package or inline in controller files
 
 ## NOT DETECTED
 
-- Filter DTOs — NOT DETECTED (filters work with raw headers, not DTOs)
-- Pagination DTOs — NOT DETECTED for i18n scope
+- Filter DTOs (no filter/criteria DTOs detected)
+- Pagination DTOs (standard Spring Pageable used directly)

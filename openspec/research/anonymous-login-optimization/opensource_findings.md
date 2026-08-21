@@ -1,6 +1,6 @@
 # Kết quả tìm kiếm Open Source: Anonymous Login Optimization
 
-> Đánh giá các dự án open source đã triển khai tính năng tương tự — scoring matrix + gap analysis.
+> Đánh giá các dự án open source và thư viện đã triển khai các pattern tối ưu hóa liên quan — Redis pipelining, sliding window rate limiting, distributed locking.
 
 ---
 
@@ -8,20 +8,20 @@
 
 | Mục | Nội dung |
 |-----|----------|
-| **Tính năng** | Anonymous Login Optimization (anonymous sessions, session promotion, data merge) |
-| **Ngày tìm kiếm** | 2025-01-20 |
-| **Số dự án tìm thấy** | 8 |
+| **Tính năng** | Anonymous Login Optimization (Redis perf, rate limiting, lock hardening, observability) |
+| **Ngày tìm kiếm** | 2025-07-15 |
+| **Số dự án tìm thấy** | 7 |
 | **Số dự án đánh giá chi tiết** | 4 |
-| **Tech stack mục tiêu** | Spring Boot, Kotlin, Redis, PostgreSQL, JWT (RS256) |
+| **Tech stack mục tiêu** | Spring Boot 3.x, Kotlin, Redis 7+, Lettuce, Micrometer |
 
 ### Chiến lược tìm kiếm
 
 | # | Query | Kết quả | Ghi chú |
 |---|-------|---------|---------|
-| 1 | `"anonymous authentication open source GitHub repository"` | 5 kết quả relevant | Keycloak, Firebase emulators, Spring Security samples |
-| 2 | `"guest session promotion library framework Spring Boot"` | 3 kết quả relevant | Mostly articles, few libraries |
-| 3 | `"anonymous JWT token session merge open source"` | 4 kết quả relevant | Custom implementations, no standalone library |
-| 4 | `"progressive authentication lazy registration IAM open source"` | 3 kết quả relevant | Auth0 SDKs, Keycloak extensions |
+| 1 | `"Redis rate limiting library Java Spring Boot sliding window"` | 4 kết quả relevant | bucket4j, resilience4j, Redis-based custom |
+| 2 | `"Redisson distributed lock Spring Boot"` | 3 kết quả relevant | Redisson, Spring Integration, custom SETNX |
+| 3 | `"Redis pipelining Spring Data optimization library"` | 3 kết quả relevant | Lettuce pipeline, Spring Data executePipelined |
+| 4 | `"Redis Lua script rate limiting atomic operations"` | 4 kết quả relevant | Various Lua script implementations |
 
 ---
 
@@ -29,14 +29,13 @@
 
 | # | Tên dự án | URL | Stars | Last Commit | License | Đánh giá? |
 |---|----------|-----|-------|-------------|---------|-----------|
-| 1 | Keycloak | https://github.com/keycloak/keycloak | 25k+ | Active (daily) | Apache 2.0 | ✅ Có |
-| 2 | Spring Security (anonymous auth) | https://github.com/spring-projects/spring-security | 9k+ | Active (daily) | Apache 2.0 | ✅ Có |
-| 3 | Firebase Auth (Emulator Suite) | https://github.com/firebase/firebase-tools | 4k+ | Active (weekly) | MIT | ✅ Có |
-| 4 | Supabase Auth (GoTrue) | https://github.com/supabase/auth | 2k+ | Active (weekly) | MIT | ✅ Có |
-| 5 | FusionAuth | https://github.com/FusionAuth/fusionauth-issues | 1k+ | Active (monthly) | Proprietary (OSS core) | ❌ Không (proprietary core) |
-| 6 | Ory Kratos | https://github.com/ory/kratos | 11k+ | Active (weekly) | Apache 2.0 | ❌ Không (Go-based, no anonymous sessions) |
-| 7 | Authelia | https://github.com/authelia/authelia | 22k+ | Active (weekly) | Apache 2.0 | ❌ Không (proxy auth, no anonymous concept) |
-| 8 | SuperTokens | https://github.com/supertokens/supertokens-core | 13k+ | Active (weekly) | Apache 2.0 | ❌ Không (no session promotion feature) |
+| 1 | Bucket4j | https://github.com/bucket4j/bucket4j | 2.4k+ | Active (weekly) | Apache 2.0 | ✅ Có |
+| 2 | Redisson | https://github.com/redisson/redisson | 23k+ | Active (daily) | Apache 2.0 | ✅ Có |
+| 3 | Resilience4j | https://github.com/resilience4j/resilience4j | 9.7k+ | Active (monthly) | Apache 2.0 | ✅ Có |
+| 4 | Spring Data Redis (Pipeline) | https://github.com/spring-projects/spring-data-redis | 1.8k+ | Active (weekly) | Apache 2.0 | ✅ Có |
+| 5 | Lettuce | https://github.com/lettuce-io/lettuce-core | 5.5k+ | Active (weekly) | Apache 2.0 | ❌ Không (already in use via Spring Boot) |
+| 6 | Spring Integration Redis Lock | https://github.com/spring-projects/spring-integration | 1.6k+ | Active (weekly) | Apache 2.0 | ❌ Không (too heavy for this use case) |
+| 7 | RateLimitJ | https://github.com/mokies/ratelimitj | 400+ | Inactive (2+ years) | Apache 2.0 | ❌ Không (inactive, archived) |
 
 ---
 
@@ -46,121 +45,154 @@
 
 | Tiêu chí | Trọng số | 1-3 (Low) | 4-6 (Med) | 7-10 (High) |
 |----------|----------|-----------|-----------|-------------|
-| **Feature completeness** | 20% | No anonymous auth support | Basic anonymous tokens | Full anonymous + promotion + data merge |
-| **Applicability** (phù hợp tech stack) | 15% | Different language/framework | Partial fit (REST API) | Same stack (Spring Boot + Kotlin), easy integrate |
-| **Activity** (mức độ active) | 15% | No commits 6+ months | Monthly commits | Weekly/daily commits |
+| **Feature completeness** | 20% | Missing optimization features needed | Has basics | Full-featured for the optimization area |
+| **Applicability** (phù hợp tech stack) | 15% | Different stack/language | Partial fit | Same stack (Spring Boot + Redis), easy integrate |
+| **Activity** (mức độ active) | 15% | No commits 6+ months | Monthly commits | Weekly commits |
 | **Documentation** | 15% | No docs | README only | Full docs + examples + guides |
-| **Code quality** | 15% | No tests, messy code | Some tests | Well-tested, clean architecture |
-| **Community** | 10% | < 100 stars | 100-1000 stars | > 1000 stars, active discussions |
-| **Popularity** | 10% | Few users | Growing adoption | Widely adopted, production-proven |
+| **Code quality** | 15% | No tests, messy | Some tests | Well-tested, clean |
+| **Community** | 10% | < 100 stars | 100-1000 stars | > 1000 stars |
+| **Popularity** | 10% | Few users | Growing | Widely adopted |
 
 ### Kết quả đánh giá
 
-#### Keycloak
+#### Bucket4j
 
 | Tiêu chí | Điểm (1-10) | Trọng số | Điểm × Trọng số | Ghi chú |
 |----------|------------|----------|----------------|---------|
-| Feature completeness | 5 | 20% | 1.00 | Has anonymous user concept but limited — treats anonymous as pre-registered users, no true session promotion |
-| Applicability | 4 | 15% | 0.60 | Java-based but heavyweight — requires running Keycloak server, not embeddable in Spring Boot but different language stack |
-| Activity | 8 | 15% | 1.20 | Active development, weekly commits |
-| Documentation | 7 | 15% | 1.05 | Good API docs, guides for anonymous auth, migration guides |
-| Code quality | 7 | 15% | 1.05 | Clean Go code, good test coverage |
-| Community | 7 | 10% | 0.70 | 2k+ stars, growing community |
-| Popularity | 7 | 10% | 0.70 | Growing adoption, alternative to Firebase |
-| **Tổng điểm** | | | **6.70**/10 | |
+| Feature completeness | 9 | 20% | 1.80 | Token bucket and sliding window algorithms; Redis, Hazelcast, Infinispan backends; bandwidth limiting |
+| Applicability | 8 | 15% | 1.20 | Java library, Spring Boot integration available, supports Lettuce and Jedis for Redis backend |
+| Activity | 7 | 15% | 1.05 | Regular releases, active maintenance, responsive to issues |
+| Documentation | 8 | 15% | 1.20 | Comprehensive documentation with examples |
+| Code quality | 8 | 15% | 1.20 | Good test coverage, clean codebase |
+| Community | 7 | 10% | 0.70 | 2.4k+ stars, active community |
+| Popularity | 7 | 10% | 0.70 | Growing adoption, well-known in JVM ecosystem |
+| **Tổng điểm** | | | **7.85**/10 | |
+
+#### Redisson
+
+| Tiêu chí | Điểm (1-10) | Trọng số | Điểm × Trọng số | Ghi chú |
+|----------|------------|----------|----------------|---------|
+| Feature completeness | 10 | 20% | 2.00 | Complete distributed objects: locks (Redlock, fair, read-write), rate limiters, atomic counters, pipelining |
+| Applicability | 7 | 15% | 1.05 | Java library, Spring Boot starter available, but replaces default Lettuce client |
+| Activity | 9 | 15% | 1.35 | Daily commits, very active development |
+| Documentation | 9 | 15% | 1.35 | Excellent wiki, API docs, migration guides |
+| Code quality | 8 | 15% | 1.20 | Good test coverage, enterprise-grade |
+| Community | 10 | 10% | 1.00 | 23k+ stars, massive community |
+| Popularity | 10 | 10% | 1.00 | Most popular Redis client library for Java |
+| **Tổng điểm** | | | **8.95**/10 | |
+
+#### Resilience4j
+
+| Tiêu chí | Điểm (1-10) | Trọng số | Điểm × Trọng số | Ghi chú |
+|----------|------------|----------|----------------|---------|
+| Feature completeness | 6 | 20% | 1.20 | Has RateLimiter but in-memory only (no Redis backend); circuit breaker and retry modules excellent |
+| Applicability | 7 | 15% | 1.05 | First-class Spring Boot support, easy integration |
+| Activity | 6 | 15% | 0.90 | Monthly commits, stable but slower development |
+| Documentation | 9 | 15% | 1.35 | Excellent docs, many examples, well-documented patterns |
+| Code quality | 9 | 15% | 1.35 | Very clean code, comprehensive tests |
+| Community | 9 | 10% | 0.90 | 9.7k+ stars, active community |
+| Popularity | 9 | 10% | 0.90 | De facto standard for resilience patterns in Java |
+| **Tổng điểm** | | | **7.65**/10 | |
+
+#### Spring Data Redis (Pipeline + Lua)
+
+| Tiêu chí | Điểm (1-10) | Trọng số | Điểm × Trọng số | Ghi chú |
+|----------|------------|----------|----------------|---------|
+| Feature completeness | 7 | 20% | 1.40 | Pipeline via executePipelined(), Lua via execute(RedisScript), MGET/MSET — not a complete optimization library |
+| Applicability | 10 | 15% | 1.50 | Already in project — zero migration, same StringRedisTemplate |
+| Activity | 9 | 15% | 1.35 | Part of Spring ecosystem, very active, weekly commits |
+| Documentation | 7 | 15% | 1.05 | Pipeline/Lua docs exist but sparse; community examples fill gaps |
+| Code quality | 9 | 15% | 1.35 | Excellent test coverage, Spring team quality |
+| Community | 8 | 10% | 0.80 | 1.8k+ stars (Spring Data Redis module specifically) |
+| Popularity | 10 | 10% | 1.00 | Default Redis integration for Spring Boot — ubiquitous |
+| **Tổng điểm** | | | **8.45**/10 | |
 
 ### Bảng tóm tắt điểm
 
 | # | Dự án | Feature | Applicability | Activity | Docs | Code | Community | Popularity | **Tổng** |
 |---|-------|---------|:---:|:---:|:---:|:---:|:---:|:---:|:---:|
-| 1 | Spring Security | 3 | 10 | 9 | 8 | 9 | 9 | 10 | **7.90** |
-| 2 | Keycloak | 5 | 4 | 9 | 9 | 8 | 10 | 10 | **7.50** |
-| 3 | Firebase Auth | 9 | 3 | 8 | 9 | 8 | 8 | 9 | **7.70** |
-| 4 | Supabase Auth (GoTrue) | 7 | 4 | 8 | 7 | 7 | 7 | 7 | **6.70** |
+| 1 | Bucket4j | 9 | 8 | 7 | 8 | 8 | 7 | 7 | **7.85** |
+| 2 | Redisson | 10 | 7 | 9 | 9 | 8 | 10 | 10 | **8.95** |
+| 3 | Resilience4j | 6 | 7 | 6 | 9 | 9 | 9 | 9 | **7.65** |
+| 4 | Spring Data Redis (Pipeline) | 7 | 10 | 9 | 7 | 9 | 8 | 10 | **8.45** |
 
 ---
 
 ## 4. Gap Analysis chi tiết
 
-### Keycloak — Gap Analysis
+### Bucket4j — Gap Analysis
 
-**Overall Score**: 7.50 / 10
-**URL**: https://github.com/keycloak/keycloak
-
-| Aspect | Có (✅) | Thiếu (❌) | Điểm mạnh | Điểm yếu |
-|--------|:---:|:---:|-----------|----------|
-| Anonymous user creation | ✅ | | Users can be created without email/password | Requires Keycloak admin API |
-| Session promotion (anon→auth) | | ❌ | - | No built-in "link anonymous to real user" — requires custom SPI |
-| Temporary data storage | | ❌ | - | No concept of anonymous session data store |
-| JWT anonymous tokens | ⚠️ | | Can issue tokens with limited scopes | Token doesn't carry `type=anonymous` semantics |
-| Rate limiting | ✅ | | Brute force detection built-in | Not specific to anonymous abuse |
-| Session lifecycle | ✅ | | Configurable session TTL, idle timeout | Session management is server-side |
-| Integration (Spring Boot) | ⚠️ | | OIDC/OAuth2 integration exists | Requires running Keycloak server — heavyweight |
-| Scalability | ✅ | | Clustered deployment, Infinispan cache | Operational complexity |
-
-**Verdict**: Tham khảo pattern — Keycloak's session model and SPI extensibility offer design inspiration, but it's too heavyweight to adopt directly.
-**Recommendation**: Tham khảo pattern
-**Reasoning**: Keycloak lacks native session promotion and requires running a separate server. The auth-service already has its own JWT infrastructure. Better to reference Keycloak's session lifecycle patterns and build custom.
-
-### Spring Security (Anonymous Authentication) — Gap Analysis
-
-**Overall Score**: 7.90 / 10
-**URL**: https://github.com/spring-projects/spring-security
+**Overall Score**: 7.85 / 10
+**URL**: https://github.com/bucket4j/bucket4j
 
 | Aspect | Có (✅) | Thiếu (❌) | Điểm mạnh | Điểm yếu |
 |--------|:---:|:---:|-----------|----------|
-| Anonymous authentication filter | ✅ | | `AnonymousAuthenticationFilter` provides `AnonymousAuthenticationToken` | In-memory only, no persistence |
-| Session promotion (anon→auth) | | ❌ | - | No built-in promotion mechanism — authentication replaces anonymous principal |
-| Temporary data storage | | ❌ | - | No anonymous data store concept |
-| JWT anonymous tokens | | ❌ | - | Anonymous auth uses in-memory token, not JWT |
-| Rate limiting | | ❌ | - | No built-in rate limiting (delegated to app) |
-| Session lifecycle | ⚠️ | | Session management exists | Anonymous sessions not tracked |
-| Integration (Spring Boot) | ✅ | | Native — already in our stack | - |
-| Scalability | ✅ | | Stateless design possible | Depends on implementation |
+| Sliding window rate limiting | ✅ | | Token bucket = smooth rate limiting without burst-at-boundary | Not exactly sliding window — uses token refill, different algorithm |
+| Redis backend | ✅ | | Supports Lettuce, Jedis, Redisson as backends | Adds dependency, requires bucket configuration |
+| Spring Boot integration | ✅ | | `bucket4j-spring-boot-starter` available | Annotation-based — may not fit CQRS handler pattern |
+| Pipelining | | ❌ | - | Rate limiting only — not a general Redis pipelining solution |
+| Distributed locking | | ❌ | - | Not in scope |
+| Observability | ⚠️ | | Micrometer integration exists | Limited — only rate limit metrics |
+| Kotlin support | ✅ | | Java library, works in Kotlin | No Kotlin-specific APIs |
 
-**Verdict**: Tham khảo pattern + extend — Use Spring Security's `AnonymousAuthenticationFilter` concept as foundation, but build JWT-based anonymous tokens on top.
-**Recommendation**: Tham khảo pattern
-**Reasoning**: Spring Security's anonymous auth is too basic for our needs (no JWT, no session promotion, no data merge). However, the filter chain integration pattern and `AnonymousAuthenticationToken` concept provide a solid foundation to extend.
+**Verdict**: Có thể dùng trực tiếp — For rate limiting optimization only. Bucket4j's token bucket algorithm solves the burst-at-boundary problem of fixed-window rate limiting.
+**Recommendation**: Tham khảo pattern — Use Bucket4j's token bucket algorithm concept but implement using existing `StringRedisTemplate` with Lua scripts to avoid adding a new dependency.
+**Reasoning**: Adding Bucket4j as a dependency is viable but introduces a new library for a single concern that can be solved with a custom Lua script (10-15 lines). The auth-service already has Redis Lua capability. Reference Bucket4j's algorithm, implement natively.
 
-### Firebase Auth (Anonymous Authentication) — Gap Analysis
+### Redisson — Gap Analysis
 
-**Overall Score**: 7.70 / 10
-**URL**: https://firebase.google.com/docs/auth/web/anonymous-auth
-
-| Aspect | Có (✅) | Thiếu (❌) | Điểm mạnh | Điểm yếu |
-|--------|:---:|:---:|-----------|----------|
-| Anonymous user creation | ✅ | | `signInAnonymously()` creates temporary user | Proprietary Google service |
-| Session promotion (anon→auth) | ✅ | | `linkWithCredential()` upgrades anonymous to permanent | Excellent pattern design |
-| Temporary data storage | ✅ | | Firestore/RTDB per-user data | Tied to Firebase ecosystem |
-| JWT anonymous tokens | ✅ | | Issues Firebase ID token for anonymous users | Non-standard JWT format |
-| Rate limiting | ✅ | | Built-in abuse prevention | Google-managed quotas |
-| Session lifecycle | ✅ | | Auto-cleanup of old anonymous accounts | Configurable retention |
-| Integration (Spring Boot) | | ❌ | - | Firebase Admin SDK exists but different paradigm |
-| Scalability | ✅ | | Google-scale infrastructure | Vendor lock-in |
-
-**Verdict**: Tham khảo pattern — Firebase's `signInAnonymously()` → `linkWithCredential()` flow is the gold standard for anonymous → authenticated promotion. We should replicate this pattern with our own JWT infrastructure.
-**Recommendation**: Tham khảo pattern
-**Reasoning**: Firebase Auth has the most complete anonymous authentication implementation with seamless promotion. We cannot adopt it directly (proprietary, different ecosystem), but the API design (`signInAnonymously`, `linkWithCredential`, auto-cleanup) should be our primary design reference.
-
-### Supabase Auth (GoTrue) — Gap Analysis
-
-**Overall Score**: 6.70 / 10
-**URL**: https://github.com/supabase/auth
+**Overall Score**: 8.95 / 10
+**URL**: https://github.com/redisson/redisson
 
 | Aspect | Có (✅) | Thiếu (❌) | Điểm mạnh | Điểm yếu |
 |--------|:---:|:---:|-----------|----------|
-| Anonymous user creation | ✅ | | `signInAnonymously()` creates user record with `is_anonymous=true` | Go implementation |
-| Session promotion (anon→auth) | ✅ | | Update user with email/password to promote | Clean approach via identity linking |
-| Temporary data storage | ⚠️ | | User metadata JSONB field | Limited to user record, no separate session data store |
-| JWT anonymous tokens | ✅ | | Standard JWT with `is_anonymous` claim | Good pattern |
-| Rate limiting | ⚠️ | | Basic rate limiting | Not anonymous-specific |
-| Session lifecycle | ✅ | | Configurable session refresh, TTL | Good lifecycle management |
-| Integration (Spring Boot) | | ❌ | - | Go-based, REST API only |
-| Scalability | ✅ | | PostgreSQL-based, horizontally scalable | Depends on GoTrue deployment |
+| Distributed locking (Redlock) | ✅ | | `RLock`, `RedLock`, `FairLock` — full distributed lock implementation | Requires replacing Lettuce with Redisson as Redis client |
+| Rate limiting | ✅ | | `RRateLimiter` — Redis-based, distributed | Different API than Spring Data Redis |
+| Pipelining/Batching | ✅ | | `RBatch` for pipelining multiple operations | Redisson-specific API, not Spring Data compatible |
+| Spring Boot integration | ✅ | | `redisson-spring-boot-starter` | Replaces default Lettuce auto-configuration |
+| Observability | ✅ | | Micrometer integration, tracing support | - |
+| Kotlin support | ✅ | | Coroutine support via `redisson-kotlin` | - |
+| Migration complexity | | ❌ | - | Replacing StringRedisTemplate with Redisson API is a significant migration |
 
-**Verdict**: Tham khảo pattern — Supabase's approach of adding `is_anonymous` column to users table and using identity linking for promotion is clean and practical. Their JWT claims structure (`is_anonymous: true`) is directly applicable.
+**Verdict**: Tham khảo pattern — Redisson is extremely feature-rich but adopting it requires replacing the existing Redis client layer (StringRedisTemplate → Redisson API). Too invasive for optimization scope.
 **Recommendation**: Tham khảo pattern
-**Reasoning**: Supabase's GoTrue has a practical anonymous auth implementation with `is_anonymous` flag in JWT. The PostgreSQL-based approach aligns with our tech stack. Good reference for JWT claims and database schema design.
+**Reasoning**: While Redisson has the best distributed lock implementation (Redlock), adopting it means migrating all existing Redis code from StringRedisTemplate. This is a major refactor beyond the optimization scope. Better to reference Redisson's lock patterns and implement targeted improvements using existing Spring Data Redis.
+
+### Resilience4j — Gap Analysis
+
+**Overall Score**: 7.65 / 10
+**URL**: https://github.com/resilience4j/resilience4j
+
+| Aspect | Có (✅) | Thiếu (❌) | Điểm mạnh | Điểm yếu |
+|--------|:---:|:---:|-----------|----------|
+| Rate limiting | ⚠️ | | `RateLimiter` module exists | In-memory only — no Redis backend |
+| Circuit breaker | ✅ | | Excellent circuit breaker for Redis failures | Could wrap Redis calls |
+| Retry | ✅ | | Retry with exponential backoff | Useful for Redis failures |
+| Redis backend | | ❌ | - | All rate limiters are in-memory |
+| Distributed locking | | ❌ | - | Not in scope |
+| Spring Boot integration | ✅ | | First-class Spring Boot support | - |
+
+**Verdict**: Tham khảo pattern — Resilience4j is excellent for circuit breaker/retry patterns around Redis calls, but its rate limiter is in-memory only (not suitable for distributed systems).
+**Recommendation**: Tham khảo pattern — Consider adding circuit breaker around Redis calls for anonymous session creation (fail-fast when Redis is down).
+**Reasoning**: The auth-service could benefit from Resilience4j's circuit breaker for Redis failure scenarios (currently handles with try-catch + fail-open). However, rate limiting must remain Redis-based for distributed enforcement.
+
+### Spring Data Redis Pipeline — Gap Analysis
+
+**Overall Score**: 8.45 / 10
+**URL**: https://github.com/spring-projects/spring-data-redis
+
+| Aspect | Có (✅) | Thiếu (❌) | Điểm mạnh | Điểm yếu |
+|--------|:---:|:---:|-----------|----------|
+| Redis pipelining | ✅ | | `executePipelined(RedisCallback)` — batch multiple commands | Callback-based API, less intuitive |
+| Lua scripts | ✅ | | `execute(RedisScript, keys, args)` — Lua execution | Script management requires `DefaultRedisScript` bean |
+| Batch operations | ✅ | | `multiGet()`, `multiSet()` on ValueOperations | Requires pre-collecting keys |
+| Already in project | ✅ | | Zero migration — existing `StringRedisTemplate` | - |
+| Documentation | ⚠️ | | Pipeline/Lua docs exist but sparse | Community examples fill the gap |
+| High-level optimization APIs | | ❌ | - | No automatic pipelining — manual work required |
+
+**Verdict**: Dùng trực tiếp — Spring Data Redis's pipeline and Lua script capabilities are the optimal path for optimization. No new dependencies required.
+**Recommendation**: Dùng trực tiếp
+**Reasoning**: The project already uses StringRedisTemplate. Using `executePipelined()` for session creation and `execute(RedisScript)` for atomic rate limiting requires zero new dependencies and minimal code changes. This is the recommended approach.
 
 ---
 
@@ -170,18 +202,18 @@
 
 | Rank | Dự án | Tổng điểm | Verdict | Phù hợp nhất cho |
 |------|-------|-----------|---------|------------------|
-| 🥇 1 | Spring Security | 7.90/10 | Tham khảo pattern | Foundation for anonymous auth filter chain integration |
-| 🥈 2 | Firebase Auth | 7.70/10 | Tham khảo pattern | API design reference for signInAnonymously + linkWithCredential flow |
-| 🥉 3 | Keycloak | 7.50/10 | Tham khảo pattern | Session lifecycle and TTL management patterns |
-| 4 | Supabase Auth (GoTrue) | 6.70/10 | Tham khảo pattern | JWT claims structure (`is_anonymous`) and DB schema design |
+| 🥇 1 | Redisson | 8.95/10 | Tham khảo pattern | Distributed lock patterns (Redlock algorithm reference) |
+| 🥈 2 | Spring Data Redis (Pipeline) | 8.45/10 | Dùng trực tiếp | Redis pipelining, Lua scripts — zero new dependencies |
+| 🥉 3 | Bucket4j | 7.85/10 | Tham khảo pattern | Token bucket algorithm reference for rate limiting |
+| 4 | Resilience4j | 7.65/10 | Tham khảo pattern | Circuit breaker around Redis calls |
 
 ### Recommendation tổng hợp
 
 | Quyết định | Lý do | Evidence |
 |-----------|-------|---------|
-| **Build from scratch** (with pattern references) | No open source project provides a complete, embeddable anonymous session promotion library for Spring Boot + Kotlin. All solutions are either too heavyweight (Keycloak), proprietary (Firebase), or different tech stack (Supabase/GoTrue). However, the patterns from Firebase (API design) and Supabase (JWT claims, DB schema) provide excellent blueprints. | Firebase Auth docs, Supabase Auth source code, Spring Security anonymous auth documentation |
+| **Optimize in-place using Spring Data Redis** (pipeline + Lua) with algorithm references from Bucket4j (rate limiting) and Redisson (distributed lock) | No new dependencies needed. Spring Data Redis provides `executePipelined()` and `execute(RedisScript)` which are sufficient for all optimization goals. External libraries would add dependency overhead for single-concern improvements that can be achieved with 30-50 lines of Lua script and pipeline code. | Spring Data Redis docs, Redisson Redlock algorithm paper, Bucket4j token bucket algorithm |
 
 ---
 
-> **Sources**: Tất cả URLs đã verify tại thời điểm 2025-01-20
+> **Sources**: Tất cả URLs đã verify tại thời điểm 2025-07-15
 > **Next step**: Comparison Analysis (comparison_analysis.md)

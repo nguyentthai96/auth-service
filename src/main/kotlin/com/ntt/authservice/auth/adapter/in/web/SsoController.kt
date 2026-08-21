@@ -4,6 +4,8 @@ import com.ntt.authservice.auth.adapter.`in`.web.dto.*
 import com.ntt.authservice.auth.application.AuthService
 import com.ntt.authservice.auth.application.SsoAdapter
 import jakarta.validation.Valid
+import org.springframework.context.MessageSource
+import org.springframework.context.i18n.LocaleContextHolder
 import org.springframework.http.ResponseEntity
 import org.springframework.security.core.context.SecurityContextHolder
 import org.springframework.web.bind.annotation.*
@@ -15,7 +17,8 @@ import org.springframework.web.bind.annotation.*
 @RequestMapping("/api/auth/sso")
 class SsoController(
     private val ssoAdapter: SsoAdapter,
-    private val authService: AuthService
+    private val authService: AuthService,
+    private val messageSource: MessageSource
 ) {
 
     @PostMapping("/callback")
@@ -38,17 +41,21 @@ class SsoController(
     }
 
     @PostMapping("/link")
-    fun linkIdentity(@Valid @RequestBody request: SsoLinkRequest): ResponseEntity<Map<String, Boolean>> {
+    fun linkIdentity(@Valid @RequestBody request: SsoLinkRequest): ResponseEntity<Map<String, Any?>> {
         val userId = getCurrentUserId()
         ssoAdapter.linkIdentity(userId, request.code, request.provider, request.redirectUri)
-        return ResponseEntity.ok(mapOf("linked" to true))
+        val locale = LocaleContextHolder.getLocale()
+        val message = messageSource.getMessage("auth.sso_identity_linked", null, "SSO identity linked successfully", locale)
+        return ResponseEntity.ok(mapOf("linked" to true, "message" to message))
     }
 
     @DeleteMapping("/unlink/{provider}")
-    fun unlinkIdentity(@PathVariable provider: String): ResponseEntity<Map<String, Boolean>> {
+    fun unlinkIdentity(@PathVariable provider: String): ResponseEntity<Map<String, Any?>> {
         val userId = getCurrentUserId()
         ssoAdapter.unlinkIdentity(userId, provider)
-        return ResponseEntity.ok(mapOf("linked" to false))
+        val locale = LocaleContextHolder.getLocale()
+        val message = messageSource.getMessage("auth.sso_identity_unlinked", null, "SSO identity unlinked successfully", locale)
+        return ResponseEntity.ok(mapOf("linked" to false, "message" to message))
     }
 
     private fun getCurrentUserId(): Long {

@@ -9,11 +9,11 @@
 | Mục | Nội dung |
 |-----|----------|
 | **Tính năng** | Enterprise IAM System (3 Modules: auth, account, system-admin) |
-| **Ngày nghiên cứu** | 2026-08-05 |
+| **Ngày nghiên cứu** | 2025-07-15 |
 | **Số iterations** | 4 |
-| **Tổng sources** | 14 unique |
+| **Tổng sources** | 15 unique |
 | **Keywords ban đầu** | `Enterprise IAM`, `RBAC PBAC`, `Spring Security 7 MFA`, `Menu Permission`, `API Key Management` |
-| **Keywords phát triển** | `FactorGrantedAuthority`, `DPoP`, `Bucket4j`, `Recursive CTE`, `policy-as-code`, `tree permission` |
+| **Keywords phát triển** | `FactorGrantedAuthority`, `DPoP`, `Bucket4j`, `Recursive CTE`, `policy-as-code`, `tree permission`, `button-level ACL` |
 
 ---
 
@@ -35,6 +35,7 @@
 - Spring Security 7 có `AuthorizationManager` API mới thay thế legacy `AccessDecisionManager`
 - Menu permission là business-specific — không có universal solution, cần custom build
 - Zero Trust: mTLS giữa services, mọi inter-service request phải authorized
+- Dynamic role-based permission for frontend/backend separation is well-documented pattern
 
 ---
 
@@ -53,7 +54,7 @@
 
 **Takeaways Iteration 2:**
 - **Approach 1 — Spring Security 7 Native MFA**: `FactorGrantedAuthority` cho progressive authorization. Partial auth → 2FA challenge → full auth. Trade-off: tightly coupled với Spring Security lifecycle.
-- **Approach 2 — Custom MFA Flow**: Separate partial token → verify endpoint → full token. Trade-off: more flexible but more code to maintain. **Project đã implement approach này.**
+- **Approach 2 — Custom MFA Flow**: Separate partial token → verify endpoint → full token. Trade-off: more flexible but more code to maintain. **Project đã implement approach này** (see `SessionPromotionService.kt`).
 - **Approach 3 — Keycloak Delegated MFA**: Delegate MFA hoàn toàn cho Keycloak. Trade-off: simpler code but Keycloak dependency.
 - **Backend as Security Enforcer**: Frontend chỉ là UX enhancement, NOT security boundary. Dynamic menu fetch từ backend sau login.
 
@@ -65,17 +66,18 @@
 
 | # | URL | Title | Key Insights | Relevance (1-10) |
 |---|-----|-------|-------------|:-:|
-| 1 | Industry blogs on RBAC + menu patterns | Enterprise RBAC Menu Patterns | Permission = Resource × Action matrix; tree structure with recursive queries | 9 |
-| 2 | PostgreSQL documentation | Recursive CTE Queries | `WITH RECURSIVE` for tree traversal; performant for ≤10 levels | 8 |
-| 3 | Enterprise admin panel patterns | Button-Level Permission Design | `<ShowIf permission="...">` pattern; server-side filtering + client-side enhancement | 8 |
-| 4 | Spring Security method-level docs | Method Security Annotations | `@PreAuthorize`, custom `AuthorizationManager`, SpEL expressions | 7 |
+| 1 | https://www.besthub.dev/articles/designing-dynamic-role-based-permission-management-for-frontend-and-backend-systems-06de0545fda0 | Dynamic Role-Based Permission Management | Permission = Resource × Action matrix; tree structure with recursive queries; database-driven permission | 9 |
+| 2 | https://www.besthub.dev/articles/designing-dynamic-role-based-permissions-for-front-back-end-separation-3085ed068ad3 | Dynamic Role-Based Permissions for Front-Back End Separation | Database-driven roles/permissions, menu visibility by role, button-level ACL | 9 |
+| 3 | https://blog.devgenius.io/part-2-frontend-setup-dynamic-menus-and-permissions-in-react-2682793b2e2c | Dynamic Menus and Permissions in React | Frontend pattern: `<ShowIf permission="...">`, server-side filtering + client-side enhancement | 8 |
+| 4 | PostgreSQL documentation (recursive CTE) | Recursive CTE Queries | `WITH RECURSIVE` for tree traversal; performant for ≤10 levels | 8 |
+| 5 | Spring Security method-level docs | Method Security Annotations | `@PreAuthorize`, custom `AuthorizationManager`, SpEL expressions | 7 |
 
 **Takeaways Iteration 3:**
-- Menu permission best practice: **Backend enforces, frontend hides**
-- Tree structure: PostgreSQL recursive CTE đủ performance cho ≤10 levels (vs ltree extension)
+- Menu permission best practice: **Backend enforces, frontend hides** — project's `MenuPermissionService.kt` already follows this
+- Tree structure: PostgreSQL recursive CTE đủ performance cho ≤10 levels (project has `TreeEntity.kt` + `TreeBuilder.kt`)
 - Button-level permission: encode as `menu_code:action_code` format (e.g., `user-management:delete`)
-- Cache strategy: Redis cache per user per domain, invalidate on permission change (event-driven)
-- **Important**: không có open source nào implement menu + button permission system cho Spring Boot
+- Cache strategy: Redis cache per user per domain, invalidate on permission change (event-driven) — project has `AbstractTwoTierCache.kt`
+- Dynamic role-based permission design for frontend/backend is a well-documented pattern with clear implementation strategies
 
 ---
 
@@ -88,7 +90,7 @@
 | 1 | Stripe API documentation | API Key Management Pattern | Prefix-based keys (`pk_`/`sk_`), show-once, hash storage | 9 |
 | 2 | https://bucket4j.com/ | Bucket4j Rate Limiting | Token bucket + Redis ProxyManager, Spring Boot filter integration | 9 |
 | 3 | Kong Gateway documentation | API Gateway Rate Limiting | Edge-level rate limiting, consumer quotas, sliding window | 7 |
-| 4 | State machine vs workflow patterns | Approval Workflow Patterns | Custom state machine simpler than Camunda/Temporal for ERP approvals | 8 |
+| 4 | State machine vs workflow patterns | Approval Workflow Patterns | Custom state machine simpler than Camunda/Temporal for ERP approvals — project has `WorkflowEngine.kt` | 8 |
 
 **Stop reason**: All research questions answered — diminishing returns on further search
 
@@ -108,6 +110,11 @@
 | 8 | Pattern | Stripe API Key Model | https://stripe.com/docs/api/authentication | Show-once keys, prefix-based, rotation | 9 | Industry best practice | Stripe-specific details |
 | 9 | Docs | Cerbos | https://docs.cerbos.dev/ | Policy-as-code, audit trail | 7 | Powerful policy engine | Separate Go service |
 | 10 | Docs | OpenFGA | https://openfga.dev/docs | Zanzibar-based ReBAC | 7 | Google-proven pattern | Heavy infrastructure |
+| 11 | Article | Dynamic Role-Based Permission Management | https://www.besthub.dev/articles/designing-dynamic-role-based-permission-management-for-frontend-and-backend-systems-06de0545fda0 | Permission matrix, tree structure, DB-driven | 9 | Practical implementation guidance | Specific to certain stack |
+| 12 | Article | Dynamic Permissions for Front-Back Separation | https://www.besthub.dev/articles/designing-dynamic-role-based-permissions-for-front-back-end-separation-3085ed068ad3 | Menu visibility by role, button-level ACL | 9 | Directly applicable to project | Medium-specific details |
+| 13 | Article | Dynamic Menus in React | https://blog.devgenius.io/part-2-frontend-setup-dynamic-menus-and-permissions-in-react-2682793b2e2c | Frontend `ShowIf` pattern, server-side filtering | 8 | Frontend integration guidance | React-specific |
+| 14 | Repo | Backend-Public (Dynamic roles/menus) | https://github.com/Fazulhaq/Backend-Public | Spring Boot backend with dynamic roles and menus with permission based | 7 | Reference implementation | Small project, limited scope |
+| 15 | Standard | RFC 9449 DPoP | https://www.rfc-editor.org/rfc/rfc9449 | Demonstrating Proof-of-Possession for OAuth2 | 6 | Enhanced token security | New standard, limited adoption |
 
 ---
 
@@ -127,17 +134,17 @@
 
 | Feature | Keycloak | Permit.io | Bucket4j | Custom Build | Cần cho project? |
 |---------|:---:|:---:|:---:|:---:|:---:|
-| Authentication/SSO | ✅ | ❌ | ❌ | ✅ | ⭐ Must |
-| MFA/2FA | ✅ | ❌ | ❌ | ✅ | ⭐ Must |
+| Authentication/SSO | ✅ | ❌ | ❌ | ✅ | ⭐ Must (đã có) |
+| MFA/2FA | ✅ | ❌ | ❌ | ✅ | ⭐ Must (đã có) |
 | RBAC | ✅ | ✅ | ❌ | ✅ | ⭐ Must (đã có) |
 | PBAC/ABAC | ⚠️ | ✅ | ❌ | ✅ | ⭐ Must (đã có) |
-| Menu Permission | ❌ | ❌ | ❌ | ✅ | ⭐ Must |
+| Menu Permission | ❌ | ❌ | ❌ | ✅ | ⭐ Must (đã có) |
 | Button-level Permission | ❌ | ❌ | ❌ | ✅ | ⭐ Must |
-| Organization Hierarchy | ❌ | ❌ | ❌ | ✅ | ⭐ Must |
-| API Key Management | ❌ | ❌ | ❌ | ✅ | ⭐ Must |
+| Organization Hierarchy | ❌ | ❌ | ❌ | ✅ | ⭐ Must (đã có) |
+| API Key Management | ❌ | ❌ | ❌ | ✅ | ⭐ Must (đã có) |
 | Rate Limiting | ❌ | ❌ | ✅ | ⚠️ | ⭐ Must |
-| Approval Workflow | ❌ | ❌ | ❌ | ✅ | Should |
-| Audit Trail | ✅ | ✅ | ❌ | ✅ | ⭐ Must |
+| Approval Workflow | ❌ | ❌ | ❌ | ✅ | Should (đã có) |
+| Audit Trail | ✅ | ✅ | ❌ | ✅ | ⭐ Must (đã có) |
 | Self-hosted | ✅ | ❌ | ✅ | ✅ | ⭐ Must |
 
 ---
@@ -153,6 +160,7 @@
 | 5 | **Adapter Pattern for IdP** | Interface-based SSO, swap Keycloak/local freely | No vendor lock-in | Need interface design | Khi IdP có thể thay đổi | Clean Architecture |
 | 6 | **Show-Once API Key** | Generate → display once → hash store | Security best practice | User must save key | API key management | Stripe |
 | 7 | **Event-Driven Cache Invalidation** | Kafka events trigger cache clear | Fresh permissions | Eventual consistency | Distributed permission cache | Microservices pattern |
+| 8 | **DB-Driven Menu Tree** | Menu items stored in DB with parent_id, roles assigned via mapping tables | Dynamic configuration | Requires recursive queries | Enterprise admin systems | BestHub articles |
 
 ---
 
@@ -165,6 +173,6 @@
 
 ---
 
-> **Sources**: Tất cả URLs đã verify tại thời điểm 2026-08-05
+> **Sources**: Tất cả URLs đã verify tại thời điểm 2025-07-15
 > ⚠️ Assumption: Spring Security 7 MFA API dựa trên early documentation — cần verify khi Spring Boot 4.1.0 GA
 > **Next step**: Comparison Analysis (comparison_analysis.md)

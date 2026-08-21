@@ -5,6 +5,9 @@ import com.ntt.eventsourcingutils.lib.cqrs.command.Command
 
 /**
  * Register command — CQRS write-side for user registration.
+ *
+ * FR-001: ipAddress, userAgent for event enrichment
+ * FR-005: correlationId for cross-service tracing
  */
 data class RegisterCommand(
     val username: String,
@@ -14,5 +17,8 @@ data class RegisterCommand(
     val phone: String? = null,
     val domainCode: String,
     val anonymousSessionId: String? = null,
-    val anonymousTokenJti: String? = null
+    val anonymousTokenJti: String? = null,
+    val ipAddress: String? = null,
+    val userAgent: String? = null,
+    val correlationId: String? = null
 ) : Command<RegisterResult>

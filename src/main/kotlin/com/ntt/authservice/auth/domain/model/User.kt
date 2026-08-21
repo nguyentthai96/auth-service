@@ -4,6 +4,7 @@ import com.ntt.authservice.auth.domain.model.vo.Email
 import com.ntt.authservice.auth.domain.model.vo.PasswordHash
 import com.ntt.authservice.auth.domain.model.vo.UserId
 import java.time.Instant
+import java.time.temporal.ChronoUnit
 
 /**
  * User domain model — pure Kotlin, NO framework imports.
@@ -23,6 +24,7 @@ class User(
     val mfaEnabled: Boolean = false,
     val mfaMethod: String = "NONE",
     val trustedDeviceHash: String? = null,
+    val trustedDeviceSetAt: Instant? = null,
     val passwordChangedAt: Instant? = null,
     val createdAt: Instant? = null,
     val updatedAt: Instant? = null
@@ -67,10 +69,16 @@ class User(
     }
 
     /**
-     * Check if MFA is required and the device is not trusted.
+     * Check if MFA is required considering device trust and TTL.
+     * @param deviceHash SHA-256 hash of the client device fingerprint
+     * @param ttlDays Number of days a trusted device remains valid (default: 30)
+     * @return true if MFA verification is required
      */
-    fun requiresMfa(deviceHash: String?): Boolean {
+    fun requiresMfa(deviceHash: String?, ttlDays: Long = 30): Boolean {
         if (!mfaEnabled || mfaMethod == "NONE") return false
-        return deviceHash == null || deviceHash != trustedDeviceHash
+        if (deviceHash == null || deviceHash != trustedDeviceHash) return true
+        // Device hash matches — check TTL
+        val setAt = trustedDeviceSetAt ?: return true  // No timestamp → treat as expired
+        return setAt.plus(ttlDays, ChronoUnit.DAYS).isBefore(Instant.now())
     }
 }
