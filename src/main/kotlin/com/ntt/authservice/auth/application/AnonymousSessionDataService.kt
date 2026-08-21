@@ -4,6 +4,7 @@ import com.ntt.authservice.shared.config.SecurityProperties
 import com.ntt.authservice.shared.exception.AnonymousDataLimitExceededException
 import com.ntt.authservice.shared.exception.AnonymousSessionExpiredException
 import io.micrometer.core.instrument.MeterRegistry
+import io.micrometer.observation.annotation.Observed
 import org.slf4j.LoggerFactory
 import org.springframework.data.redis.core.ScanOptions
 import org.springframework.data.redis.core.StringRedisTemplate
@@ -42,6 +43,10 @@ class AnonymousSessionDataService(
      * Uses Lua script for atomic size check + write + counter increment (TOCTOU-safe).
      * Validates session existence before write.
      */
+    @Observed(
+        name = "anonymous.data.store",
+        contextualName = "store-anonymous-data"
+    )
     fun storeData(sessionId: String, namespace: String, key: String, value: String) {
         if (!verifySessionExists(sessionId)) {
             throw AnonymousSessionExpiredException(sessionId)
@@ -108,6 +113,10 @@ class AnonymousSessionDataService(
      *
      * @return DataTransferResult with item count and namespace list
      */
+    @Observed(
+        name = "anonymous.data.transfer",
+        contextualName = "transfer-anonymous-data"
+    )
     fun transferData(sessionId: String, userId: Long): DataTransferResult {
         val pattern = "$DATA_PREFIX$sessionId:*"
         val promotedTtl = Duration.ofSeconds(securityProperties.anonymous.promotedDataTtlSeconds)

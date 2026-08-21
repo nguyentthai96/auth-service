@@ -5,6 +5,7 @@ import com.ntt.authservice.rbac.adapter.out.persistence.repository.TokenBlacklis
 import com.ntt.authservice.shared.config.SecurityProperties
 import io.micrometer.core.instrument.MeterRegistry
 import io.micrometer.core.instrument.Timer
+import io.micrometer.observation.annotation.Observed
 import org.slf4j.LoggerFactory
 import org.springframework.data.redis.core.StringRedisTemplate
 import org.springframework.data.redis.core.script.DefaultRedisScript
@@ -47,6 +48,10 @@ class SessionPromotionService(
      * @param userId the authenticated user's ID
      * @param anonymousJti the JTI of the anonymous token to blacklist
      */
+    @Observed(
+        name = "anonymous.session.promote",
+        contextualName = "promote-anonymous-session"
+    )
     fun promoteSession(sessionId: String, userId: Long, anonymousJti: String): PromotionResult {
         val sample = Timer.start(meterRegistry)
 

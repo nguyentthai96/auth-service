@@ -7,6 +7,7 @@ import com.ntt.authservice.shared.config.SecurityProperties
 import com.ntt.eventsourcingutils.lib.cqrs.command.CommandHandler
 import io.micrometer.core.instrument.MeterRegistry
 import io.micrometer.core.instrument.Timer
+import io.micrometer.observation.annotation.Observed
 import org.slf4j.LoggerFactory
 import org.springframework.data.redis.core.StringRedisTemplate
 import org.springframework.stereotype.Component
@@ -40,6 +41,10 @@ class AnonymousSessionHandler(
 
     override fun commandType(): Class<CreateAnonymousSessionCommand> = CreateAnonymousSessionCommand::class.java
 
+    @Observed(
+        name = "anonymous.session.create",
+        contextualName = "create-anonymous-session"
+    )
     override fun handle(command: CreateAnonymousSessionCommand): AnonymousSessionResult {
         // Step 1: Rate limit check
         anonymousRateLimitService.checkRateLimit(command.ipAddress)

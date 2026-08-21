@@ -32,7 +32,7 @@
 
 ## Phase 4A: ObservedAspect Verification
 
-- [ ] **Task 1: Verify `ObservedAspect` bean availability** `[VERIFY]`
+- [x] **Task 1: Verify `ObservedAspect` bean availability** `[VERIFY]`
   - File: `src/main/kotlin/com/ntt/authservice/shared/config/` | Action: [VERIFY] or [NEW]
   - FR: FR-006 — Observability tracing spans (prerequisite)
   - Details:
@@ -63,7 +63,7 @@
 
 ## Phase 4B: Observability Spans
 
-- [ ] **Task 2: Add `@Observed` span to `AnonymousSessionHandler.handle()`** `[MODIFY]`
+- [x] **Task 2: Add `@Observed` span to `AnonymousSessionHandler.handle()`** `[MODIFY]`
   - File: `src/main/kotlin/com/ntt/authservice/auth/application/command/AnonymousSessionHandler.kt` | Action: [MODIFY]
   - FR: FR-006 — Observability tracing spans
   - Base: `AnonymousSessionHandler` from `com.ntt.authservice.auth.application.command` — implements `CommandHandler<CreateAnonymousSessionCommand, AnonymousSessionResult>`
@@ -83,7 +83,7 @@
     - Span covers: rate limit check → UUID generation → JWT generation → pipeline HSET+EXPIRE → return result
   - Dependencies: Task 1 (ObservedAspect must be available)
 
-- [ ] **Task 3: Add `@Observed` spans to `AnonymousSessionDataService.storeData()` and `transferData()`** `[MODIFY]`
+- [x] **Task 3: Add `@Observed` spans to `AnonymousSessionDataService.storeData()` and `transferData()`** `[MODIFY]`
   - File: `src/main/kotlin/com/ntt/authservice/auth/application/AnonymousSessionDataService.kt` | Action: [MODIFY]
   - FR: FR-006 — Observability tracing spans
   - Base: `AnonymousSessionDataService` from `com.ntt.authservice.auth.application`
@@ -115,7 +115,7 @@
     - Note: `transferData()` is called from `SessionPromotionService.promoteSession()` → creates nested child span under `anonymous.session.promote`
   - Dependencies: Task 1 (ObservedAspect must be available)
 
-- [ ] **Task 4: Add `@Observed` span to `SessionPromotionService.promoteSession()`** `[MODIFY]`
+- [x] **Task 4: Add `@Observed` span to `SessionPromotionService.promoteSession()`** `[MODIFY]`
   - File: `src/main/kotlin/com/ntt/authservice/auth/application/SessionPromotionService.kt` | Action: [MODIFY]
   - FR: FR-006 — Observability tracing spans
   - Base: `SessionPromotionService` from `com.ntt.authservice.auth.application`
@@ -138,7 +138,7 @@
 
 ## Phase 4C: Verification & Closure
 
-- [ ] **Task 5: FR-012 formal closure documentation** `[DOCUMENT]`
+- [x] **Task 5: FR-012 formal closure documentation** `[DOCUMENT]`
   - File: N/A | Action: [DOCUMENT]
   - FR: FR-012 — Running counter periodic reconciliation
   - Details:
@@ -153,7 +153,7 @@
     - Status: All other v2 FRs (FR-001 through FR-005, FR-007 through FR-011, FR-013, FR-014) remain ✅ IMPLEMENTED
   - Dependencies: None
 
-- [ ] **Task 6: Verify application startup with `@Observed` annotations** `[VERIFY]`
+- [x] **Task 6: Verify application startup with `@Observed` annotations** `[VERIFY]`
   - File: N/A | Action: [VERIFY]
   - FR: FR-006 — Observability tracing spans (validation)
   - Details:
@@ -168,7 +168,7 @@
     - Verify nested span hierarchy: `promoteSession()` → `transferData()` creates parent-child relationship
   - Dependencies: Tasks 1-4
 
-- [ ] **Task 7: FR traceability verification**
+- [x] **Task 7: FR traceability verification**
   - Verify all 14 FRs addressed:
     - FR-001: ✅ IMPLEMENTED (v2 — pipeline HSET+EXPIRE)
     - FR-002: ✅ IMPLEMENTED (v2 — sliding window Lua)
