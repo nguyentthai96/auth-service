@@ -33,6 +33,10 @@ class EventService(
 
     private val log = LoggerFactory.getLogger(EventService::class.java)
 
+    init {
+        objectMapper.findAndRegisterModules()
+    }
+
     /**
      * Record a domain event transactionally:
      * 1. Wrap in EventEnvelope with metadata

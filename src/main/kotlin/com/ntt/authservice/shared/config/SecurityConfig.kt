@@ -49,6 +49,8 @@ class SecurityConfig(
                 auth
                     // Public endpoints
                     .requestMatchers("/api/auth/login", "/api/auth/register", "/api/auth/refresh").permitAll()
+                    // Key exchange endpoint for E2EE
+                    .requestMatchers("/auth/key-exchange", "/api/auth/key-exchange").permitAll()
                     // Auth Core Features — public endpoints
                     .requestMatchers("/api/auth/mfa/verify", "/api/auth/mfa/resend").permitAll()
                     .requestMatchers("/api/auth/sso/callback", "/api/auth/sso/providers").permitAll()
@@ -95,6 +97,22 @@ class SecurityConfig(
     @Bean
     fun passwordEncoder(): PasswordEncoder {
         return BCryptPasswordEncoder(securityProperties.password.bcryptStrength)
+    }
+
+    @Bean
+    @org.springframework.context.annotation.Primary
+    @org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean
+    fun twoLevelCacheManager(
+        properties: com.ntt.basecore.autoconfigure.cache.CacheProperties,
+        invalidationPublisher: org.springframework.beans.factory.ObjectProvider<com.ntt.basecore.autoconfigure.cache.CacheInvalidationPublisher>
+    ): com.ntt.basecore.autoconfigure.cache.TwoLevelCacheManager {
+        val inMemoryL1 = org.springframework.cache.concurrent.ConcurrentMapCacheManager()
+        return com.ntt.basecore.autoconfigure.cache.TwoLevelCacheManager(
+            l1CacheManager = inMemoryL1,
+            l2CacheManager = null,
+            invalidationPublisher = invalidationPublisher.ifAvailable,
+            properties = properties
+        )
     }
 }
 

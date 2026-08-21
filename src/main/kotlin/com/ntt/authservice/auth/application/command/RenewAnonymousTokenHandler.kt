@@ -2,8 +2,7 @@ package com.ntt.authservice.auth.application.command
 
 import com.ntt.authservice.auth.application.AnonymousSessionResult
 import com.ntt.authservice.auth.application.JwtService
-import com.ntt.authservice.rbac.adapter.out.persistence.entity.TokenBlacklistEntity
-import com.ntt.authservice.rbac.adapter.out.persistence.repository.TokenBlacklistRepository
+import com.ntt.authservice.auth.application.port.out.TokenStore
 import com.ntt.authservice.shared.config.SecurityProperties
 import com.ntt.authservice.shared.exception.AnonymousMaxRenewalsException
 import com.ntt.authservice.shared.exception.AnonymousSessionExpiredException
@@ -26,7 +25,7 @@ import java.time.Instant
 class RenewAnonymousTokenHandler(
     private val jwtService: JwtService,
     private val redisTemplate: StringRedisTemplate,
-    private val tokenBlacklistRepository: TokenBlacklistRepository,
+    private val tokenStore: TokenStore,
     private val securityProperties: SecurityProperties,
     private val meterRegistry: MeterRegistry
 ) : CommandHandler<RenewAnonymousTokenCommand, AnonymousSessionResult> {
@@ -66,14 +65,12 @@ class RenewAnonymousTokenHandler(
 
         // Step 5: Blacklist old JTI (userId=0 sentinel — DD-004)
         try {
-            val blacklistEntry = TokenBlacklistEntity().apply {
-                tokenJti = oldJti
-                userId = SENTINEL_USER_ID
-                reason = "RENEWAL"
+            tokenStore.blacklistToken(
+                jti = oldJti,
+                userId = SENTINEL_USER_ID,
+                reason = "RENEWAL",
                 expiresAt = Instant.now().plusSeconds(securityProperties.anonymous.tokenTtlSeconds)
-                revokedAt = Instant.now()
-            }
-            tokenBlacklistRepository.save(blacklistEntry)
+            )
         } catch (ex: Exception) {
             log.warn("Failed to blacklist old anonymous token jti={} during renewal: {}", oldJti, ex.message)
         }

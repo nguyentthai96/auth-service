@@ -10,6 +10,7 @@ interface TokenStore {
     fun findValidRefreshToken(tokenHash: String): RefreshTokenInfo?
     fun revokeToken(tokenHash: String)
     fun revokeAllForUser(userId: Long): Int
+    fun blacklistToken(jti: String, userId: Long, reason: String, expiresAt: Instant)
 }
 
 /**

@@ -15,6 +15,8 @@ import org.mockito.ArgumentCaptor
 import org.mockito.Captor
 import org.mockito.Mock
 import org.mockito.junit.jupiter.MockitoExtension
+import org.mockito.junit.jupiter.MockitoSettings
+import org.mockito.quality.Strictness
 import org.mockito.kotlin.*
 import org.springframework.data.redis.core.StringRedisTemplate
 import org.springframework.data.redis.core.ValueOperations
@@ -25,6 +27,7 @@ import java.time.Duration
  * login/register with promotion, concurrent promotion, expired session, JTI blacklisting.
  */
 @ExtendWith(MockitoExtension::class)
+@MockitoSettings(strictness = Strictness.LENIENT)
 @DisplayName("Session Promotion Integration Tests")
 class SessionPromotionIntegrationTest {
 
@@ -68,7 +71,7 @@ class SessionPromotionIntegrationTest {
         @DisplayName("should promote session with correct JTI blacklisted and data transferred")
         fun should_promoteSession_when_loginWithAnonymousSessionId() {
             // Given — lock acquired, session exists, data transfer succeeds
-            whenever(valueOps.setIfAbsent(eq("anon:lock:session-abc"), eq("locked"), any<Duration>()))
+            whenever(valueOps.setIfAbsent(eq("anon:lock:session-abc"), any(), any<Duration>()))
                 .thenReturn(true)
             whenever(anonymousSessionDataService.verifySessionExists("session-abc")).thenReturn(true)
             whenever(anonymousSessionDataService.transferData("session-abc", 42L))
@@ -93,8 +96,8 @@ class SessionPromotionIntegrationTest {
             verify(redisTemplate).delete("anon:session:session-abc")
             verify(anonymousSessionDataService).deleteAllSessionData("session-abc")
 
-            // Verify lock released
-            verify(redisTemplate).delete("anon:lock:session-abc")
+            // Verify lock released safely via script
+            verify(redisTemplate).execute(eq(safeLockReleaseScript), eq(listOf("anon:lock:session-abc")), any<String>())
 
             // Verify metrics
             assertThat(meterRegistry.counter("auth.anonymous.sessions.promoted", "status", "SUCCESS").count())

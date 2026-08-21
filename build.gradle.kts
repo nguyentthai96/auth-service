@@ -31,6 +31,7 @@ dependencies {
     implementation("org.springframework.boot:spring-boot-starter-security")
     implementation("org.springframework.boot:spring-boot-starter-web")
     implementation("com.fasterxml.jackson.module:jackson-module-kotlin")
+    implementation("com.fasterxml.jackson.datatype:jackson-datatype-jsr310")
     // - SECURITY
     implementation(libs.jjwt.api)
     implementation(libs.jjwt.impl)
@@ -79,3 +80,18 @@ tasks.withType<Test> {
 // AOT processAot conflicts with BaseEntity dual-@Id inheritance in base-core.
 tasks.named("processAot") { enabled = false }
 tasks.named("processTestAot") { enabled = false }
+
+// K6 Load Testing Tasks
+tasks.register<Exec>("k6Run") {
+    group = "Verification"
+    description = "Run K6 Load Tests (Auth Flow)"
+    workingDir = file("tests/load")
+    commandLine("docker", "run", "--rm", "-i", "-v", "${workingDir}:/scripts", "--network", "host", "grafana/k6", "run", "/scripts/auth_flow.js")
+}
+
+tasks.register<Exec>("k6ProfileRun") {
+    group = "Verification"
+    description = "Run K6 Load Tests (Profile Flow)"
+    workingDir = file("tests/load")
+    commandLine("docker", "run", "--rm", "-i", "-v", "${workingDir}:/scripts", "--network", "host", "grafana/k6", "run", "/scripts/profile_flow.js")
+}

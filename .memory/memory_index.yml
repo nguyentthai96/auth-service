@@ -1,8 +1,11 @@
 features:
+  '`user_login_event`': in_progress
+  '`user_logout_event`': failed
+  '`user_registration_event`': in_progress
   anonymous-login-optimization: completed
   api-response-i18n-standard: completed
-  auth-core-features: completed
-  erp-iam-system: failed
+  auth-core-features: failed
+  erp-iam-system: in_progress
 lessons:
 - action: 'Mitigate ''PROXY_DOWN'' errors in wf_brainstorm_openspec. Common errors:
     Error code: 502 - {''type'': ''error'', ''error'': {''type'': ''api_error'', ''message'':
@@ -28,6 +31,29 @@ lessons:
   frequency: 2
   id: L002
   type: failure_pattern
-total_failures: 21
-total_records: 90
-total_successes: 69
+- action: 'Mitigate ''MISSING_ARTIFACT'' errors in wf_feature_research. Common errors:
+    Output validation failed: Required file missing: /home/nguyentthai96/Desktop/bigbang/boilerplate/ser;
+    Output validation failed: Required file missing: /home/nguyentthai96/Desktop/bigbang/boilerplate/ser'
+  description: 'Workflow ''wf_feature_research'' fails with ''MISSING_ARTIFACT'' across
+    features: `user_registration_event`, `user_login_event`'
+  fingerprint:
+  - wf_feature_research
+  - MISSING_ARTIFACT
+  frequency: 2
+  id: L003
+  type: failure_pattern
+- action: 'Mitigate ''PROXY_DOWN'' errors in wf_openspec_apply. Common errors: Error
+    code: 502 - {''type'': ''error'', ''error'': {''type'': ''api_error'', ''message'':
+    ''All upstream endpoint; Error code: 502 - {''type'': ''error'', ''error'': {''type'':
+    ''api_error'', ''message'': ''All upstream endpoint'
+  description: 'Workflow ''wf_openspec_apply'' fails with ''PROXY_DOWN'' across features:
+    `user_login_event`, erp-iam-system'
+  fingerprint:
+  - wf_openspec_apply
+  - PROXY_DOWN
+  frequency: 2
+  id: L004
+  type: failure_pattern
+total_failures: 25
+total_records: 91
+total_successes: 66

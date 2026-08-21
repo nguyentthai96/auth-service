@@ -3,7 +3,9 @@ package com.ntt.authservice.auth.adapter.out.persistence
 import com.ntt.authservice.auth.application.port.out.RefreshTokenInfo
 import com.ntt.authservice.auth.application.port.out.TokenStore
 import com.ntt.authservice.rbac.adapter.out.persistence.entity.RefreshTokenEntity
+import com.ntt.authservice.rbac.adapter.out.persistence.entity.TokenBlacklistEntity
 import com.ntt.authservice.rbac.adapter.out.persistence.repository.RefreshTokenRepository
+import com.ntt.authservice.rbac.adapter.out.persistence.repository.TokenBlacklistRepository
 import org.springframework.stereotype.Component
 import java.time.Instant
 
@@ -12,7 +14,8 @@ import java.time.Instant
  */
 @Component
 class TokenStorePersistenceAdapter(
-    private val refreshTokenRepository: RefreshTokenRepository
+    private val refreshTokenRepository: RefreshTokenRepository,
+    private val tokenBlacklistRepository: TokenBlacklistRepository
 ) : TokenStore {
 
     override fun saveRefreshToken(userId: Long, tokenHash: String, expiresAt: Instant) {
@@ -45,5 +48,16 @@ class TokenStorePersistenceAdapter(
 
     override fun revokeAllForUser(userId: Long): Int {
         return refreshTokenRepository.revokeAllByUserId(userId)
+    }
+
+    override fun blacklistToken(jti: String, userId: Long, reason: String, expiresAt: Instant) {
+        val entry = TokenBlacklistEntity().apply {
+            this.tokenJti = jti
+            this.userId = userId
+            this.reason = reason
+            this.expiresAt = expiresAt
+            this.revokedAt = Instant.now()
+        }
+        tokenBlacklistRepository.save(entry)
     }
 }

@@ -66,13 +66,9 @@ class TinkCipherAlgorithmFactory : CipherAlgorithmFactory {
      * For ChaCha20: requires 32 bytes (ChaCha20-Poly1305).
      */
     private fun createAead(algorithm: CipherAlgorithm, keyBytes: ByteArray): Aead {
-        val parameters = when (algorithm) {
-            CipherAlgorithm.AES_GCM -> PredefinedAeadParameters.AES256_GCM
-            CipherAlgorithm.CHACHA20_POLY1305 -> PredefinedAeadParameters.XCHACHA20_POLY1305
+        return when (algorithm) {
+            CipherAlgorithm.AES_GCM -> com.google.crypto.tink.subtle.AesGcmJce(keyBytes)
+            CipherAlgorithm.CHACHA20_POLY1305 -> com.google.crypto.tink.subtle.ChaCha20Poly1305(keyBytes)
         }
-        val keysetHandle = KeysetHandle.generateNew(parameters)
-        // Derive AEAD from generated keyset — in production, key management
-        // should use Tink's KeysetHandle.read() with KMS-encrypted keysets
-        return keysetHandle.getPrimitive(Aead::class.java)
     }
 }
