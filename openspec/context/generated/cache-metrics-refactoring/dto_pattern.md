@@ -1,0 +1,3 @@
+# DTO Patterns
+
+NOT DETECTED

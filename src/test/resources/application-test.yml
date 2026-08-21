@@ -1,7 +1,6 @@
 # Test profile configuration — uses H2 in-memory database
 spring:
   main:
-    allow-bean-definition-overriding: true
   datasource:
     url: jdbc:h2:mem:auth_test_db;DB_CLOSE_DELAY=-1;DB_CLOSE_ON_EXIT=FALSE;MODE=PostgreSQL
     username: sa
