@@ -1,0 +1,16 @@
+{
+  "feature": "`jwt_token_validation`",
+  "workflow": "wf_openspec_apply",
+  "outcome": "failure",
+  "timestamp": "2026-08-21T13:27:03.464459+00:00",
+  "duration_seconds": 639,
+  "tokens_used": 0,
+  "prompt_layer_tokens": {},
+  "output_artifacts": [],
+  "errors": [
+    "Output validation failed: 14 tasks still uncompleted in tasks.md",
+    "Output validation failed: 14 tasks still uncompleted in tasks.md"
+  ],
+  "lesson_extracted": null,
+  "recovery_pattern": null
+}
