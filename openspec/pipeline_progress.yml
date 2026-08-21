@@ -1,17 +1,22 @@
 current_feature: anonymous-login-optimization
-current_workflow: wf_pre_openspec
+current_workflow: wf_brainstorm_openspec
 features:
   anonymous-login-optimization:
     workflows:
+      wf_brainstorm_openspec:
+        duration: 0
+        started_at: '2026-08-21T11:56:45.997709+00:00'
+        status: in_progress
+        strike_count: 0
+        tokens: 0
       wf_feature_research:
         duration: 457
         status: success
         strike_count: 0
         tokens: 0
       wf_pre_openspec:
-        duration: 0
-        started_at: '2026-08-21T11:48:46.246323+00:00'
-        status: in_progress
+        duration: 479
+        status: success
         strike_count: 0
         tokens: 0
 started_at: '2026-08-21T11:41:07.477168+00:00'
@@ -21,8 +26,8 @@ stats:
   partial_features: 0
   remaining_features: 0
   skipped_features: 0
-  total_duration: 457
+  total_duration: 936
   total_features: 1
   total_tokens: 0
 status: running
-updated_at: '2026-08-21T11:48:46.246314+00:00'
+updated_at: '2026-08-21T11:56:45.997700+00:00'
