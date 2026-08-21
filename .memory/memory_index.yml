@@ -54,6 +54,6 @@ lessons:
   frequency: 2
   id: L004
   type: failure_pattern
-total_failures: 25
-total_records: 91
+total_failures: 27
+total_records: 93
 total_successes: 66

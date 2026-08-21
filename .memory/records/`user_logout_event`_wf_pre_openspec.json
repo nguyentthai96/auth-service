@@ -1,0 +1,19 @@
+{
+  "feature": "`user_logout_event`",
+  "workflow": "wf_pre_openspec",
+  "outcome": "failure",
+  "timestamp": "2026-08-21T09:36:35.613824+00:00",
+  "duration_seconds": 1138,
+  "tokens_used": 0,
+  "prompt_layer_tokens": {},
+  "output_artifacts": [],
+  "errors": [
+    "Error code: 502 - {'type': 'error', 'error': {'type': 'api_error', 'message': 'All upstream endpoints failed'}}",
+    "Error code: 502 - {'type': 'error', 'error': {'type': 'api_error', 'message': 'All upstream endpoints failed'}}",
+    "Error code: 502 - {'type': 'error', 'error': {'type': 'api_error', 'message': 'All upstream endpoints failed'}}",
+    "Error code: 502 - {'type': 'error', 'error': {'type': 'api_error', 'message': 'All upstream endpoints failed'}}",
+    "Error code: 502 - {'type': 'error', 'error': {'type': 'api_error', 'message': 'All upstream endpoints failed'}}"
+  ],
+  "lesson_extracted": null,
+  "recovery_pattern": null
+}
