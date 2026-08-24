@@ -1,5 +1,5 @@
 current_feature: cache-starter-migration-upgrade
-current_workflow: wf_feature_research
+current_workflow: wf_pre_openspec
 features:
   anonymous-login-optimization:
     workflows:
@@ -104,6 +104,11 @@ features:
         status: success
         strike_count: 0
         tokens: 0
+      wf_pre_openspec:
+        duration: 628
+        status: success
+        strike_count: 0
+        tokens: 0
   erp-iam-system:
     workflows:
       wf_archive:
@@ -143,8 +148,8 @@ stats:
   partial_features: 0
   remaining_features: 0
   skipped_features: 0
-  total_duration: 11658
+  total_duration: 12286
   total_features: 5
   total_tokens: 0
 status: running
-updated_at: '2026-08-24T10:05:30.846164+00:00'
+updated_at: '2026-08-24T10:16:01.453525+00:00'
