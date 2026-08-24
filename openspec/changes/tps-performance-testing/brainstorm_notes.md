@@ -20,8 +20,9 @@ Auth-service là hệ thống xác thực trung tâm của kiến trúc microser
 - 1 CacheEncryptionIntegrationTest cơ bản (chỉ verify key-value set/get)
 - Resilience4j circuit breaker config cho `ssoProvider` và `captchaProvider`
 - Clean Architecture pattern (domain/application/adapter layers)
+- `AbstractIntegrationTest` base class (Java) with MockMvc + Jackson 3.x
 
-**Gaps identified**:
+**Gaps identified from research**:
 1. Không có SQL query count assertion → N+1 detection bằng tay
 2. Không có WireMock → external service latency chưa test
 3. K6 chỉ 50 VUs/10s → không đủ cho TPS baseline measurement
@@ -29,7 +30,7 @@ Auth-service là hệ thống xác thực trung tâm của kiến trúc microser
 5. CacheEncryptionIntegrationTest chỉ test basic set/get → chưa verify raw encrypted format
 6. Không có CI/CD performance gate → regression detection sau deploy
 
-Research recommendation: **Hybrid approach** compose 4 tools (K6 + datasource-proxy + JMH + WireMock), mỗi tool best-in-class cho 1 testing layer.
+Research recommendation: **Hybrid approach** compose 4 tools (K6 + datasource-proxy + JMH + WireMock), mỗi tool best-in-class cho 1 testing layer. Scored 8.65/10 weighted vs Gatling 5.15 vs QuickPerf+K6 5.95.
 
 ---
 
@@ -79,17 +80,6 @@ Research recommendation: **Hybrid approach** compose 4 tools (K6 + datasource-pr
   1. `BeanPostProcessor` approach wrap mọi DataSource → có thể conflict với HikariCP internal management
   2. `@TestConfiguration` chỉ active khi test class import → explicit, predictable
   3. Pattern đã proven: Vlad Mihalcea's SQLStatementCountValidator approach
-  ```kotlin
-  @TestConfiguration
-  class DataSourceProxyConfig {
-      @Bean
-      fun dataSource(originalDataSource: DataSource): DataSource {
-          return ProxyDataSourceBuilder.create(originalDataSource)
-              .countQuery()
-              .build()
-      }
-  }
-  ```
 - **Risk**: `@Primary` conflict nếu HikariCP DataSource cũng `@Primary`. Mitigation: dùng `@DependsOn` hoặc `@Order`.
 
 ### Q8: Scope của `account-service` trong feature này?
@@ -106,76 +96,97 @@ Research recommendation: **Hybrid approach** compose 4 tools (K6 + datasource-pr
   - All testing infrastructure available at once
   - No intermediate dependency conflicts
 - **Cons**:
-  - 🔴 HIGH RISK: Large scope (10 FRs, 4 new tools) → high probability of integration issues
+  - HIGH RISK: Large scope (10 FRs, 4 new tools) → high probability of integration issues
   - Hard to debug if multiple tools have config conflicts
   - No incremental validation
   - Estimated 8-10 dev-days without validation checkpoints
 
 ### Approach 2: 4-Phase Incremental (pre_openspec recommended)
-- **Mô tả**: 
+- **Mô tả**:
   - **Phase 1 — Foundation**: datasource-proxy dependency, `DataSourceProxyConfig`, `QueryCountAssertions` DSL, `@AssertQueryCount` annotation + JUnit 5 Extension trong `base-testing-starter`
   - **Phase 2 — Integration Tests**: assertQueryCount tests cho auth-service, WireMock tests cho SSO/Captcha, mở rộng CacheEncryptionIntegrationTest (NONE/FULL/PARTIAL)
   - **Phase 3 — K6 Expansion**: auth_flow.js (500 VUs, multi-scenario), cache_benchmark.js, k6CacheBenchmark Gradle task
   - **Phase 4 — JMH + CI/CD**: JMH plugin, EncryptionBenchmark, SerializationBenchmark, CI/CD performance gate verification
 - **Pros**:
-  - ✅ Incremental validation — each phase is independently testable
-  - ✅ Phase 1-2 give immediate value (N+1 detection)
-  - ✅ Risk spread across 4 checkpoints
-  - ✅ Natural dependency flow (foundation → consumers)
+  - Incremental validation — each phase is independently testable
+  - Phase 1-2 give immediate value (N+1 detection)
+  - Risk spread across 4 checkpoints
+  - Natural dependency flow (foundation → consumers)
 - **Cons**:
   - Slightly more overhead for phased planning
   - 5-8 dev-days total (same as single phase, just structured)
 
-### Approach 3: Priority-based (Must-haves only)
-- **Mô tả**: Implement only Must-have features (FR-001, FR-003, FR-004, FR-006, FR-008, FR-009). Defer Should/Nice (FR-002 WireMock, FR-005 JMH, FR-007 Cache, FR-010 Cache Benchmark).
--@SpringBootTest                                                 │
-│  @AutoConfigureWireMock(port = 0)                               │
-│                                                                  │
-│  ┌─────────────┐                    ┌──────────────────┐        │
-│  │ Test Method  │                    │ WireMock Server   │        │
-│  │              │                    │ (dynamic port)    │        │
-│  │ 1. Setup     │──stub SSO with──▶ │ /oauth2/token     │        │
-│  │    WireMock   │   2000ms delay    │  → delay 2s       │        │
-│  │              │                    │ /userinfo          │        │
-│  │ 2. Call API  │─────────────────▶  │  → delay 2s       │        │
-│  │              │                    └──────────────────┘        │
-│  │ 3. Assert    │                                                │
-│  │    timeout   │   HttpClientConfig injected with               │
-│  │    OR CB     │   WireMock base URL via:                       │
-│  │    fallback  │   app.security.sso.provider-base-url=          │
-│  │              │     http://localhost:${wiremock.server.port}    │
-│  └─────────────┘                                                 │
-│                                                                  │
-│  Verification points:                                            │
-│  - readTimeout (10s default) triggers after delay > 10s          │
-│  - @CircuitBreaker opens after failureRateThreshold (50%)        │
-│  - Fallback method throws AuthException with SSO_TOKEN_INVALID   │
-│  - Captcha fallback auto-passes (graceful degradation)           │
-└──────────────────────────────────────────────────────────────────┘
+### Approach 3: Priority-based (Must-haves only, defer rest)
+- **Mô tả**: Implement only Must-have features (FR-001 assertQueryCount, FR-003 K6 expansion, FR-004 K6 Gradle, FR-006 CI/CD gate, FR-008 N+1 detection, FR-009 datasource-proxy config). Defer Should/Nice-to-have (FR-002 WireMock, FR-005 JMH, FR-007 Cache correctness, FR-010 Cache Benchmark) to a future sprint.
+- **Pros**:
+  - Fastest time-to-value (3-4 dev-days)
+  - Focus on highest-impact items first
+  - Reduce initial complexity
+- **Cons**:
+  - Loses WireMock tests emock.port}     │
+    │                                                          │
+    │  Verification points:                                    │
+    │  - readTimeout (10s) triggers after delay > 10s          │
+    │  - CircuitBreaker opens after 50% failure rate           │
+    │  - SSO fallback throws AuthException(SSO_TOKEN_INVALID)  │
+    │  - Captcha fallback auto-passes (graceful degradation)   │
+    └──────────────────────────────────────────────────────────┘
 ```
 
-### K6 Multi-Scenario Design
+**K6 multi-scenario design**:
 
 ```
-┌──────────────────────────────────────────────────────────────────┐
-│ auth_flow.js (Enhanced)                                          │
-│                                                                  │
-│  Scenario 1: auth_login (ramping-vus)                           │
-│  ┌────────────────────────────────────────────────┐             │
-│  │  VUs                                           │             │
-│  │  500 ┤                    ╱──────╲              │             │
-│  │  400 ┤                  ╱          ╲            │             │
-│  │  300 ┤                ╱              ╲          │             │
-│  │  200 ┤              ╱                  ╲        │             │
-│  │  100 ┤            ╱                      ╲      │             │
-│  │    0 ┤──────────╱                          ╲──  │             │
-│  │      └──────┬──────┬──────┬──────┬──────┬────   │             │
-│  │        0s   10s    20s    30s    40s    50s      │             │
-│  │  Stages: 0→100(10s), 100→500(20s), 500→0(10s)  │             │
-│  │  Exec: loginFlow() → POST /api/v1/auth/login   │             │
-│  └────────────────────────────────────────────────┘             │
-│                                                                  │
-│  Scenario 2: profile_get (constant-arrival-rate)grationTest` — base class pattern for new tests
+    auth_flow.js (Enhanced)
+
+    Scenario 1: auth_login (ramping-vus)
+    VUs
+    500 |                  /------\
+    400 |                /          \
+    300 |              /              \
+    200 |            /                  \
+    100 |          /                      \
+      0 |--------/                          \----
+        +------+------+------+------+------+------
+        0s     10s    20s    30s    40s    50s
+    Stages: 0->100(10s), 100->500(20s), 500->0(10s)
+    Exec: loginFlow() -> POST /api/v1/auth/login
+
+    Scenario 2: profile_get (constant-arrival-rate)
+    req/s
+    100 |========================================
+        +------+------+------+------+------+------
+        0s     5s     10s    15s    20s    25s  30s
+    Rate: 100 req/s, preAllocatedVUs: 200
+    Exec: profileFlow() -> GET /api/v1/profiles/me
+
+    Thresholds:
+    - http_req_duration{scenario:auth_login}:  p(95) < 200ms
+    - http_req_duration{scenario:profile_get}: p(95) < 150ms
+    - http_req_failed: rate < 0.01 (1%)
+```
+
+---
+
+## Pre-classifications (preliminary)
+- **Feature type**: EXTEND (mở rộng testing infrastructure cho modules có sẵn)
+- **Flow type**: Command (test scripts execute one-way, return Pass/Fail report)
+- **Affected modules**: `auth-service` (primary), `base-testing-starter` (shared utility target)
+
+---
+
+## GitNexus Findings (if explored)
+
+Codebase investigation qua grep/view_file (GitNexus MCP not available):
+
+- **Existing K6 scripts**: `tests/load/auth_flow.js` (50 VUs, `host.docker.internal:8080`, single default function), `tests/load/profile_flow.js` (50 VUs, static test token)
+- **Existing Gradle tasks**: `k6Run` and `k6ProfileRun` in `build.gradle.kts` (lines 87-97), both using `grafana/k6` Docker + `--network host`
+- **HTTP clients**: `SsoProviderClient` (@HttpExchange, 2 endpoints: `/oauth2/token`, `/userinfo`), `CaptchaClient` (@HttpExchange, 1 endpoint: POST verify)
+- **Gateway pattern**: `HttpSsoGateway` and `HttpCaptchaGateway` both use `@CircuitBreaker` with fallback methods
+- **Resilience config**: `application-core-resilience.yml` — COUNT_BASED sliding window (size 10), 50% failure rate threshold, 30s wait in open state
+- **HttpClientConfig**: Creates `RestClient` per service with configurable timeouts (connect: 5s, read: 10s) via `SimpleClientHttpRequestFactory`
+- **Existing test base**: `AbstractIntegrationTest.java` with MockMvc, Jackson 3.x `JsonMapper`, `@ActiveProfiles("test")`, `@DirtiesContext(AFTER_EACH_TEST_METHOD)`
+- **CacheEncryptionIntegrationTest**: Basic test — only sets/gets a manual key-value, does NOT test actual cache encryption modes through API flow
+- **Related integration tests**: `SsoCallbackIntegrationTest`, `MfaLoginFlowIntegrationTest`, `TokenIntrospectionIntegrationTest` — patterns to follow
 
 ---
 
@@ -185,7 +196,7 @@ Research recommendation: **Hybrid approach** compose 4 tools (K6 + datasource-pr
 **Scope**: FR-001, FR-009
 **Effort**: 1-2 dev-days
 **New files in base-testing-starter**:
-- `DataSourceProxyConfig.kt` — `@TestConfiguration` wrapping DataSource
+- `DataSourceProxyConfig.kt` — `@TestConfiguration` wrapping DataSource with `ProxyDataSourceBuilder.create().countQuery().build()`
 - `QueryCountAssertions.kt` — Kotlin object with `assertQueryCount(select=N) { block }` DSL
 - `AssertQueryCount.kt` — Annotation (`@AssertQueryCount(select=2)`)
 - `AssertQueryCountExtension.kt` — JUnit 5 Extension (BeforeEachCallback + AfterEachCallback)
@@ -197,10 +208,10 @@ Research recommendation: **Hybrid approach** compose 4 tools (K6 + datasource-pr
 **Effort**: 2-3 dev-days
 **New files in auth-service**:
 - `QueryCountIntegrationTest.kt` — assertQueryCount tests for login, token refresh (N+1 detection)
-- `WireMockExternalServiceTest.kt` — WireMock latency/fault tests for SSO + Captcha
-- Enhanced `CacheEncryptionIntegrationTest.kt` — NONE/FULL/PARTIAL raw data verification
+- `WireMockExternalServiceTest.kt` — WireMock latency/fault tests for SSO + Captcha circuit breaker
+- Enhanced `CacheEncryptionIntegrationTest.kt` — NONE/FULL/PARTIAL raw data verification via StringRedisTemplate
 
-**New dependencies**:
+**New dependencies in build.gradle.kts**:
 - `net.ttddyy:datasource-proxy:1.10` (testImplementation)
 - `org.springframework.cloud:spring-cloud-contract-wiremock` (testImplementation)
 
@@ -210,12 +221,12 @@ Research recommendation: **Hybrid approach** compose 4 tools (K6 + datasource-pr
 **Scope**: FR-003, FR-004, FR-010
 **Effort**: 1-2 dev-days
 **Modified files**:
-- `tests/load/auth_flow.js` — expanded to 500 VUs, multi-scenario, dynamic token
-- `tests/load/profile_flow.js` — constant-arrival-rate, dynamic token from login
+- `tests/load/auth_flow.js` — expanded to 500 VUs, ramping-vus + constant-arrival-rate dual scenario, dynamic token acquisition
+- `tests/load/profile_flow.js` — constant-arrival-rate, dynamic token from login response
 
 **New files**:
-- `tests/load/cache_benchmark.js` — cache encryption mode benchmark script
-- `tests/load/helpers.js` — shared utility (login + extract token)
+- `tests/load/cache_benchmark.js` — cache encryption mode benchmark script with `CACHE_ENCRYPTION_MODE` env var
+- `tests/load/helpers.js` — shared utility (loginAndGetToken function)
 
 **New Gradle task**:
 - `k6CacheBenchmark` — Exec task for cache benchmark
@@ -227,13 +238,13 @@ Research recommendation: **Hybrid approach** compose 4 tools (K6 + datasource-pr
 **Effort**: 1-2 dev-days
 **New plugin**: `me.champeau.jmh` v0.7.2
 **New files**:
-- `src/jmh/kotlin/com/ntt/authservice/benchmark/EncryptionBenchmark.kt` — AES-GCM throughput
-- `src/jmh/kotlin/com/ntt/authservice/benchmark/SerializationBenchmark.kt` — Jackson serialization
+- `src/jmh/kotlin/com/ntt/authservice/benchmark/EncryptionBenchmark.kt` — AES-GCM throughput (ops/sec)
+- `src/jmh/kotlin/com/ntt/authservice/benchmark/SerializationBenchmark.kt` — Jackson serialization (ops/sec)
 
 **Modified files**:
-- `build.gradle.kts` — JMH plugin + jmh dependencies
+- `build.gradle.kts` — JMH plugin + jmh dependencies + jmh config block
 
-**Validation checkpoint**: `./gradlew jmh` produces results.json, K6 thresholds enforce exit code 99
+**Validation checkpoint**: `./gradlew jmh` produces `build/results/jmh/results.json`, K6 thresholds enforce exit code 99
 
 ---
 
@@ -252,7 +263,7 @@ Research recommendation: **Hybrid approach** compose 4 tools (K6 + datasource-pr
 
 ## Open Questions for Design Phase
 - [OPEN] `base-testing-starter` build system — does it use same Gradle convention plugin? Need to verify dependency management for datasource-proxy.
-- [OPEN] Should K6 helper.js export a shared `loginAndGetToken()` function, or should each script handle auth independently?
+- [OPEN] Should K6 `helpers.js` export a shared `loginAndGetToken()` function, or should each script handle auth independently?
 - [OPEN] JMH benchmark — should we benchmark `base-cache-starter`'s encryption utilities directly, or create simplified test doubles?
 - [RESOLVED] SSO vs Captcha WireMock priority → Both, but SSO first (more complex flow, critical path)
 - [RESOLVED] Cache encryption key → Fixed in test config for reproducibility
