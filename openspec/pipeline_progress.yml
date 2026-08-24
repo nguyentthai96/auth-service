@@ -261,9 +261,8 @@ features:
   user-login-event:
     workflows:
       wf_archive:
-        duration: 0
-        started_at: '2026-08-24T14:03:14.175858+00:00'
-        status: in_progress
+        duration: 69
+        status: success
         strike_count: 0
         tokens: 0
       wf_brainstorm_openspec:
@@ -298,8 +297,8 @@ stats:
   partial_features: 1
   remaining_features: 0
   skipped_features: 0
-  total_duration: 22490
+  total_duration: 22559
   total_features: 8
   total_tokens: 0
 status: running
-updated_at: '2026-08-24T14:03:14.175814+00:00'
+updated_at: '2026-08-24T14:04:23.974328+00:00'
