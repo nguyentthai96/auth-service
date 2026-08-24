@@ -197,9 +197,8 @@ features:
   jwt-token-validation:
     workflows:
       wf_brainstorm_openspec:
-        duration: 0
-        started_at: '2026-08-24T11:51:03.797082+00:00'
-        status: in_progress
+        duration: 687
+        status: success
         strike_count: 0
         tokens: 0
       wf_feature_research:
@@ -219,8 +218,8 @@ stats:
   partial_features: 1
   remaining_features: 0
   skipped_features: 0
-  total_duration: 14598
+  total_duration: 15285
   total_features: 6
   total_tokens: 0
 status: running
-updated_at: '2026-08-24T11:51:03.797068+00:00'
+updated_at: '2026-08-24T12:02:31.420557+00:00'
