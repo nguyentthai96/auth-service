@@ -1,105 +1,113 @@
 # Base Class Map
 
-_Generated: 2025-08-21 | Services: auth-service (auth, shared, rbac, pbac modules)_
+_Generated: 2025-08-22 | Services: auth-service (auth module)_
 
 ## Controller
 
 - `CqrsAuthController` — `src/main/kotlin/com/ntt/authservice/auth/adapter/in/web/CqrsAuthController.kt`
-  - Annotation: `@RestController`, `@RequestMapping("/api/auth")`, `@ConditionalOnProperty`
-  - Dependencies: LoginHandler, RegisterHandler, RefreshTokenHandler, SwitchDomainHandler, RevokeSessionsHandler
-- `AuthController` — `src/main/kotlin/com/ntt/authservice/auth/adapter/in/web/AuthController.kt`
-- `AnonymousAuthController` — `src/main/kotlin/com/ntt/authservice/auth/adapter/in/web/AnonymousAuthController.kt`
-- `MfaController` — `src/main/kotlin/com/ntt/authservice/auth/adapter/in/web/MfaController.kt`
-- `SsoController` — `src/main/kotlin/com/ntt/authservice/auth/adapter/in/web/SsoController.kt`
-- `TokenController` — `src/main/kotlin/com/ntt/authservice/auth/adapter/in/web/TokenController.kt`
-- `SessionController` — `src/main/kotlin/com/ntt/authservice/auth/adapter/in/web/SessionController.kt`
-- `AccountLifecycleController` — `src/main/kotlin/com/ntt/authservice/auth/adapter/in/web/AccountLifecycleController.kt`
-- `KeyExchangeController` — `src/main/kotlin/com/ntt/authservice/auth/adapter/in/web/KeyExchangeController.kt`
-- `CaptchaController` — `src/main/kotlin/com/ntt/authservice/auth/adapter/in/web/CaptchaController.kt`
-- `InternalApiController` — `src/main/kotlin/com/ntt/authservice/auth/adapter/in/web/InternalApiController.kt`
-- `AdminSessionController` — `src/main/kotlin/com/ntt/authservice/auth/adapter/in/web/AdminSessionController.kt`
-- `RateLimitAdminController` — `src/main/kotlin/com/ntt/authservice/auth/adapter/in/web/RateLimitAdminController.kt`
-- `RbacControllers` — `src/main/kotlin/com/ntt/authservice/rbac/adapter/in/web/RbacControllers.kt`
-- `RolePermissionController` — `src/main/kotlin/com/ntt/authservice/rbac/adapter/in/web/RolePermissionController.kt`
-- `PolicyController` — `src/main/kotlin/com/ntt/authservice/pbac/adapter/in/web/PolicyController.kt`
+  - Handles POST /api/auth/register, delegates to RegisterHandler
 
 ## Handler (CQRS Command Handlers)
 
 - `RegisterHandler` — `src/main/kotlin/com/ntt/authservice/auth/application/command/RegisterHandler.kt`
-  - extends: `CommandHandler<RegisterCommand, RegisterResult>` (from `eventsourcing-utils`)
-  - Dependencies: UserPort, DomainPort, EventPublisher, TokenGenerator, SessionPromotionService
+  - extends: `CommandHandler<RegisterCommand, RegisterResult>` (from eventsourcing-utils)
+  - Purpose: CQRS command handler for user registration
+  - **TARGET FOR MODIFICATION** — replace direct EventService.record() with RegistrationEventRecorder delegation
+
 - `LoginHandler` — `src/main/kotlin/com/ntt/authservice/auth/application/command/LoginHandler.kt`
   - extends: `CommandHandler<LoginCommand, LoginResult>`
-- `RefreshTokenHandler` — `src/main/kotlin/com/ntt/authservice/auth/application/command/RefreshTokenHandler.kt`
-- `SwitchDomainHandler` — `src/main/kotlin/com/ntt/authservice/auth/application/command/SwitchDomainHandler.kt`
-- `RevokeSessionsHandler` — `src/main/kotlin/com/ntt/authservice/auth/application/command/RevokeSessionsCommand.kt`
-- `AnonymousSessionHandler` — `src/main/kotlin/com/ntt/authservice/auth/application/command/AnonymousSessionHandler.kt`
-- `RenewAnonymousTokenHandler` — `src/main/kotlin/com/ntt/authservice/auth/application/command/RenewAnonymousTokenHandler.kt`
+  - Purpose: CQRS command handler for user login
+  - **PATTERN REFERENCE** — uses LoginEventRecorder for fire-and-forget event recording
 
-## Handler (CQRS Query Handlers)
+## Event Recorders (Helper Services — fire-and-forget pattern)
 
-- `BuildAuthResponseHandler` — `src/main/kotlin/com/ntt/authservice/auth/application/query/BuildAuthResponseHandler.kt`
-- `CheckPermissionHandler` — `src/main/kotlin/com/ntt/authservice/rbac/application/query/CheckPermissionHandler.kt`
-- `GetPermissionsHandler` — `src/main/kotlin/com/ntt/authservice/rbac/application/query/GetPermissionsHandler.kt`
-- `GetUserRolesHandler` — `src/main/kotlin/com/ntt/authservice/rbac/application/query/GetUserRolesHandler.kt`
+- `LoginEventRecorder` — `src/main/kotlin/com/ntt/authservice/auth/application/event/LoginEventRecorder.kt`
+  - @Component, injects EventService
+  - Methods: recordLoginSuccess(), recordLoginFailure()
+  - **PRIMARY PATTERN REFERENCE** for RegistrationEventRecorder
 
-## Domain Event & Port
+- `TokenEventRecorder` — `src/main/kotlin/com/ntt/authservice/auth/application/event/TokenEventRecorder.kt`
+  - @Component, injects EventService
+  - Methods: recordIssuance(), recordRevocation(), recordValidationFailure()
+  - **SECONDARY PATTERN REFERENCE**
 
-- `DomainEvent` (interface) — `src/main/kotlin/com/ntt/authservice/auth/application/port/out/EventPublisher.kt`
-  - Properties: `eventType: String`
-- `EventPublisher` (interface) — `src/main/kotlin/com/ntt/authservice/auth/application/port/out/EventPublisher.kt`
-  - Method: `publish(event: DomainEvent)`
-- `UserPort` (interface) — `src/main/kotlin/com/ntt/authservice/auth/application/port/out/UserPort.kt`
-- `DomainPort` (interface) — `src/main/kotlin/com/ntt/authservice/auth/application/port/out/DomainPort.kt`
-- `TokenStore` (interface) — `src/main/kotlin/com/ntt/authservice/auth/application/port/out/TokenStore.kt`
-- `PermissionCache` (interface) — `src/main/kotlin/com/ntt/authservice/auth/application/port/out/PermissionCache.kt`
-- `CaptchaGateway` (interface) — `src/main/kotlin/com/ntt/authservice/auth/application/port/out/CaptchaGateway.kt`
-- `SsoGateway` (interface) — `src/main/kotlin/com/ntt/authservice/auth/application/port/out/SsoGateway.kt`
+## Event Service
 
-## Client / Gateway
+- `EventService` — `src/main/kotlin/com/ntt/authservice/auth/application/event/EventService.kt`
+  - @Component
+  - Method: record(aggregateType, aggregateId, event, topic, partitionKey, correlationId)
+  - Wraps events in EventEnvelope → EventStorePort.append() + OutboxPort.insert()
+
+## Domain Events (DomainEvent interface implementations)
+
+- `UserRegisteredEvent` — `src/main/kotlin/com/ntt/authservice/auth/domain/event/UserRegisteredEvent.kt`
+  - implements: `DomainEvent`
+  - eventType: "iam.user.registered"
+  - Fields: userId, username, email, fullName, phone, domainCode, domainId, status, registrationSource, ipAddress, userAgent
+
+- `UserLoggedInEvent` — `src/main/kotlin/com/ntt/authservice/auth/domain/event/UserLoggedInEvent.kt`
+  - implements: `DomainEvent`
+  - eventType: "iam.user.logged_in"
+
+- `UserLoginFailedEvent` — `src/main/kotlin/com/ntt/authservice/auth/domain/event/UserLoginFailedEvent.kt`
+  - implements: `DomainEvent`
+  - eventType: "iam.user.login_failed"
+  - **PATTERN REFERENCE** for UserRegistrationFailedEvent
+  - Fields: usernameAttempted, userId, failureReason (LoginFailureReason), ipAddress, userAgent, deviceFingerprint, failedAt
+
+- `TokenIssuedEvent` — `src/main/kotlin/com/ntt/authservice/auth/domain/event/TokenIssuedEvent.kt`
+  - implements: `DomainEvent`
+  - eventType: "iam.token.issued"
+
+- `TokenRevokedEvent` — `src/main/kotlin/com/ntt/authservice/auth/domain/event/TokenRevokedEvent.kt`
+  - implements: `DomainEvent`
+
+- `TokenValidationFailedEvent` — `src/main/kotlin/com/ntt/authservice/auth/domain/event/TokenValidationFailedEvent.kt`
+  - implements: `DomainEvent`
+
+## Enums (Failure Reason pattern)
+
+- `LoginFailureReason` — `src/main/kotlin/com/ntt/authservice/auth/domain/event/LoginFailureReason.kt`
+  - Values: INVALID_CREDENTIALS, ACCOUNT_LOCKED, ACCOUNT_DISABLED, CAPTCHA_REQUIRED, CAPTCHA_FAILED, PASSWORD_EXPIRED, RATE_LIMITED, MFA_REQUIRED, UNKNOWN
+  - **PATTERN REFERENCE** for RegistrationFailureReason
+
+- `ValidationFailureReason` — `src/main/kotlin/com/ntt/authservice/auth/domain/event/ValidationFailureReason.kt`
+
+## Event Envelope
+
+- `EventEnvelope<T>` — `src/main/kotlin/com/ntt/authservice/auth/domain/event/EventEnvelope.kt`
+  - Generic wrapper: id (UUID), type, source, specversion, time, correlationId, schemaVersion, data
+
+## Outbound Ports
+
+- `EventStorePort` — `src/main/kotlin/com/ntt/authservice/auth/application/port/out/EventStorePort.kt`
+  - Methods: append(), getNextSequenceNumber()
+
+- `OutboxPort` — `src/main/kotlin/com/ntt/authservice/auth/application/port/out/OutboxPort.kt`
+  - Methods: insert()
+
+- `EventPublisher` — `src/main/kotlin/com/ntt/authservice/auth/application/port/out/EventPublisher.kt`
+  - Interface with publish(event: DomainEvent) method
+  - Contains DomainEvent base interface
+
+## Adapters (Infrastructure)
+
+- `EventStorePersistenceAdapter` — `src/main/kotlin/com/ntt/authservice/auth/adapter/out/persistence/EventStorePersistenceAdapter.kt`
+  - implements: `EventStorePort`
+  - JPA adapter for event_store table
+
+- `OutboxPersistenceAdapter` — `src/main/kotlin/com/ntt/authservice/auth/adapter/out/persistence/OutboxPersistenceAdapter.kt`
+  - implements: `OutboxPort`
+  - JPA adapter for event_outbox table
+
+- `OutboxPoller` — `src/main/kotlin/com/ntt/authservice/auth/adapter/out/event/OutboxPoller.kt`
+  - @Scheduled polling — event_outbox → Kafka
 
 - `KafkaEventPublisher` — `src/main/kotlin/com/ntt/authservice/auth/adapter/out/event/KafkaEventPublisher.kt`
   - implements: `EventPublisher`
-  - annotations: `@Component`, `@Primary`, `@ConditionalOnProperty("spring.kafka.bootstrap-servers")`
-- `SpringEventPublisher` — `src/main/kotlin/com/ntt/authservice/auth/adapter/out/event/SpringEventPublisher.kt`
-  - implements: `EventPublisher`
-  - annotations: `@Component` (fallback when Kafka not configured)
-- `CaptchaClient` — `src/main/kotlin/com/ntt/authservice/auth/adapter/out/http/CaptchaClient.kt`
-- `SsoProviderClient` — `src/main/kotlin/com/ntt/authservice/auth/adapter/out/http/SsoProviderClient.kt`
-- `HttpCaptchaGateway` — `src/main/kotlin/com/ntt/authservice/auth/adapter/out/http/HttpCaptchaGateway.kt`
-- `HttpSsoGateway` — `src/main/kotlin/com/ntt/authservice/auth/adapter/out/http/HttpSsoGateway.kt`
-- `CaptchaGatewayAdapter` — `src/main/kotlin/com/ntt/authservice/auth/adapter/out/gateway/CaptchaGatewayAdapter.kt`
-- `OAuth2TokenExchanger` — `src/main/kotlin/com/ntt/authservice/auth/adapter/out/sso/OAuth2TokenExchanger.kt`
-
-## Kafka Consumer
-
-- `PermissionChangedConsumer` — `src/main/kotlin/com/ntt/authservice/auth/adapter/in/kafka/PermissionChangedConsumer.kt`
-  - annotations: `@Component`, `@ConditionalOnProperty`, `@KafkaListener(topics = ["iam.permission.changed"])`
-
-## Cache
-
-- `AbstractTwoTierCache<K, V>` — `src/main/kotlin/com/ntt/authservice/shared/cache/AbstractTwoTierCache.kt`
-  - L1: Caffeine, L2: Redis (StringRedisTemplate)
-  - Abstract methods: `toKeyString()`, `deserializeFromRedis()`, `loadFromSource()`
-- `MultiTierPermissionCache` — `src/main/kotlin/com/ntt/authservice/auth/adapter/out/cache/MultiTierPermissionCache.kt`
-- `CaffeinePermissionCache` — `src/main/kotlin/com/ntt/authservice/auth/adapter/out/cache/CaffeinePermissionCache.kt`
-- `InMemoryPermissionCache` — `src/main/kotlin/com/ntt/authservice/auth/adapter/out/cache/InMemoryPermissionCache.kt`
-
-## Persistence Base
-
-- `VersionedAuditableEntity` — `src/main/kotlin/com/ntt/authservice/shared/persistence/VersionedAuditableEntity.kt`
-  - extends: `SnowflakePersistentAuditableEntity()` (base-core)
-  - adds: `@Version var version: Long` for optimistic locking
-
-## Exception Base
-
-- `AuthException` — `src/main/kotlin/com/ntt/authservice/shared/exception/AuthExceptions.kt`
-  - extends: `BusinessException` (base-core)
-  - properties: `authError: AuthErrorCode`, `httpStatus: HttpStatus`
-- `AuthControllerAdvice` — `src/main/kotlin/com/ntt/authservice/shared/exception/GlobalExceptionHandler.kt`
-  - extends: `BaseControllerAdvice` (base-core)
-  - handles: `AuthException` → RFC 7807 ProblemDetail
+  - Publishes via KafkaTemplate
 
 ## NOT DETECTED
 
-- Factory pattern classes
+- Factory classes — not used in event recording flow
+- Client / Gateway — no external HTTP clients in event recording scope
