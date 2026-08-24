@@ -10,6 +10,8 @@ import com.ntt.authservice.auth.domain.event.ValidationFailureReason
 import com.ntt.authservice.shared.config.SecurityProperties
 import io.jsonwebtoken.Claims
 import io.jsonwebtoken.security.SignatureException
+import io.micrometer.core.instrument.MeterRegistry
+import io.micrometer.core.instrument.Timer
 import jakarta.servlet.FilterChain
 import jakarta.servlet.http.HttpServletRequest
 import jakarta.servlet.http.HttpServletResponse
@@ -30,6 +32,7 @@ import org.springframework.web.filter.OncePerRequestFilter
  * FR-011: Recognizes anonymous tokens (type=anonymous) and sets ROLE_ANONYMOUS authority.
  * FR-012: Validation failure event recording for suspicious patterns.
  * FR-014: Structured logging with reason categorization.
+ * OBS-002: Micrometer metrics — validation counter + duration timer.
  */
 @Component
 class JwtAuthFilter(
@@ -37,7 +40,8 @@ class JwtAuthFilter(
     private val tokenBlacklistCacheService: TokenBlacklistCacheService,
     private val claimValidatorChain: ClaimValidatorChain,
     private val tokenEventRecorder: TokenEventRecorder,
-    private val securityProperties: SecurityProperties
+    private val securityProperties: SecurityProperties,
+    private val meterRegistry: MeterRegistry
 ) : OncePerRequestFilter() {
 
     private val log = LoggerFactory.getLogger(JwtAuthFilter::class.java)
@@ -55,6 +59,7 @@ class JwtAuthFilter(
         }
 
         val token = authHeader.substring(7)
+        val sample = Timer.start(meterRegistry)
 
         try {
             val claims: Claims
@@ -69,6 +74,8 @@ class JwtAuthFilter(
                     validatorName = null,
                     request = request
                 )
+                meterRegistry.counter("auth.token.validation", "result", "failure", "reason", "signature_invalid").increment()
+                sample.stop(Timer.builder("auth.token.validation.duration").tag("result", "failure").register(meterRegistry))
                 filterChain.doFilter(request, response)
                 return
             }
@@ -84,6 +91,8 @@ class JwtAuthFilter(
                     validatorName = null,
                     request = request
                 )
+                meterRegistry.counter("auth.token.validation", "result", "failure", "reason", "blacklisted").increment()
+                sample.stop(Timer.builder("auth.token.validation.duration").tag("result", "failure").register(meterRegistry))
                 response.status = HttpServletResponse.SC_UNAUTHORIZED
                 return
             }
@@ -104,6 +113,9 @@ class JwtAuthFilter(
                     validatorName = e.validatorName,
                     request = request
                 )
+                val reasonTag = reason.name.lowercase()
+                meterRegistry.counter("auth.token.validation", "result", "failure", "reason", reasonTag).increment()
+                sample.stop(Timer.builder("auth.token.validation.duration").tag("result", "failure").register(meterRegistry))
                 // Continue without authentication — secured endpoints will reject
                 filterChain.doFilter(request, response)
                 return
@@ -144,9 +156,15 @@ class JwtAuthFilter(
 
             SecurityContextHolder.getContext().authentication = authentication
 
+            // OBS-002: Validation success
+            meterRegistry.counter("auth.token.validation", "result", "success", "reason", "none").increment()
+            sample.stop(Timer.builder("auth.token.validation.duration").tag("result", "success").register(meterRegistry))
+
         } catch (e: Exception) {
             // FR-014: Structured logging — categorize failure
             log.debug("JWT validation failed: {}", e.message)
+            meterRegistry.counter("auth.token.validation", "result", "failure", "reason", "expired").increment()
+            sample.stop(Timer.builder("auth.token.validation.duration").tag("result", "failure").register(meterRegistry))
             // Continue without authentication — secured endpoints will reject
         }
 
