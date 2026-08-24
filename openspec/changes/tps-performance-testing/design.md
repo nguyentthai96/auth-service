@@ -20,12 +20,29 @@ _Generated: 2026-08-27_
 **Tri-Layer Testing Architecture** — each layer targets a specific performance dimension with a best-in-class tool:
 
 ```
-┌─────────────────────────────────────────────────────────────────────┐
-│                     Developer / CI/CD Pipeline                      │
-│                                                                     │
-│  Gradle Tasks: k6Run │ k6ProfileRun │ k6CacheBenchmark │ jmh │ test│
-└───────┬──────────────┬──────────────┬───────────────────┬──────┬────┘
-        │              │              │                   │    t | `base-testing-starter` (shared) | Reusable across all services; additive, test-scoped only |
+Layer 4 (Entry):    Developer / CI/CD Pipeline
+                    Gradle Tasks: k6Run | k6ProfileRun | k6CacheBenchmark | jmh | test
+                           |              |                    |             |      |
+Layer 3 (E2E):      K6 Docker (500 VUs)  K6 Docker           K6 Docker     |      |
+                    → POST /auth/login    → GET /profiles/me  → benchmark   |      |
+                           ↓                     ↓                 ↓        |      |
+Layer 2 (I/O):      ─────────── auth-service (Spring Boot) ──────────      |      |
+                    │ datasource-proxy (SQL counting)              │       |      |
+                    │ WireMock (HTTP latency/fault simulation)     │       |      |
+                    │ Testcontainers Redis (cache encryption test) │       |      |
+                           ↓                                               |      |
+Layer 1 (Micro):    ─────────── JMH (isolated JVM forks) ─────────────────+      |
+                    │ EncryptionBenchmark (AES-GCM ops/sec)          │            |
+                    │ SerializationBenchmark (Jackson ops/sec)       │            |
+                    └────────────────────────────────────────────────┘            |
+Layer 0 (Unit):     ──── JUnit 5 + assertQueryCount DSL ─────────────────────────+
+```
+
+### Key Design Decisions (from brainstorm — Approach 2)
+
+| Decision | Choice | Rationale |
+|----------|--------|-----------|
+| assertQueryCount location | `base-testing-starter` (shared) | Reusable across all services; additive, test-scoped only |
 | datasource-proxy wrap pattern | `@TestConfiguration` (not BeanPostProcessor) | Explicit, predictable, avoids HikariCP conflict |
 | WireMock target priority | SSO first, then Captcha | SSO has 2 HTTP calls (exchangeToken + getUserInfo), more complex flow |
 | K6 URL | `localhost:8080` (not `host.docker.internal`) | Consistent with `--network host`; Linux CI compatible |
