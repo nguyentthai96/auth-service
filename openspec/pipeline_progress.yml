@@ -1,5 +1,5 @@
 current_feature: tps-performance-testing
-current_workflow: wf_openspec
+current_workflow: wf_openspec_apply
 features:
   anonymous-login-optimization:
     workflows:
@@ -243,6 +243,12 @@ features:
         status: success
         strike_count: 0
         tokens: 0
+      wf_openspec_apply:
+        duration: 0
+        started_at: '2026-08-24T13:04:14.045599+00:00'
+        status: in_progress
+        strike_count: 0
+        tokens: 0
       wf_pre_openspec:
         duration: 369
         status: success
@@ -259,4 +265,4 @@ stats:
   total_features: 7
   total_tokens: 0
 status: running
-updated_at: '2026-08-24T13:04:12.161418+00:00'
+updated_at: '2026-08-24T13:04:14.045582+00:00'
