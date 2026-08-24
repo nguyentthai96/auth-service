@@ -1,0 +1,13 @@
+{
+  "feature": "tps-performance-testing",
+  "workflow": "wf_archive",
+  "outcome": "success",
+  "timestamp": "2026-08-24T13:13:38.535799+00:00",
+  "duration_seconds": 52,
+  "tokens_used": 0,
+  "prompt_layer_tokens": {},
+  "output_artifacts": [],
+  "errors": [],
+  "lesson_extracted": null,
+  "recovery_pattern": null
+}
