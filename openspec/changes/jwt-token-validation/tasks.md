@@ -46,7 +46,7 @@ _Scope: BUG-001 fix + 49 test cases + Micrometer observability_
 
 ## Phase 1: Bug Fix (prerequisite — corrects audit data)
 
-- [ ] **Task 1: ValidationFailureReason — add ISSUER_MISMATCH + CLAIM_VALIDATION_FAILED**
+- [x] **Task 1: ValidationFailureReason — add ISSUER_MISMATCH + CLAIM_VALIDATION_FAILED**
   - File: `src/main/kotlin/com/ntt/authservice/auth/domain/event/ValidationFailureReason.kt` | Action: [MODIFY]
   - FR: FR-012 (bug fix — incorrect audit event mapping)
   - Pattern: Kotlin enum class, one value per line with KDoc comment
@@ -57,7 +57,7 @@ _Scope: BUG-001 fix + 49 test cases + Micrometer observability_
   - Final enum order: `BLACKLISTED`, `SIGNATURE_INVALID`, `ISSUER_MISMATCH`, `AUDIENCE_MISMATCH`, `TYPE_REJECTED`, `CLAIM_VALIDATION_FAILED`
   - Backward compat: Additive enum change. Existing Kafka consumers unaffected.
 
-- [ ] **Task 2: JwtAuthFilter — fix mapValidatorToReason**
+- [x] **Task 2: JwtAuthFilter — fix mapValidatorToReason**
   - File: `src/main/kotlin/com/ntt/authservice/shared/security/JwtAuthFilter.kt` | Action: [MODIFY]
   - FR: FR-012 (bug fix)
   - Pattern: Kotlin `when` expression
@@ -71,7 +71,7 @@ _Scope: BUG-001 fix + 49 test cases + Micrometer observability_
 
 ## Phase 2: Unit Tests — Validators (no production changes needed)
 
-- [ ] **Task 7: IssuerClaimValidatorTest**
+- [x] **Task 7: IssuerClaimValidatorTest**
   - File: `src/test/kotlin/com/ntt/authservice/auth/application/IssuerClaimValidatorTest.kt` | Action: [NEW]
   - Pattern: Mockito/MockK unit test, `@ExtendWith(MockitoExtension::class)` or MockK equivalent
   - Dependencies: `IssuerClaimValidator`, mock `SecurityProperties`, mock JJWT `Claims`
@@ -80,7 +80,7 @@ _Scope: BUG-001 fix + 49 test cases + Micrometer observability_
     - TC02: Mismatched issuer → returns `ClaimValidationResult(status=FAIL, reason="Issuer mismatch: expected=auth-service, actual=other-service")`
     - TC03: Null issuer in claims → returns `ClaimValidationResult(status=FAIL)`
 
-- [ ] **Task 8: AudienceClaimValidatorTest**
+- [x] **Task 8: AudienceClaimValidatorTest**
   - File: `src/test/kotlin/com/ntt/authservice/auth/application/AudienceClaimValidatorTest.kt` | Action: [NEW]
   - Pattern: Mockito/MockK unit test
   - Dependencies: `AudienceClaimValidator`, mock `SecurityProperties`, mock JJWT `Claims`
@@ -91,7 +91,7 @@ _Scope: BUG-001 fix + 49 test cases + Micrometer observability_
     - TC04: Enabled + null audience claim in token → returns FAIL
     - TC05: Enabled + audience list in token contains expected value → returns PASS
 
-- [ ] **Task 9: TokenTypeClaimValidatorTest**
+- [x] **Task 9: TokenTypeClaimValidatorTest**
   - File: `src/test/kotlin/com/ntt/authservice/auth/application/TokenTypeClaimValidatorTest.kt` | Action: [NEW]
   - Pattern: Mockito/MockK unit test
   - Dependencies: `TokenTypeClaimValidator`, mock JJWT `Claims`
@@ -103,7 +103,7 @@ _Scope: BUG-001 fix + 49 test cases + Micrometer observability_
     - TC05: `"refresh"` → FAIL `"Token type 'refresh' not allowed as access token"`
     - TC06: `"service"` (unknown) → FAIL
 
-- [ ] **Task 6: ClaimValidatorChainTest**
+- [x] **Task 6: ClaimValidatorChainTest**
   - File: `src/test/kotlin/com/ntt/authservice/auth/application/ClaimValidatorChainTest.kt` | Action: [NEW]
   - Pattern: Mockito/MockK unit test with mock `ClaimValidator` instances
   - Dependencies: `ClaimValidatorChain`, `ClaimValidator` interface, `ClaimValidationResult`, `ClaimValidationException`
@@ -118,7 +118,7 @@ _Scope: BUG-001 fix + 49 test cases + Micrometer observability_
 
 ## Phase 3: Observability (production changes — additive)
 
-- [ ] **Task 3: TokenBlacklistCacheService — add MeterRegistry + metrics**
+- [x] **Task 3: TokenBlacklistCacheService — add MeterRegistry + metrics**
   - File: `src/main/kotlin/com/ntt/authservice/auth/application/TokenBlacklistCacheService.kt` | Action: [MODIFY]
   - Pattern: Constructor injection `private val meterRegistry: MeterRegistry` — same as `AnonymousSessionHandler.kt` L33
   - Dependencies: `io.micrometer.core.instrument.MeterRegistry`, `Counter`, `Gauge`
@@ -142,7 +142,7 @@ _Scope: BUG-001 fix + 49 test cases + Micrometer observability_
        - Opens: `meterRegistry.counter("auth.token.blacklist.circuit_breaker", "transition", "opened").increment()`
        - Resets: `meterRegistry.counter("auth.token.blacklist.circuit_breaker", "transition", "reset").increment()`
 
-- [ ] **Task 4: JwtAuthFilter — add MeterRegistry + metrics**
+- [x] **Task 4: JwtAuthFilter — add MeterRegistry + metrics**
   - File: `src/main/kotlin/com/ntt/authservice/shared/security/JwtAuthFilter.kt` | Action: [MODIFY]
   - Pattern: Constructor injection — same as Task 3
   - Dependencies: `io.micrometer.core.instrument.MeterRegistry`, `Counter`, `Timer`
@@ -166,7 +166,7 @@ _Scope: BUG-001 fix + 49 test cases + Micrometer observability_
 
 ## Phase 4: Unit Tests — Cache Service + Filter + Events (depends on Phase 1+3)
 
-- [ ] **Task 5: TokenBlacklistCacheServiceTest**
+- [x] **Task 5: TokenBlacklistCacheServiceTest**
   - File: `src/test/kotlin/com/ntt/authservice/auth/application/TokenBlacklistCacheServiceTest.kt` | Action: [NEW]
   - Pattern: Mockito/MockK + `SimpleMeterRegistry` for metric verification
   - Dependencies: mock `Cache<String, Boolean>` (Caffeine), mock `StringRedisTemplate`, mock `TokenBlacklistRepository`, `SimpleMeterRegistry`, `SecurityProperties` (real or mock with defaults)
@@ -185,7 +185,7 @@ _Scope: BUG-001 fix + 49 test cases + Micrometer observability_
     - TC12: `addToBlacklist()` — correct Redis key format `token:blacklist:{jti}` and TTL = remainingSeconds
     - TC13: Metrics — `SimpleMeterRegistry` verifies counter increments for L1 hit, L2 miss, circuit_breaker opened etc.
 
-- [ ] **Task 10: JwtAuthFilterTest**
+- [x] **Task 10: JwtAuthFilterTest**
   - File: `src/test/kotlin/com/ntt/authservice/shared/security/JwtAuthFilterTest.kt` | Action: [NEW]
   - Pattern: Mockito/MockK + `MockHttpServletRequest` + `MockHttpServletResponse` + `MockFilterChain` + `SimpleMeterRegistry`
   - Dependencies: mock `JwtService`, mock `TokenBlacklistCacheService`, mock `ClaimValidatorChain`, mock `TokenEventRecorder`, `SimpleMeterRegistry`, `SecurityProperties`
@@ -202,7 +202,7 @@ _Scope: BUG-001 fix + 49 test cases + Micrometer observability_
     - TC10: Event recording throws exception → swallowed, filterChain continues normally
     - TC11: Metrics — `SimpleMeterRegistry` verifies `auth.token.validation` counter increments and `auth.token.validation.duration` timer records
 
-- [ ] **Task 11: TokenEventRecorderTest — add recordValidationFailure tests**
+- [x] **Task 11: TokenEventRecorderTest — add recordValidationFailure tests**
   - File: `src/test/kotlin/com/ntt/authservice/auth/application/event/TokenEventRecorderTest.kt` | Action: [MODIFY]
   - Pattern: Follow existing test structure (TC1-TC9 already exist)
   - Dependencies: Existing mocks (`EventService`, etc.)
@@ -215,7 +215,7 @@ _Scope: BUG-001 fix + 49 test cases + Micrometer observability_
 
 ## Phase 5: Integration Test Update (depends on Phase 1)
 
-- [ ] **Task 12: TokenIntrospectionIntegrationTest — add ClaimValidatorChain tests**
+- [x] **Task 12: TokenIntrospectionIntegrationTest — add ClaimValidatorChain tests**
   - File: `src/test/kotlin/com/ntt/authservice/auth/integration/TokenIntrospectionIntegrationTest.kt` | Action: [MODIFY]
   - Pattern: Follow existing test structure (TC1-TC4 already exist), mock-based
   - Dependencies: Existing mocks + `ClaimValidatorChain`, `TokenBlacklistCacheService`
@@ -228,10 +228,10 @@ _Scope: BUG-001 fix + 49 test cases + Micrometer observability_
 
 ## Post-Completion Checklist
 
-- [ ] All 12 tasks completed
-- [ ] `./gradlew test` passes (all existing + new tests)
-- [ ] `./gradlew compileKotlin` succeeds (no compilation errors from constructor changes)
-- [ ] Verify `ValidationFailureReason` has exactly 6 values
-- [ ] Verify `mapValidatorToReason("IssuerClaimValidator")` returns `ISSUER_MISMATCH` (not `SIGNATURE_INVALID`)
-- [ ] Verify metrics appear in `/actuator/metrics` endpoint (if Spring Boot Actuator enabled)
-- [ ] No raw token strings in any log statements (security review)
+- [x] All 12 tasks completed
+- [x] `./gradlew test` passes (all existing + new tests)
+- [x] `./gradlew compileKotlin` succeeds (no compilation errors from constructor changes)
+- [x] Verify `ValidationFailureReason` has exactly 6 values
+- [x] Verify `mapValidatorToReason("IssuerClaimValidator")` returns `ISSUER_MISMATCH` (not `SIGNATURE_INVALID`)
+- [x] Verify metrics appear in `/actuator/metrics` endpoint (if Spring Boot Actuator enabled)
+- [x] No raw token strings in any log statements (security review)
