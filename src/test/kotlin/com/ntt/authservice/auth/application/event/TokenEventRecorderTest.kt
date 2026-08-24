@@ -4,6 +4,8 @@ import com.ntt.authservice.auth.domain.event.IssuanceContext
 import com.ntt.authservice.auth.domain.event.RevocationType
 import com.ntt.authservice.auth.domain.event.TokenIssuedEvent
 import com.ntt.authservice.auth.domain.event.TokenRevokedEvent
+import com.ntt.authservice.auth.domain.event.TokenValidationFailedEvent
+import com.ntt.authservice.auth.domain.event.ValidationFailureReason
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.DisplayName
 import org.junit.jupiter.api.Test
@@ -17,7 +19,7 @@ import java.time.Instant
  * Unit tests for TokenEventRecorder — token lifecycle event recording helper.
  * Verifies delegation to EventService.record() with correct parameters.
  *
- * FR-009: Token issuance events, FR-012: Token revocation events
+ * FR-009: Token issuance events, FR-012: Token revocation events + validation failure events
  */
 @ExtendWith(MockitoExtension::class)
 @DisplayName("TokenEventRecorder Tests")
@@ -217,4 +219,80 @@ class TokenEventRecorderTest {
 
         // Then — logged but not propagated
     }
+
+    // --- Validation Failure Tests (new TCs — FR-012) ---
+
+    @Test
+    @DisplayName("TC10: recordValidationFailure() delegates to eventService.record() with correct topic and aggregateType")
+    fun shouldRecordValidationFailureWithCorrectParameters() {
+        // Given
+        val event = TokenValidationFailedEvent(
+            reason = ValidationFailureReason.ISSUER_MISMATCH,
+            tokenJti = "jti-val-123",
+            ipAddress = "192.168.1.1",
+            userAgent = "Mozilla/5.0",
+            validatorName = "IssuerClaimValidator"
+        )
+
+        // When
+        recorder.recordValidationFailure(event, correlationId = "corr-val-1")
+
+        // Then
+        verify(eventService).record(
+            aggregateType = eq("Token"),
+            aggregateId = eq(0L),
+            event = eq(event),
+            topic = eq("iam.token.validation-failed"),
+            partitionKey = eq("jti-val-123"),
+            correlationId = eq("corr-val-1")
+        )
+    }
+
+    @Test
+    @DisplayName("TC11: recordValidationFailure() with null tokenJti → partitionKey = \"unknown\"")
+    fun shouldUseUnknownPartitionKeyWhenJtiIsNull() {
+        // Given
+        val event = TokenValidationFailedEvent(
+            reason = ValidationFailureReason.SIGNATURE_INVALID,
+            tokenJti = null,
+            ipAddress = "10.0.0.1",
+            userAgent = null,
+            validatorName = null
+        )
+
+        // When
+        recorder.recordValidationFailure(event, correlationId = null)
+
+        // Then
+        verify(eventService).record(
+            aggregateType = eq("Token"),
+            aggregateId = eq(0L),
+            event = eq(event),
+            topic = eq("iam.token.validation-failed"),
+            partitionKey = eq("unknown"),
+            correlationId = anyOrNull()
+        )
+    }
+
+    @Test
+    @DisplayName("TC12: recordValidationFailure() — eventService.record() throws exception → caught and logged (fail-safe)")
+    fun shouldSwallowExceptionsOnValidationFailure() {
+        // Given
+        whenever(eventService.record<TokenValidationFailedEvent>(any(), any(), any(), any(), any(), anyOrNull()))
+            .thenThrow(RuntimeException("Event store down"))
+
+        val event = TokenValidationFailedEvent(
+            reason = ValidationFailureReason.BLACKLISTED,
+            tokenJti = "jti-fail",
+            ipAddress = "127.0.0.1",
+            userAgent = null,
+            validatorName = null
+        )
+
+        // When — should NOT throw
+        recorder.recordValidationFailure(event, correlationId = null)
+
+        // Then — logged but not propagated (verified by no exception thrown)
+    }
 }
+
