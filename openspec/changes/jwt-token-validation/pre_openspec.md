@@ -227,11 +227,36 @@ Không phát hiện trùng lặp. Tất cả 16 FRs đã implemented với scope
 
 ## 10. DETECTED SCOPE
 
-<!-- STRUCTURED_MARKER: DO NOT MODIFY section name o/JwtAuthFilter.kt` (190 LOC)
+<!-- STRUCTURED_MARKER: DO NOT MODIFY section name or sub-headers -->
+
+### 10.1 Domain
+Authentication & Token Management — JWT validation pipeline, token blacklist, JWKS key management, claim validation, event recording
+
+### 10.2 Flow Type
+Query — token validation là read-only check trên mỗi request; introspection là query endpoint
+
+### 10.3 Candidate Services
+- **auth-service (auth module)**: Core JWT validation logic — `JwtService`, `TokenBlacklistCacheService`, `ClaimValidatorChain`, `ClaimValidator` implementations, `TokenController`, `TokenEventRecorder`
+  - Evidence: keyword `JWT`, `Token`, `parseToken`, `blacklist`, `ClaimValidator` → multiple files trong `auth.application`, `auth.adapter.in.web`, `auth.domain.event`, `auth.application.event`
+- **auth-service (rbac module)**: Token blacklist persistence — `TokenBlacklistEntity`, `TokenBlacklistRepository`
+  - Evidence: keyword `TokenBlacklist` → `rbac.adapter.out.persistence.entity.PermissionEntities.kt`, `rbac.adapter.out.persistence.repository.Repositories.kt`
+- **auth-service (shared module)**: Security configuration, filter chain, exception handling
+  - Evidence: keyword `SecurityConfig`, `SecurityProperties`, `JwtAuthFilter`, `GlobalExceptionHandler` → `shared.config`, `shared.security`, `shared.exception`
+
+### Detection Evidence
+- Keyword: `JwtService` → Module: `auth.application` → File: `src/main/kotlin/com/ntt/authservice/auth/application/JwtService.kt` (353 LOC)
+- Keyword: `TokenBlacklistCacheService` → Module: `auth.application` → File: `src/main/kotlin/com/ntt/authservice/auth/application/TokenBlacklistCacheService.kt` (157 LOC)
+- Keyword: `ClaimValidatorChain` → Module: `auth.application` → File: `src/main/kotlin/com/ntt/authservice/auth/application/ClaimValidatorChain.kt` (42 LOC)
+- Keyword: `ClaimValidator` → Module: `auth.application` → File: `src/main/kotlin/com/ntt/authservice/auth/application/ClaimValidator.kt` (17 LOC)
+- Keyword: `IssuerClaimValidator` → Module: `auth.application` → File: `src/main/kotlin/com/ntt/authservice/auth/application/IssuerClaimValidator.kt` (34 LOC)
+- Keyword: `AudienceClaimValidator` → Module: `auth.application` → File: `src/main/kotlin/com/ntt/authservice/auth/application/AudienceClaimValidator.kt` (43 LOC)
+- Keyword: `TokenTypeClaimValidator` → Module: `auth.application` → File: `src/main/kotlin/com/ntt/authservice/auth/application/TokenTypeClaimValidator.kt` (36 LOC)
+- Keyword: `JwtAuthFilter` → Module: `shared.security` → File: `src/main/kotlin/com/ntt/authservice/shared/security/JwtAuthFilter.kt` (190 LOC)
 - Keyword: `TokenController` → Module: `auth.adapter.in.web` → File: `src/main/kotlin/com/ntt/authservice/auth/adapter/in/web/TokenController.kt` (114 LOC)
 - Keyword: `TokenValidationFailedEvent` → Module: `auth.domain.event` → File: `src/main/kotlin/com/ntt/authservice/auth/domain/event/TokenValidationFailedEvent.kt` (24 LOC)
 - Keyword: `ValidationFailureReason` → Module: `auth.domain.event` → File: `src/main/kotlin/com/ntt/authservice/auth/domain/event/ValidationFailureReason.kt` (18 LOC)
 - Keyword: `TokenEventRecorder` → Module: `auth.application.event` → File: `src/main/kotlin/com/ntt/authservice/auth/application/event/TokenEventRecorder.kt` (105 LOC)
+- Keyword: `EventService` → Module: `auth.application.event` → File: `src/main/kotlin/com/ntt/authservice/auth/application/event/EventService.kt` (90 LOC)
 - Keyword: `SecurityProperties` → Module: `shared.config` → File: `src/main/kotlin/com/ntt/authservice/shared/config/SecurityProperties.kt` (248 LOC)
 - Keyword: `IntrospectionRequest/Response` → Module: `auth.adapter.in.web.dto` → File: `src/main/kotlin/com/ntt/authservice/auth/adapter/in/web/dto/TokenDtos.kt` (41 LOC)
 
@@ -302,7 +327,34 @@ FR-008 → [REUSE] TokenController.jwks() ETag → verified
 FR-009 → [REUSE] JwtAuthFilter.claimValidatorChain.validateOrThrow() → verified
 FR-010 → [REUSE] SecurityProperties.audience, AudienceClaimValidator → verified
 FR-011 → [REUSE] TokenController.tokenBlacklistCacheService → verified
-FR-012 → [REUSE] TokenValidationFailedEvent, TokenEventRecorder.relow: JwtAuthFilter → TokenEventRecorder.recordValidationFailure() → EventService.record() → EventStorePort.append() + OutboxPort.insert() → OutboxPoller → KafkaEventPublisher → topic `iam.token.validation-failed`.
+FR-012 → [REUSE] TokenValidationFailedEvent, TokenEventRecorder → verified
+FR-013 → [REUSE] JwtService.generateAccessToken() aud claim → verified
+FR-014 → [REUSE] JwtAuthFilter structured logging → verified
+FR-015 → [REUSE] TokenBlacklistCacheService circuit breaker → verified
+FR-016 → [REUSE] TokenBlacklistCacheService retry → verified
+```
+
+## 13. Agent Notes (Tổng hợp bổ sung)
+
+> Phần này agent TỰ DO bổ sung thông tin phân tích ngoài template.
+
+### Observations
+- **Classification Change**: Previous iteration classified as EXTEND — all 16 FRs now verified as IMPLEMENTED. Reclassified to MAINTENANCE.
+- **Code Quality**: Implementation follows Clean Architecture (hexagonal) consistently. Chain of Responsibility pattern for claim validation is well-structured and extensible.
+- **Coverage Gaps**: No test files detected for `TokenBlacklistCacheService`, `ClaimValidatorChain`, or individual claim validators. Integration tests with Testcontainers recommended.
+- **Blocking I/O**: `Thread.sleep(100)` in `addToBlacklist()` retry is on the revocation path (not validation hot path), acceptable tradeoff.
+- **JJWT API Usage**: Correctly using JJWT 0.12.x API: `.clockSkewSeconds()`, `.verifyWith()`, `.parseSignedClaims()`.
+
+### Related Features / Precedents
+- **jwt_token_issuance** (archived: `archive/2026-08-25-jwt_token_issuance/`) — TokenIssuedEvent, TokenRevokedEvent, TokenEventRecorder pattern. Pattern reused for TokenValidationFailedEvent.
+- **anonymous-login-optimization** (archived: `archive/2026-08-22-anonymous-login-optimization/`) — Redis-based session management, StringRedisTemplate usage reference.
+- **auth-core-features** (archived: `archive/2026-08-21-auth-core-features/`) — MFA, SSO, CAPTCHA — SecurityConfig filter chain configuration reference.
+- **archive/2025-08-26-jwt_token_validation/** — previous iteration pre_openspec.md (EXTEND classification, all FRs now implemented).
+
+### Integration Notes
+- **Redis**: `StringRedisTemplate` used consistently. `TokenBlacklistCacheService` follows same pattern. Key: `token:blacklist:{jti}`.
+- **Caffeine**: Programmatic via `Caffeine.newBuilder()` (NOT Spring Cache abstraction). TTL 30s, max 10K entries configurable.
+- **Kafka Event Flow**: JwtAuthFilter → TokenEventRecorder.recordValidationFailure() → EventService.record() → EventStorePort.append() + OutboxPort.insert() → OutboxPoller → KafkaEventPublisher → topic `iam.token.validation-failed`.
 - **JJWT 0.12.x**: Using `.clockSkewSeconds()`, `.verifyWith()`, `.parseSignedClaims()` API — current stable API.
 
 ### Suggested Approach

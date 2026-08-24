@@ -1,88 +1,120 @@
 # Base Class Map
 
-_Generated: 2026-08-26 | Services: auth-service (auth, rbac, shared modules)_
+_Generated: 2025-01-20 | Services: auth-service (auth, rbac, shared modules)_
 
 ## Controller
 
 - `TokenController` — `src/main/kotlin/com/ntt/authservice/auth/adapter/in/web/TokenController.kt`
   - extends: N/A (plain @RestController)
+  - implements: N/A
   - endpoints: POST /api/auth/introspect, GET /.well-known/jwks.json, POST /api/auth/sessions/{userId}/revoke-all
-  - dependencies: JwtService, AuthService, TokenBlacklistRepository, MessageSource
 
-## Handler (Command)
-
-- `TokenGenerator` — `src/main/kotlin/com/ntt/authservice/auth/application/command/TokenGenerator.kt`
-  - extends: N/A (@Component)
-  - role: Shared token generation for Login/Register/Refresh
-  - dependencies: JwtService, TokenStore, TokenHasher, TokenEventRecorder
-
-- `RefreshTokenHandler` — `src/main/kotlin/com/ntt/authservice/auth/application/command/RefreshTokenHandler.kt`
-  - extends: N/A (@Component)
-  - role: Token rotation — revoke old, generate new pair
-  - dependencies: TokenStore, TokenGenerator, TokenEventRecorder
-
-- `RevokeSessionsHandler` — `src/main/kotlin/com/ntt/authservice/auth/application/command/RevokeSessionsHandler.kt`
-  - extends: N/A (@Component)
-  - role: Bulk session revocation
-  - dependencies: TokenStore
-
-## Service (Application)
-
-- `JwtService` — `src/main/kotlin/com/ntt/authservice/auth/application/JwtService.kt`
-  - extends: N/A (@Service)
-  - role: JWT generation (access/refresh/mfa/anonymous), parsing, JWKS
-  - key methods: generateAccessToken(), generateRefreshToken(), parseToken(), getJwks()
-  - dependencies: SecurityProperties
-
-- `AuthService` — `src/main/kotlin/com/ntt/authservice/auth/application/AuthService.kt`
-  - extends: N/A
-  - role: Core auth orchestration (login, logout, revocation)
-  - dependencies: TokenBlacklistRepository, TokenStore, etc.
-
-- `EventService` — `src/main/kotlin/com/ntt/authservice/auth/application/event/EventService.kt`
-  - extends: N/A (@Component)
-  - role: Transactional event recording (event store + outbox)
-  - dependencies: EventStorePort, OutboxPort, ObjectMapper
-
-- `TokenEventRecorder` — `src/main/kotlin/com/ntt/authservice/auth/application/event/TokenEventRecorder.kt`
-  - extends: N/A (@Component)
-  - role: Helper for token lifecycle event recording
-  - dependencies: EventService
-
-## Filter (Security)
+## Filter (OncePerRequestFilter)
 
 - `JwtAuthFilter` — `src/main/kotlin/com/ntt/authservice/shared/security/JwtAuthFilter.kt`
-  - extends: `OncePerRequestFilter` (Spring)
-  - role: JWT validation filter — parse, blacklist check, set SecurityContext
-  - dependencies: JwtService, TokenBlacklistRepository
+  - extends: `OncePerRequestFilter` (Spring Web)
+  - implements: N/A
+  - scope: Every HTTP request — PEP for JWT validation
 
-## Client / Gateway
+- `ServiceAuthFilter` — `src/main/kotlin/com/ntt/authservice/auth/adapter/in/web/filter/ServiceAuthFilter.kt`
+  - extends: `OncePerRequestFilter`
+  - implements: N/A
+  - scope: /internal/** paths — service-to-service auth
 
-- `HttpSsoGateway` — `src/main/kotlin/com/ntt/authservice/auth/adapter/out/http/HttpSsoGateway.kt`
-  - implements: `SsoGateway`
-  - role: SSO provider token exchange
-  - protocol: HTTP (WebClient/RestClient)
+- `LoginRateLimitFilter` — `src/main/kotlin/com/ntt/authservice/auth/adapter/in/web/filter/LoginRateLimitFilter.kt`
+  - extends: `OncePerRequestFilter`
+  - implements: N/A
 
-- `HttpCaptchaGateway` — `src/main/kotlin/com/ntt/authservice/auth/adapter/out/http/HttpCaptchaGateway.kt`
-  - role: CAPTCHA verification gateway
-  - protocol: HTTP
+- `ContentLanguageFilter` — `src/main/kotlin/com/ntt/authservice/auth/adapter/in/web/filter/ContentLanguageFilter.kt`
+  - extends: `OncePerRequestFilter`
+  - implements: N/A
 
-## Port (Interface)
+- `ClientMetadataFilter` — `src/main/kotlin/com/ntt/authservice/auth/adapter/in/web/filter/ClientMetadataFilter.kt`
+  - extends: `OncePerRequestFilter`
+  - implements: N/A
+
+## Service (Application Layer)
+
+- `JwtService` — `src/main/kotlin/com/ntt/authservice/auth/application/JwtService.kt`
+  - extends: N/A
+  - implements: N/A
+  - annotation: @Service
+  - responsibilities: JWT generation (RS256/HMAC), token parsing with cascading fallback, JWKS generation
+
+- `TokenBlacklistCacheService` — `src/main/kotlin/com/ntt/authservice/auth/application/TokenBlacklistCacheService.kt`
+  - extends: N/A
+  - implements: N/A
+  - annotation: @Service
+  - responsibilities: Three-tier blacklist cache (Caffeine L1 + Redis L2 + DB fallback), circuit breaker
+
+- `ServiceTokenService` — `src/main/kotlin/com/ntt/authservice/auth/application/ServiceTokenService.kt`
+  - extends: N/A
+  - implements: N/A
+  - annotation: @Service
+  - responsibilities: Service-to-service JWT generation/validation
+
+## Component (Chain of Responsibility)
+
+- `ClaimValidatorChain` — `src/main/kotlin/com/ntt/authservice/auth/application/ClaimValidatorChain.kt`
+  - extends: N/A
+  - implements: N/A
+  - annotation: @Component
+  - responsibilities: Orchestrates ClaimValidator beans (fail-fast + collect-all modes)
+
+- `IssuerClaimValidator` — `src/main/kotlin/com/ntt/authservice/auth/application/IssuerClaimValidator.kt`
+  - extends: N/A
+  - implements: `ClaimValidator`
+  - annotation: @Component
+
+- `AudienceClaimValidator` — `src/main/kotlin/com/ntt/authservice/auth/application/AudienceClaimValidator.kt`
+  - extends: N/A
+  - implements: `ClaimValidator`
+  - annotation: @Component
+
+- `TokenTypeClaimValidator` — `src/main/kotlin/com/ntt/authservice/auth/application/TokenTypeClaimValidator.kt`
+  - extends: N/A
+  - implements: `ClaimValidator`
+  - annotation: @Component
+
+## Interface
+
+- `ClaimValidator` — `src/main/kotlin/com/ntt/authservice/auth/application/ClaimValidator.kt`
+  - type: Interface (Chain of Responsibility contract)
+  - methods: `validate(claims: Claims): ClaimValidationResult`
 
 - `TokenStore` — `src/main/kotlin/com/ntt/authservice/auth/application/port/out/TokenStore.kt`
-  - type: Outbound port (interface)
-  - methods: saveRefreshToken(), findValidRefreshToken(), revokeToken(), revokeAllForUser(), blacklistToken()
-  - adapter: `TokenStorePersistenceAdapter`
+  - type: Interface (Outbound port)
+  - methods: `saveRefreshToken()`, `findValidRefreshToken()`, `revokeToken()`, `revokeAllForUser()`, `blacklistToken()`
 
-- `EventStorePort` — `src/main/kotlin/com/ntt/authservice/auth/application/port/out/EventStorePort.kt`
-  - type: Outbound port (interface)
-  - role: Event store persistence
+- `DomainEvent` — `src/main/kotlin/com/ntt/authservice/auth/application/port/out/EventPublisher.kt`
+  - type: Interface
+  - property: `eventType: String`
 
-- `OutboxPort` — `src/main/kotlin/com/ntt/authservice/auth/application/port/out/OutboxPort.kt`
-  - type: Outbound port (interface)
-  - role: Transactional outbox for Kafka
+## Event Recorder (Helper)
+
+- `TokenEventRecorder` — `src/main/kotlin/com/ntt/authservice/auth/application/event/TokenEventRecorder.kt`
+  - extends: N/A
+  - implements: N/A
+  - annotation: @Component
+  - responsibilities: Records token lifecycle events (issuance, revocation, validation failure)
+
+- `EventService` — `src/main/kotlin/com/ntt/authservice/auth/application/event/EventService.kt`
+  - extends: N/A
+  - implements: N/A
+  - annotation: @Component
+  - responsibilities: Transactional event recording (event store + outbox pattern)
+
+## Exception Hierarchy
+
+- `AuthException` — `src/main/kotlin/com/ntt/authservice/shared/exception/AuthExceptions.kt`
+  - extends: `BusinessException` (base-core)
+  - base for all auth exceptions
+
+- `AuthControllerAdvice` — `src/main/kotlin/com/ntt/authservice/shared/exception/GlobalExceptionHandler.kt`
+  - extends: `BaseControllerAdvice` (base-core)
+  - annotation: @RestControllerAdvice
 
 ## NOT DETECTED
 
-- Factory classes (no `*Factory` found in auth/shared modules — exception: `TinkCipherAlgorithmFactory` in cipher package, unrelated)
-- Abstract base controller
+- Factory
+- Gateway (no external HTTP client classes detected for JWT validation scope)
