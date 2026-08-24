@@ -1,0 +1,22 @@
+{
+  "feature": "tps-performance-testing",
+  "workflow": "wf_feature_research",
+  "outcome": "success",
+  "timestamp": "2026-08-24T12:37:05.568764+00:00",
+  "duration_seconds": 743,
+  "tokens_used": 0,
+  "prompt_layer_tokens": {},
+  "output_artifacts": [
+    "/home/nguyentthai96/Desktop/bigbang/boilerplate/services/auth-service/openspec/research/tps-performance-testing/research_brief.md",
+    "/home/nguyentthai96/Desktop/bigbang/boilerplate/services/auth-service/openspec/research/tps-performance-testing/business_analysis.md",
+    "/home/nguyentthai96/Desktop/bigbang/boilerplate/services/auth-service/openspec/research/tps-performance-testing/technical_spec.md",
+    "/home/nguyentthai96/Desktop/bigbang/boilerplate/services/auth-service/openspec/research/tps-performance-testing/opensource_findings.md",
+    "/home/nguyentthai96/Desktop/bigbang/boilerplate/services/auth-service/openspec/research/tps-performance-testing/web_research.md",
+    "/home/nguyentthai96/Desktop/bigbang/boilerplate/services/auth-service/openspec/research/tps-performance-testing/comparison_analysis.md",
+    "/home/nguyentthai96/Desktop/bigbang/boilerplate/services/auth-service/openspec/research/tps-performance-testing/validation_report.md",
+    "/home/nguyentthai96/Desktop/bigbang/boilerplate/services/auth-service/openspec/research/tps-performance-testing/handoff_summary.md"
+  ],
+  "errors": [],
+  "lesson_extracted": null,
+  "recovery_pattern": null
+}
