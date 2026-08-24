@@ -8,6 +8,7 @@ features:
   auth-core-features: completed
   cache-starter-migration-upgrade: failed
   erp-iam-system: completed
+  jwt-token-validation: completed
 lessons:
 - action: 'Mitigate ''PROXY_DOWN'' errors in wf_brainstorm_openspec. Common errors:
     Error code: 502 - {''type'': ''error'', ''error'': {''type'': ''api_error'', ''message'':
@@ -93,5 +94,5 @@ lessons:
   id: L007
   type: failure_pattern
 total_failures: 35
-total_records: 128
-total_successes: 93
+total_records: 129
+total_successes: 94
