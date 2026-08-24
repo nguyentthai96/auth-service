@@ -41,7 +41,7 @@ _Scope: 3 new files (domain events + recorder), 4 modified files (LoginHandler, 
 
 ## Phase 1: Domain Events (no dependencies, leaf nodes)
 
-- [ ] **Task 1: UserLoggedInEvent — enriched domain event**
+- [x] **Task 1: UserLoggedInEvent — enriched domain event**
   - File: `src/main/kotlin/com/ntt/authservice/auth/domain/event/UserLoggedInEvent.kt` | Action: [NEW]
   - Base: `DomainEvent` interface from `com.ntt.authservice.auth.application.port.out.EventPublisher`
   - FR: FR-001 — enriched payload with full login context
@@ -53,7 +53,7 @@ _Scope: 3 new files (domain events + recorder), 4 modified files (LoginHandler, 
     - `override val eventType: String = "iam.user.logged_in"` — dot-notation convention
     - Package: `com.ntt.authservice.auth.domain.event`
 
-- [ ] **Task 2: UserLoginFailedEvent — failure domain event**
+- [x] **Task 2: UserLoginFailedEvent — failure domain event**
   - File: `src/main/kotlin/com/ntt/authservice/auth/domain/event/UserLoginFailedEvent.kt` | Action: [NEW]
   - Base: `DomainEvent` interface from `com.ntt.authservice.auth.application.port.out.EventPublisher`
   - FR: FR-002 — failure event with reason classification
@@ -64,7 +64,7 @@ _Scope: 3 new files (domain events + recorder), 4 modified files (LoginHandler, 
     - Fields: usernameAttempted (String), userId (Long? — null when user not found), failureReason (LoginFailureReason), ipAddress (String?), userAgent (String?), deviceFingerprint (String?)
     - `override val eventType: String = "iam.user.login_failed"`
 
-- [ ] **Task 3: LoginFailureReason — enum**
+- [x] **Task 3: LoginFailureReason — enum**
   - File: `src/main/kotlin/com/ntt/authservice/auth/domain/event/LoginFailureReason.kt` | Action: [NEW]
   - FR: FR-003 — failure reason classification mapped to LoginHandler exceptions
   - Pattern: `ValidationFailureReason.kt` — enum with KDoc per value
@@ -77,7 +77,7 @@ _Scope: 3 new files (domain events + recorder), 4 modified files (LoginHandler, 
 
 ## Phase 2: Helper Service (depends on Phase 1)
 
-- [ ] **Task 4: LoginEventRecorder — helper service**
+- [x] **Task 4: LoginEventRecorder — helper service**
   - File: `src/main/kotlin/com/ntt/authservice/auth/application/event/LoginEventRecorder.kt` | Action: [NEW]
   - FR: FR-004 — helper service; FR-010 — fire-and-forget; FR-013 — structured logging; FR-014 — correlationId threading
   - Pattern: `TokenEventRecorder.kt` — EXACT mirror: @Component, inject EventService, try/catch all, log.debug success, log.warn failure
@@ -99,7 +99,7 @@ _Scope: 3 new files (domain events + recorder), 4 modified files (LoginHandler, 
 
 ## Phase 3: Integration (depends on Phase 2)
 
-- [ ] **Task 5: LoginHandler — integrate event recording**
+- [x] **Task 5: LoginHandler — integrate event recording**
   - File: `src/main/kotlin/com/ntt/authservice/auth/application/command/LoginHandler.kt` | Action: [MODIFY]
   - FR: FR-005 — record success event; FR-006 — record failure event
   - Pattern: LoginHandler is CQRS CommandHandler with @Transactional
@@ -126,7 +126,7 @@ _Scope: 3 new files (domain events + recorder), 4 modified files (LoginHandler, 
     - `import com.ntt.authservice.auth.domain.event.LoginFailureReason`
     - `import com.ntt.authservice.shared.exception.AuthException`
 
-- [ ] **Task 6: LoginCommand + CqrsAuthController — correlationId threading**
+- [x] **Task 6: LoginCommand + CqrsAuthController — correlationId threading**
   - File: `src/main/kotlin/com/ntt/authservice/auth/application/command/LoginCommand.kt` | Action: [MODIFY]
   - File: `src/main/kotlin/com/ntt/authservice/auth/adapter/in/web/CqrsAuthController.kt` | Action: [MODIFY]
   - FR: FR-014 — correlation ID threading for end-to-end tracing
@@ -141,7 +141,7 @@ _Scope: 3 new files (domain events + recorder), 4 modified files (LoginHandler, 
 
 ## Phase 4: Cleanup (independent of Phase 3)
 
-- [ ] **Task 7: AuthDomainEvents — remove old UserLoggedInEvent**
+- [x] **Task 7: AuthDomainEvents — remove old UserLoggedInEvent**
   - File: `src/main/kotlin/com/ntt/authservice/auth/application/command/AuthDomainEvents.kt` | Action: [MODIFY]
   - FR: FR-008 — migrate naming convention
   - Detail:
