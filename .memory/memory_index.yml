@@ -6,7 +6,7 @@ features:
   anonymous-login-optimization: completed
   api-response-i18n-standard: completed
   auth-core-features: completed
-  cache-starter-migration-upgrade: completed
+  cache-starter-migration-upgrade: failed
   erp-iam-system: completed
 lessons:
 - action: 'Mitigate ''PROXY_DOWN'' errors in wf_brainstorm_openspec. Common errors:
@@ -92,6 +92,6 @@ lessons:
   frequency: 2
   id: L007
   type: failure_pattern
-total_failures: 32
-total_records: 125
+total_failures: 33
+total_records: 126
 total_successes: 93

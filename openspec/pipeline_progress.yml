@@ -1,5 +1,5 @@
 current_feature: cache-starter-migration-upgrade
-current_workflow: wf_openspec
+current_workflow: wf_openspec_apply
 features:
   anonymous-login-optimization:
     workflows:
@@ -110,8 +110,24 @@ features:
         strike_count: 0
         tokens: 0
       wf_openspec:
+        duration: 1135
+        errors:
+        - 'Error code: 502 - {''type'': ''error'', ''error'': {''type'': ''api_error'',
+          ''message'': ''All upstream endpoints failed''}}'
+        - 'Error code: 502 - {''type'': ''error'', ''error'': {''type'': ''api_error'',
+          ''message'': ''All upstream endpoints failed''}}'
+        - 'Error code: 502 - {''type'': ''error'', ''error'': {''type'': ''api_error'',
+          ''message'': ''All upstream endpoints failed''}}'
+        - 'Error code: 502 - {''type'': ''error'', ''error'': {''type'': ''api_error'',
+          ''message'': ''All upstream endpoints failed''}}'
+        - 'Error code: 502 - {''type'': ''error'', ''error'': {''type'': ''api_error'',
+          ''message'': ''All upstream endpoints failed''}}'
+        status: failed
+        strike_count: 5
+        tokens: 0
+      wf_openspec_apply:
         duration: 0
-        started_at: '2026-08-24T10:27:34.466221+00:00'
+        started_at: '2026-08-24T10:46:29.836438+00:00'
         status: in_progress
         strike_count: 0
         tokens: 0
@@ -154,13 +170,13 @@ features:
         tokens: 0
 started_at: '2026-08-21T11:41:07.477168+00:00'
 stats:
-  completed_features: 5
+  completed_features: 4
   failed_features: 0
-  partial_features: 0
+  partial_features: 1
   remaining_features: 0
   skipped_features: 0
   total_duration: 12974
   total_features: 5
   total_tokens: 0
 status: running
-updated_at: '2026-08-24T10:27:34.466209+00:00'
+updated_at: '2026-08-24T10:46:29.836420+00:00'
