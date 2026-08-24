@@ -293,20 +293,19 @@ features:
   user-registration-event:
     workflows:
       wf_feature_research:
-        duration: 0
-        started_at: '2026-08-24T14:04:25.990389+00:00'
-        status: in_progress
+        duration: 765
+        status: success
         strike_count: 0
         tokens: 0
 started_at: '2026-08-21T11:41:07.477168+00:00'
 stats:
-  completed_features: 7
+  completed_features: 8
   failed_features: 0
   partial_features: 1
   remaining_features: 0
   skipped_features: 0
-  total_duration: 22559
-  total_features: 8
+  total_duration: 23324
+  total_features: 9
   total_tokens: 0
 status: running
-updated_at: '2026-08-24T14:04:25.990377+00:00'
+updated_at: '2026-08-24T14:17:11.924787+00:00'
