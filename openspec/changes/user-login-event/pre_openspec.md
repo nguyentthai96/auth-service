@@ -2,104 +2,91 @@
 
 > **Type**: EXTEND
 > **Flow**: Command
-> **Source**: User Idea (no URD)
-> **Classification Evidence**: keyword `UserLoggedInEvent` → module `auth.application.command` → file `src/main/kotlin/com/ntt/authservice/auth/application/command/AuthDomainEvents.kt`; keyword `LoginHandler` → module `auth.application.command` → file `src/main/kotlin/com/ntt/authservice/auth/application/command/LoginHandler.kt`; keyword `EventService` → module `auth.application.event` → file `src/main/kotlin/com/ntt/authservice/auth/application/event/EventService.kt`; keyword `LoginSessionService` → module `auth.application` → file `src/main/kotlin/com/ntt/authservice/auth/application/LoginSessionService.kt`
+> **Source**: URD (Research Artifacts — `openspec/research/user-login-event/`)
+> **Classification Evidence**: keyword `UserLoggedInEvent` → module `auth.application.command.AuthDomainEvents` → file `src/main/kotlin/com/ntt/authservice/auth/application/command/AuthDomainEvents.kt`; keyword `LoginHandler` → module `auth.application.command` → file `src/main/kotlin/com/ntt/authservice/auth/application/command/LoginHandler.kt`; keyword `EventService.record()` → module `auth.application.event` → file `src/main/kotlin/com/ntt/authservice/auth/application/event/EventService.kt`; keyword `TokenEventRecorder` (pattern reference) → module `auth.application.event` → file `src/main/kotlin/com/ntt/authservice/auth/application/event/TokenEventRecorder.kt`
 > **Archive**: N/A
-> **Quality Score**: 82/100
+> **Quality Score**: 88/100
 
 ## 📋 Feature Summary
 
-Nâng cấp hệ thống sự kiện đăng nhập người dùng (`UserLoggedInEvent`) trong auth-service lên mức production-grade theo kiến trúc Event Sourcing. Hiện tại, `LoginHandler` chỉ publish một `UserLoggedInEvent` tối giản (chỉ có `userId`, `domainCode`) qua `SpringEventPublisher` (in-process, KHÔNG persist vào event store, KHÔNG relay qua Kafka). Tính năng này bao gồm: enrichment payload event với đầy đủ context (device, IP, MFA status, session info), event store persistence qua `EventService.record()`, transactional outbox cho Kafka relay, thêm `UserLoginFailedEvent` cho failed login attempts, schema versioning, và downstream consumer contracts cho audit trail, anomaly detection, session analytics. Hệ thống tận dụng pattern đã được thiết lập bởi `user_registration_event` feature — `EventService`, `EventEnvelope`, `EventStorePort`, `OutboxPort`, `OutboxPoller`.
+Nâng cấp hệ thống sự kiện đăng nhập người dùng trong auth-service lên production-grade theo kiến trúc Event Sourcing + CQRS đã có. Hiện tại, `LoginHandler` chỉ publish `UserLoggedInEvent` tối giản (2 fields: `userId`, `domainCode`) qua `SpringEventPublisher` (in-process, KHÔNG persist vào event store, KHÔNG relay qua Kafka). Feature này bao gồm: (1) tạo `UserLoggedInEvent` enriched với đầy đủ context (device, IP, MFA status, session info) trong `auth.domain.event` package; (2) tạo `UserLoginFailedEvent` với failure reason classification; (3) tạo `LoginEventRecorder` helper service (mirror `TokenEventRecorder` pattern); (4) integrate vào `LoginHandler` success + failure paths; (5) tận dụng `EventService.record()` cho event store + transactional outbox → Kafka relay qua `OutboxPoller`.
 
 | Metric | Giá trị |
 |--------|---------|
-| Số FR | 22 (Idea: 18, Enriched: 4) |
-| Issues | 4 (🔴: 1, 🟡: 3) |
-| Open Questions | 3 |
-| **Quality Score** | **82/100** |
+| Số FR | 14 (URD: 11, Enriched: 3) |
+| Issues | 3 (🔴: 1, 🟡: 2) |
+| Open Questions | 2 |
+| **Quality Score** | **88/100** |
 
 ---
 
 ## 1. Actors
 
-- **Client (End User)**: Gửi request đăng nhập qua REST API (`POST /api/auth/login`)
-- **Hệ thống (auth-service)**: Xử lý login command, xác thực user, generate tokens, record domain events vào event store + outbox
-- **Admin**: Query audit trail, monitor login patterns, view login history
-- **Downstream Consumers (system-admin-service, analytics)**: Nhận `UserLoggedInEvent` / `UserLoginFailedEvent` để audit trail, anomaly detection, SIEM integration
-- **Infrastructure (Kafka, PostgreSQL, Redis)**: Event transport (Kafka), event store persistence (PostgreSQL), cache (Redis — token blacklist, session metadata)
+- **Client (End User)**: Gửi request đăng nhập qua REST API (`POST /api/auth/login`), trigger login command
+- **Hệ thống (LoginHandler)**: CQRS command handler — xác thực user, generate tokens, record domain events vào event store + outbox
+- **LoginEventRecorder**: Helper service — wrap EventService.record() cho login events, error isolation (fire-and-forget)
+- **EventService**: Intermediary service — create EventEnvelope, persist event store + outbox trong cùng @Transactional
+- **OutboxPoller**: Async relay — poll event_outbox table, publish to Kafka topics
+- **Downstream Consumers (Admin Service, SIEM, Analytics)**: Consume login events từ Kafka cho audit trail, anomaly detection, compliance
 
 ## 2. Functional Requirements
 
-### FR-001: Enriched UserLoggedInEvent payload [IDEA]
+### FR-001: Tạo UserLoggedInEvent enriched domain event [URD]
 - **Actor**: Hệ thống
-- **Action**: Hệ thống phải mở rộng payload của `UserLoggedInEvent` để bao gồm: userId, username, domainCode, domainId, ipAddress, userAgent, deviceFingerprint, deviceType, browserName, osName, isNewDevice, mfaUsed (boolean), mfaMethod (TOTP/SMS/null), loginMethod (PASSWORD/SSO/TOKEN_REFRESH), sessionPromoted (boolean), anonymousSessionId (nullable), loginAt (ISO-8601 timestamp)
-- **Validation**: Tất cả required fields có giá trị non-null; loginAt theo UTC ISO-8601; deviceType là MOBILE/TABLET/DESKTOP/null
+- **Action**: Hệ thống phải tạo `UserLoggedInEvent` data class trong package `auth.domain.event` implement `DomainEvent` interface với enriched payload gồm: userId, username, domainCode, domainId, loginMethod, mfaBypassed, mfaMethod, isNewDevice, ipAddress, userAgent, deviceFingerprint, sessionPromotionStatus, loggedInAt
+- **Validation**: Class nằm trong `auth.domain.event` package; implement DomainEvent interface; eventType = `iam.user.logged_in`; tất cả required fields có giá trị non-null
 
-### FR-002: Hợp nhất UserLoggedInEvent với naming convention [IDEA]
+### FR-002: Tạo UserLoginFailedEvent domain event [URD]
 - **Actor**: Hệ thống
-- **Action**: Hệ thống phải migrate `UserLoggedInEvent` từ `auth.application.command.AuthDomainEvents` sang `auth.domain.event.UserLoggedInEvent` với eventType theo dot-notation convention: `iam.user.logged_in` (thay vì `USER_LOGGED_IN` hiện tại)
-- **Validation**: eventType = `iam.user.logged_in`; file nằm trong `auth/domain/event/`; old eventType `USER_LOGGED_IN` không còn tồn tại
+- **Action**: Hệ thống phải tạo `UserLoginFailedEvent` data class trong package `auth.domain.event` implement `DomainEvent` interface với payload gồm: usernameAttempted, userId (nullable — null khi user không tồn tại), failureReason (LoginFailureReason enum), ipAddress, userAgent, deviceFingerprint, failedAt
+- **Validation**: Class nằm trong `auth.domain.event` package; eventType = `iam.user.login_failed`; failureReason là enum value
 
-### FR-003: Event store persistence cho login events [IDEA]
+### FR-003: Tạo LoginFailureReaService.record() throw RuntimeException → login vẫn succeed; no exception propagation
+
+### FR-011: Complementary với TokenIssuedEvent [URD]
 - **Actor**: Hệ thống
-- **Action**: Hệ thống phải persist `UserLoggedInEvent` vào bảng `evải support versioning cho login event schema — mỗi event có `schemaVersion` (integer) được wrap bởi `EventEnvelope` (đã có). Initial version = 1 cho cả `UserLoggedInEvent` và `UserLoginFailedEvent`
-- **Validation**: schemaVersion = 1 trong `EventEnvelope`; backward-compatible nếu add new optional fields
+- **Action**: `UserLoggedInEvent` capture authentication context (who, where, how). `TokenIssuedEvent` (existing, via TokenEventRecorder) capture token context (JTI, roles, permissions, expiry). Hai events complementary, KHÔNG redundant. Cả hai đều emit khi login success — UserLoggedInEvent trước, TokenIssuedEvent trong tokenGenerator.generateAuthResponse()
+- **Validation**: No overlapping fields giữa 2 events (ngoại trừ userId, ipAddress dùng cho correlation); cả 2 events recorded per successful login
 
-### FR-010: Integrate EventService.record() trong LoginHandler [IDEA]
-- **Actor**: Hệ thống
-- **Action**: Hệ thống phải gọi `eventService.record()` trong `LoginHandler.handle()` SAU khi generate auth tokens thành công — tương tự RegisterHandler pattern. EventService dependency phải được inject vào LoginHandler
-- **Validation**: LoginHandler gọi `eventService.record()` trước khi return `LoginResult.Success`; event record trong cùng `@Transactional`
+## 3. Non-functional Requirements
 
-### FR-011: Integrate EventService.record() cho failed logins trong LoginHandler [IDEA]
-- **Actor**: Hệ thống
-- **Action**: Hệ thống phải record `UserLoginFailedEvent` khi login thất bại — tại mỗi catch point trong LoginHandler (InvalidCredentialsException, AccountLockedException, CaptchaFailedException, etc.). Sử dụng try-catch wrapper hoặc separate method để không block exception flow
-- **Validation**: Failed login event recorded trước khi exception throw; exception propagation không bị affect
+| NFR-ID | Loại | Yêu cầu | Target | Measurement |
+|--------|------|---------|--------|-------------|
+| NFR-001 | Performance | Event recording latency | < 5ms additional to login P95 | APM tracing on LoginEventRecorder |
+| NFR-002 | Reliability | Failure isolation | 100% login success regardless of event store status | Integration test |
+| NFR-003 | Security | No sensitive data in events | Password NEVER in event payload | Code review |
+| NFR-004 | Throughput | Handle attack traffic spikes | 1000+ failure events/min | Load test |
+| NFR-005 | Reliability | At-least-once Kafka delivery | Events retried via OutboxPoller until published | OutboxPoller monitoring |
+| NFR-006 | Performance | Event store write throughput | > 200 events/sec | DB monitoring |
 
-### FR-012: LoginCommand mở rộng correlationId [IDEA]
-- **Actor**: Hệ thống
-- **Action**: Hệ thống phải thêm `correlationId: String?` vào `LoginCommand` data class. `CqrsAuthController` phải extract từ `X-Correlation-ID` header và pass vào command
-- **Validation**: LoginCommand có field correlationId; CqrsAuthController truyền header value
+---
 
-### FR-013: Downstream consumer contract cho audit trail [IDEA]
-- **Actor**: Downstream consumers (system-admin-service)
-- **Action**: Hệ thống phải document rõ ràng consumer contract cho `UserLoggedInEvent` và `UserLoginFailedEvent`, bao gồm required fields, optional fields, Kafka topic, và partition strategy
-- **Validation**: Consumer contracts documented; tương thích với existing `AuditLogService` pattern
+## 4. Deduplicated & Consolidated
 
-### FR-014: Idempotent consumer support [IDEA]
-- **Actor**: Downstream consumers
-- **Action**: Hệ thống phải cung cấp deduplication key (`eventId` trong `EventEnvelope`) trong mỗi login event để downstream consumers thực hiện idempotent processing
-- **Validation**: EventEnvelope.id (UUID) unique cho mỗi event; consumers có thể skip duplicate events
-
-### FR-015: New device login event enrichment [IDEA]
-- **Actor**: Hệ thống
-- **Action**: Hệ thống phải enrich `UserLoggedInEvent` với `isNewDevice` flag (từ `LoginSessionService.detectNewDe
-
-Không phát hiện trùng lặp giữa các FR. FR-003 và FR-004 bổ sung cho nhau (event store vs outbox) — không trùng. FR-010 và FR-011 khác nhau rõ ràng (success vs failed login path).
+Không phát hiện trùng lặp giữa các FR. FR-005 và FR-006 khác nhau rõ ràng (success path vs failure path). FR-004 (LoginEventRecorder) và FR-010 (fire-and-forget) bổ sung cho nhau — FR-004 là class creation, FR-010 là error handling behavior.
 
 ## 5. Enriched Domain Requirements
 
 ### Enriched FRs
 
-- **FR-019** [ENRICHED]: Idempotency cho login event recording — đảm bảo retry safety, pattern chuẩn Event Sourcing
-- **FR-020** [ENRICHED]: Full transaction logging — observability requirement cơ bản cho production
-- **FR-021** [ENRICHED]: Timeout handling cho EventService — resilience pattern, login flow không bị block
-- **FR-022** [ENRICHED]: Retry mechanism — leverage existing OutboxPoller retry, đảm bảo eventual consistency
+- **FR-012** [ENRICHED]: Idempotency cho login event recording — EventEnvelope.id (UUID) cung cấp deduplication key cho downstream consumers. Pattern tương tự TokenIssuedEvent đã hoạt động.
+- **FR-013** [ENRICHED]: Structured logging cho event recording — log.debug on success, log.warn on failure với context (userId, eventType, correlationId). Follow TokenEventRecorder logging pattern.
+- **FR-014** [ENRICHED]: Correlation ID threading — LoginEventRecorder phải accept correlationId từ LoginHandler, pass to EventService.record() cho end-to-end tracing. Nếu null → EventService tự generate UUID.
 
 ### External Integrations (from Step 2d)
 
 | Hệ thống | Mục đích | Ghi chú |
 |-----------|----------|---------|
-| Kafka | Event transport — relay login events từ outbox | Existing: `OutboxPoller`, `KafkaEventPublisher` |
-| PostgreSQL | Event store persistence — `event_store` table | Existing: `EventStorePort`, `EventStorePersistenceAdapter` |
-| PostgreSQL | Outbox table — `event_outbox` table | Existing: `OutboxPort`, `OutboxPersistenceAdapter` |
-| Redis | Token blacklist, session metadata | Existing: không thay đổi |
+| Kafka | Event transport — relay login events từ outbox | Existing: `OutboxPoller` → `KafkaEventPublisher` |
+| PostgreSQL | Event store persistence — `event_store` table | Existing: `EventStorePort` → `EventStorePersistenceAdapter` |
+| PostgreSQL | Outbox table — `event_outbox` table | Existing: `OutboxPort` → `OutboxPersistenceAdapter` |
 
 ## 6. Assumptions
 
-- ⚠️ Assumption: `LoginHandler` đang chạy trong `@Transactional` boundary → `EventService.record()` sẽ participate trong cùng transaction — đã xác nhận qua code (`@Transactional` annotation trên `handle()` method)
-- ⚠️ Assumption: `EventService.record()` có thể handle high-frequency login events mà không gây performance bottleneck — dựa trên pattern tương tự đã hoạt động cho `RegisterHandler`
-- ⚠️ Assumption: `OutboxPoller` polling interval (100ms default) đủ cho login event throughput — cần monitor sau deploy
-- ⚠️ Assumption: Existing `event_store` indexes đủ hiệu quả cho query by `event_type = 'iam.user.logged_in'` — cần verify index strategy
+- ⚠️ Assumption: `LoginHandler.handle()` chạy trong `@Transactional` boundary → `EventService.record()` participate trong cùng transaction — xác nhận qua code: `@Transactional` annotation trên `LoginHandler.handle()` method
+- ⚠️ Assumption: `EventService.record()` đủ hiệu quả cho login throughput — dựa trên pattern đã production-proven với `RegisterHandler` và `TokenEventRecorder`
+- ⚠️ Assumption: `OutboxPoller` polling interval đủ cho login event throughput — cần monitor sau deploy
+- ⚠️ Assumption: Existing `event_store` indexes đủ cho query by `event_type = 'iam.user.logged_in'` — cần verify
 
 ---
 
@@ -107,23 +94,21 @@ Không phát hiện trùng lặp giữa các FR. FR-003 và FR-004 bổ sung cho
 
 | Tiêu chí | Điểm | Deduction |
 |----------|-------|-----------|
-| Rõ ràng (Clarity) | 22/25 | FR-016: MFA checkpoint timing ("chỉ emit cho final successful login") cần clarify cho MFA verify flow path |
-| Đầy đủ (Completeness) | 21/25 | FR-007: UserLoginFailedEvent aggregateId strategy chưa rõ (userId unknown cho non-existent users); FR-016: MFA verify handler chưa được address |
-| Nhất quán (Consistency) | 22/25 | FR-002: eventType naming `iam.user.logged_in` vs existing `USER_LOGGED_IN` — migration path cần document |
-| Kiểm thử được (Testability) | 17/25 | FR-019: Idempotency testing khó verify; FR-021: Timeout simulation cần mock; nhiều FR thiếu exact acceptance criteria |
-| **Tổng** | **82/100** | |
+| Rõ ràng (Clarity) | 23/25 | FR-006: failure point enumeration có thể miss edge cases ngoài LoginHandler |
+| Đầy đủ (Completeness) | 22/25 | FR-006: MFA verify handler (`MfaService.verifyTotp()`) chưa được address — event chỉ emit ở LoginHandler |
+| Nhất quán (Consistency) | 23/25 | FR-008: eventType migration từ `USER_LOGGED_IN` → `iam.user.logged_in` cần verify no existing listeners |
+| Kiểm thử được (Testability) | 20/25 | FR-010: timeout simulation cần mock; nhiều FR cần rõ acceptance criteria hơn |
+| **Tổng** | **88/100** | |
 
 ### Chi tiết trừ điểm
 
 | # | Tiêu chí | Điểm trừ | FR | Lý do (trích URD) | Cách cải thiện |
 |---|----------|----------|-----|-------------------|---------------|
-| 1 | Clarity | -3 | FR-016 | "Chỉ emit UserLoggedInEvent cho final successful login" — cần clarify MFA verify handler nào sẽ emit event | Specify MfaVerifyHandler hoặc post-MFA callback |
-| 2 | Completeness | -2 | FR-007 | UserLoginFailedEvent cần aggregateId nhưng userId unknown cho non-existent users | Dùng hash(username) hoặc 0 cho unknown users |
-| 3 | Completeness | -2 | FR-016 | MFA verify handler (`MfaService.verifyTotp()`) chưa được address — event phải emit sau MFA verify success | Thêm FR hoặc mở rộng FR-016 scope |
-| 4 | Consistency | -3 | FR-002 | Migration từ `USER_LOGGED_IN` → `iam.user.logged_in` cần migration plan cho existing consumers | Document migration path rõ ràng |
-| 5 | Testability | -3 | FR-019 | Idempotency test scenario chưa rõ — cần define test case "retry same login" | Define acceptance test cases cụ thể |
-| 6 | Testability | -3 | FR-021 | Timeout scenario khó reproduce — cần mock strategy | Document mock approach cho integration test |
-| 7 | Testability | -2 | Multiple | Nhiều FR thiếu measurable acceptance criteria | Thêm "khi X thì Y trong Z ms" format |
+| 1 | Clarity | -2 | FR-006 | "Record UserLoginFailedEvent tại mỗi failure point" — danh sách exceptions có thể không exhaustive (e.g., RateLimitExceededException) | Liệt kê ALL exception types từ LoginHandler code |
+| 2 | Completeness | -3 | FR-005/FR-006 | MFA flow: LoginHandler return MfaRequired trước login hoàn tất. UserLoggedInEvent chỉ emit sau password auth — MFA verify success path (MfaService) chưa covered | Xác định rõ scope: ban đầu chỉ cover password auth path |
+| 3 | Consistency | -2 | FR-008 | Migration eventType `USER_LOGGED_IN` → `iam.user.logged_in` có thể break existing Spring @EventListener nếu có | Check existing listeners; SpringEventPublisher emit khác DomainEvent |
+| 4 | Testability | -3 | FR-010 | "Event recording failure KHÔNG throw" — cần rõ mock strategy cho EventService.record() throws | Thêm unit test case: mock EventService.record() throw → verify login succeed |
+| 5 | Testability | -2 | Multiple | Thiếu measurable acceptance criteria cho throughput/latency targets | Thêm "khi X thì Y trong Z ms" format |
 
 ---
 
@@ -131,16 +116,14 @@ Không phát hiện trùng lặp giữa các FR. FR-003 và FR-004 bổ sung cho
 
 | # | Loại | Mức độ | Mô tả | FR | Đề xuất |
 |---|------|--------|-------|-----|---------|
-| 1 | Risk | 🔴 | MFA flow path: `LoginHandler` return `MfaRequired` trước khi login hoàn tất → `UserLoggedInEvent` chỉ nên emit sau MFA verify thành công. Nhưng MFA verify xử lý trong `MfaService.verifyTotp()` / `MfaController` — không phải `LoginHandler`. Cần extend scope hoặc add separate event recording point. | FR-016 | Thêm `eventService.record()` trong MFA verify success path (MfaService hoặc MfaController) |
-| 2 | Risk | 🟡 | Failed login event aggregateId: khi username không tồn tại, userId = unknown → aggregateId strategy? Dùng 0 hoặc hash(username) có thể gây issues cho event store querying. | FR-007 | Dùng aggregateId = 0 cho unknown users, thêm username field cho querying |
-| 3 | Risk | 🟡 | LoginHandler hiện tại KHÔNG inject EventService — cần modify constructor. Đây là EXTEND change trên existing handler có nhiều dependencies (12 constructor params). | FR-010 | Inject EventService, keep constructor manageable (13 params max cho handler) |
-| 4 | Warning | 🟡 | eventType migration `USER_LOGGED_IN` → `iam.user.logged_in`: nếu có existing Spring `@EventListener` subscribers listening trên old eventType → cần backward compatibility period hoặc dual-emit. | FR-002 | Check existing listeners trước migration; keep `UserLoggedInEvent` class backward-compatible |
+| 1 | Risk | 🔴 | MFA flow path: `LoginHandler` return `LoginResult.MfaRequired` trước login hoàn tất → `UserLoggedInEvent` chỉ nên emit sau MFA verify thành công. Nhưng MFA verify xử lý trong `MfaService.verifyTotp()` / `MfaController` — không phải `LoginHandler`. Scope ban đầu: chỉ cover password-only login. MFA login event cần separate feature/FR. | FR-005 | Scope limitation: ban đầu chỉ emit event cho non-MFA login. MFA login event → separate follow-up |
+| 2 | Risk | 🟡 | Failed login event aggregateId: khi username không tồn tại, userId unknown → aggregateId = 0L. EventStore query by aggregate sẽ không tìm thấy events cho unknown users — chấp nhận vì failed events vẫn queryable qua eventType filter. | FR-006 | Dùng aggregateId = 0L cho unknown users; thêm usernameAttempted field cho querying |
+| 3 | Risk | 🟡 | LoginHandler hiện có 12 constructor params — thêm LoginEventRecorder sẽ là 13. Vẫn acceptable nhưng monitor. | FR-005 | Inject LoginEventRecorder (không inject EventService trực tiếp) — giữ handler lean |
 
 ## 9. Open Questions
 
-- **OQ-1**: MFA verify flow — nên emit `UserLoggedInEvent` trong `MfaService.verifyTotp()` hay tạo separate `MfaVerifiedEvent`? (ảnh hưởng FR-016)
-- **OQ-2**: Failed login event cho non-existent users — aggregateId strategy? (0, -1, hash(username)?) (ảnh hưởng FR-007)
-- **OQ-3**: Có cần backward compatibility period cho eventType migration `USER_LOGGED_IN` → `iam.user.logged_in` hay break existing consumers? (ảnh hưởng FR-002)
+- **OQ-1**: MFA verify flow — nên emit `UserLoggedInEvent` trong `MfaService.verifyTotp()` hay tạo separate `MfaVerifiedEvent`? Decision: DEFERRED — ban đầu chỉ cover non-MFA path. MFA login event là separate scope.
+- **OQ-2**: Có cần backward compatibility period cho eventType migration `USER_LOGGED_IN` → `iam.user.logged_in` hay break existing consumers? Decision: BREAK — old event chỉ dùng in-process Spring event (ApplicationEventPublisher), không persist. Check `@EventListener` references trước migration.
 
 ## 10. DETECTED SCOPE
 
@@ -153,28 +136,31 @@ Authentication — Login/Authentication Events (Event Sourcing layer)
 Command — Login command mutates state via domain events (CQRS write-side)
 
 ### 10.3 Candidate Services
-- **auth-service (auth module)**: Primary — contains LoginHandler, AuthDomainEvents (UserLoggedInEvent), EventService, LoginSessionService, LoginCommand, CqrsAuthController login endpoint. Evidence: keyword `UserLoggedInEvent` in `AuthDomainEvents.kt`, `LoginHandler.kt`, `EventService.kt`
-- **auth-service (shared module)**: Supporting — exception classes, error codes, config. Evidence: `AuthErrorCode.kt`, `GlobalExceptionHandler.kt`
+- **auth-service (auth module)**: Primary — contains LoginHandler, AuthDomainEvents (UserLoggedInEvent), EventService, TokenEventRecorder (pattern reference), LoginSessionService, LoginCommand, CqrsAuthController login endpoint. Evidence: keyword `UserLoggedInEvent` in `AuthDomainEvents.kt`, `LoginHandler.kt`, `EventService.kt`
+- **auth-service (shared module)**: Supporting — exception classes (InvalidCredentialsException, AccountLockedException, CaptchaRequiredException, CaptchaFailedException, PasswordExpiredException), error codes, config. Evidence: `AuthErrorCode.kt`, `AuthExceptions.kt`, `AuthCoreExceptions.kt`
 
 ### Detection Evidence
 - Keyword: `UserLoggedInEvent` → Module: `auth.application.command.AuthDomainEvents` → File: `src/main/kotlin/com/ntt/authservice/auth/application/command/AuthDomainEvents.kt`
 - Keyword: `LoginHandler` → Module: `auth.application.command` → File: `src/main/kotlin/com/ntt/authservice/auth/application/command/LoginHandler.kt`
 - Keyword: `EventService` → Module: `auth.application.event` → File: `src/main/kotlin/com/ntt/authservice/auth/application/event/EventService.kt`
-- Keyword: `LoginSessionService` → Module: `auth.application` → File: `src/main/kotlin/com/ntt/authservice/auth/application/LoginSessionService.kt`
-- Keyword: `UserRegisteredEvent` (reference pattern) → Module: `auth.domain.event` → File: `src/main/kotlin/com/ntt/authservice/auth/domain/event/UserRegisteredEvent.kt`
+- Keyword: `TokenEventRecorder` (pattern reference) → Module: `auth.application.event` → File: `src/main/kotlin/com/ntt/authservice/auth/application/event/TokenEventRecorder.kt`
+- Keyword: `UserRegisteredEvent` (pattern reference) → Module: `auth.domain.event` → File: `src/main/kotlin/com/ntt/authservice/auth/domain/event/UserRegisteredEvent.kt`
 - Keyword: `LoginCommand` → Module: `auth.application.command` → File: `src/main/kotlin/com/ntt/authservice/auth/application/command/LoginCommand.kt`
+- Keyword: `DomainEvent` → Module: `auth.application.port.out` → File: `src/main/kotlin/com/ntt/authservice/auth/application/port/out/EventPublisher.kt`
+- Keyword: `EventEnvelope` → Module: `auth.domain.event` → File: `src/main/kotlin/com/ntt/authservice/auth/domain/event/EventEnvelope.kt`
+- Keyword: `ValidationFailureReason` (enum pattern reference) → Module: `auth.domain.event` → File: `src/main/kotlin/com/ntt/authservice/auth/domain/event/ValidationFailureReason.kt`
+- Keyword: `LoginSessionService` → Module: `auth.application` → File: `src/main/kotlin/com/ntt/authservice/auth/application/LoginSessionService.kt`
 
 ### 10.4 External Integrations
 - **Kafka**: Outbox relay via `OutboxPoller` → topics `iam.user.logged_in`, `iam.user.login_failed`
 - **PostgreSQL**: Event store (`event_store` table), Outbox (`event_outbox` table)
-- **Redis**: Không thay đổi — existing token blacklist, session metadata
 
 ### 10.5 Required Modules
-- `auth.domain.event` — new `UserLoggedInEvent.kt`, `UserLoginFailedEvent.kt` domain event classes
-- `auth.application.command` — modify `LoginHandler.kt` (inject EventService, record events), modify `LoginCommand.kt` (add correlationId)
-- `auth.application.event` — reuse existing `EventService.kt` (no modification needed)
-- `auth.adapter.in.web` — modify `CqrsAuthController.kt` (pass correlationId to LoginCommand)
-- `auth.adapter.out.event` — reuse existing `OutboxPoller.kt` (no modification needed)
+- `auth.domain.event` — NEW: `UserLoggedInEvent.kt`, `UserLoginFailedEvent.kt`, `LoginFailureReason.kt`
+- `auth.application.event` — NEW: `LoginEventRecorder.kt`; REUSE: `EventService.kt` (no modification)
+- `auth.application.command` — MODIFY: `LoginHandler.kt` (inject LoginEventRecorder, record events); CLEANUP: `AuthDomainEvents.kt` (remove old UserLoggedInEvent)
+- `auth.adapter.out.event` — REUSE: `OutboxPoller.kt` (no modification needed)
+- `auth.adapter.in.web` — NO CHANGE: `CqrsAuthController.kt` (login endpoint unchanged externally)
 
 ---
 
@@ -183,60 +169,54 @@ Command — Login command mutates state via domain events (CQRS write-side)
 | Step | Actor | Action | System |
 |------|-------|--------|--------|
 | 1 | Client | Gửi `POST /api/auth/login` với credentials + device info | CqrsAuthController |
-| 2 | CqrsAuthController | Extract IP, User-Agent, Device-Fingerprint, X-Correlation-ID → build LoginCommand | CqrsAuthController |
-| 3 | LoginHandler | Validate credentials, rate limit, CAPTCHA, password expiry, MFA check | LoginHandler |
-| 4a (success) | LoginHandler | Generate auth tokens → call `eventService.record(UserLoggedInEvent)` → return LoginResult.Success | EventService, EventStorePort, OutboxPort |
-| 4b (fail) | LoginHandler | Catch exception → call `eventService.record(UserLoginFailedEvent)` → re-throw exception | EventService |
-| 5 | OutboxPoller | Async: poll `event_outbox` → relay to Kafka topic `iam.user.logged_in` / `iam.user.login_failed` | OutboxPoller, KafkaTemplate |
-| 6 | Downstream | Consume events from Kafka topics → audit trail, anomaly detection, session analytics | system-admin-service |
+| 2 | CqrsAuthController | Extract IP, User-Agent, X-Device-Fingerprint → build LoginCommand | CqrsAuthController |
+| 3 | LoginHandler | Validate credentials, check lock, CAPTCHA, password verify, password expiry | LoginHandler (@Transactional) |
+| 3a (fail) | LoginHandler | Catch auth exception → LoginEventRecorder.recordLoginFailure(UserLoginFailedEvent) → re-throw | LoginEventRecorder → EventService |
+| 4 | LoginHandler | MFA checkpoint — if MFA required → return MfaRequired (NO event emitted) | LoginHandler |
+| 5 | LoginHandler | Generate tokens → TokenIssuedEvent recorded via TokenEventRecorder | TokenGenerator → TokenEventRecorder |
+| 6 | LoginHandler | Record login session → LoginSessionService.recordLogin() | LoginSessionService |
+| 7 | LoginHandler | Anonymous session promotion (best-effort) | SessionPromotionService |
+| 8 | LoginHandler | LoginEventRecorder.recordLoginSuccess(UserLoggedInEvent) | LoginEventRecorder → EventService |
+| 9 | EventService | Create EventEnvelope → persist event_store + event_outbox (same TX) | EventStorePort, OutboxPort |
+| 10 | LoginHandler | Return LoginResult.Success | → CqrsAuthController → Client |
+| 11 | OutboxPoller | Async: poll event_outbox → relay to Kafka topic | OutboxPoller → KafkaEventPublisher |
 
 ## 12. Traceability Matrix
 
 | FR-ID | URD Section | Spec Section | Affected Class | Status |
 |-------|-------------|-------------|---------------|--------|
-| FR-001 | Enriched payload | TBD | `UserLoggedInEvent.kt` (NEW) | Pending |
-| FR-002 | Naming convention | TBD | `AuthDomainEvents.kt` [MODIFY], `UserLoggedInEvent.kt` (NEW) | Pending |
-| FR-003 | Event store persistence | TBD | `LoginHandler.kt` [MODIFY], `EventService.kt` [REUSE] | Pending |
-| FR-004 | Transactional outbox | TBD | `LoginHandler.kt` [MODIFY], `EventService.kt` [REUSE] | Pending |
-| FR-005 | Kafka topic | TBD | `OutboxPoller.kt` [REUSE] | Pending |
-| FR-006 | Correlation ID | TBD | `LoginCommand.kt` [MODIFY], `CqrsAuthController.kt` [MODIFY] | Pending |
-| FR-007 | Failed login event | TBD | `UserLoginFailedEvent.kt` (NEW), `LoginHandler.kt` [MODIFY] | Pending |
-| FR-008 | Failed event Kafka | TBD | `OutboxPoller.kt` [REUSE] | Pending |
-| FR-009 | Schema versioning | TBD | `EventEnvelope.kt` [REUSE] | Pending |
-| FR-010 | EventService integration | TBD | `LoginHandler.kt` [MODIFY] | Pending |
-| FR-011 | Failed event recording | TBD | `LoginHandler.kt` [MODIFY] | Pending |
-| FR-012 | LoginCommand extend | TBD | `LoginCommand.kt` [MODIFY], `CqrsAuthController.kt` [MODIFY] | Pending |
-| FR-013 | Consumer contract | TBD | Documentation only | Pending |
-| FR-014 | Idempotent consumer | TBD | `EventEnvelope.kt` [REUSE] | Pending |
-| FR-015 | New device enrichment | TBD | `UserLoggedInEvent.kt` (NEW), `LoginHandler.kt` [MODIFY] | Pending |
-| FR-016 | MFA context | TBD | `UserLoggedInEvent.kt` (NEW), `LoginHandler.kt` [MODIFY] | Pending |
-| FR-017 | Session promotion | TBD | `UserLoggedInEvent.kt` (NEW), `LoginHandler.kt` [MODIFY] | Pending |
-| FR-018 | Metadata enrichment | TBD | `EventEnvelope.kt` [REUSE] | Pending |
-| FR-019 | Idempotency | TBD | `LoginHandler.kt` [MODIFY] | Pending |
-| FR-020 | Transaction logging | TBD | `LoginHandler.kt` [MODIFY] | Pending |
-| FR-021 | Timeout handling | TBD | `LoginHandler.kt` [MODIFY] | Pending |
-| FR-022 | Retry mechanism | TBD | `OutboxPoller.kt` [REUSE] | Pending |
+| FR-001 | UC-001 (enriched payload) | TBD | `UserLoggedInEvent.kt` [ADD] | Pending |
+| FR-002 | UC-002 (failed event) | TBD | `UserLoginFailedEvent.kt` [ADD] | Pending |
+| FR-003 | UC-002 (failure reason) | TBD | `LoginFailureReason.kt` [ADD] | Pending |
+| FR-004 | UC-001/UC-002 (helper service) | TBD | `LoginEventRecorder.kt` [ADD] | Pending |
+| FR-005 | UC-001 (record success) | TBD | `LoginHandler.kt` [MODIFY] | Pending |
+| FR-006 | UC-002 (record failure) | TBD | `LoginHandler.kt` [MODIFY] | Pending |
+| FR-007 | UC-004 (Kafka topics) | TBD | `OutboxPoller.kt` [REUSE] | Pending |
+| FR-008 | UC-001 (naming convention) | TBD | `AuthDomainEvents.kt` [MODIFY], `UserLoggedInEvent.kt` [ADD] | Pending |
+| FR-009 | UC-001/UC-002 (schema version) | TBD | `EventEnvelope.kt` [REUSE] | Pending |
+| FR-010 | BR-001 (fire-and-forget) | TBD | `LoginEventRecorder.kt` [ADD] | Pending |
+| FR-011 | BR-004 (complementary) | TBD | Documentation | Pending |
+| FR-012 | Enriched (idempotency) | TBD | `EventEnvelope.kt` [REUSE] | Pending |
+| FR-013 | Enriched (logging) | TBD | `LoginEventRecorder.kt` [ADD] | Pending |
+| FR-014 | Enriched (correlation ID) | TBD | `LoginEventRecorder.kt` [ADD] | Pending |
 
 ### Change Impact Map (EXTEND)
 
 ```
-FR-001 → [ADD] UserLoggedInEvent.kt (src/main/kotlin/com/ntt/authservice/auth/domain/event/) → NEW domain event
-FR-002 → [MODIFY] AuthDomainEvents.kt (src/main/kotlin/.../auth/application/command/) → remove old UserLoggedInEvent
-FR-003 → [MODIFY] LoginHandler.kt (src/main/kotlin/.../auth/application/command/) → add eventService.record()
-FR-004 → [REUSE] EventService.kt, OutboxPort → no changes needed
-FR-005 → [REUSE] OutboxPoller.kt → no changes needed (topic driven by event data)
-FR-006 → [MODIFY] LoginCommand.kt (src/main/kotlin/.../auth/application/command/) → add correlationId field
-FR-006 → [MODIFY] CqrsAuthController.kt (src/main/kotlin/.../auth/adapter/in/web/) → pass X-Correlation-ID
-FR-007 → [ADD] UserLoginFailedEvent.kt (src/main/kotlin/com/ntt/authservice/auth/domain/event/) → NEW domain event
-FR-010 → [MODIFY] LoginHandler.kt → inject EventService dependency
-FR-011 → [MODIFY] LoginHandler.kt → add failed event recording
-FR-012 → [MODIFY] LoginCommand.kt → add correlationId field
-FR-015 → [MODIFY] LoginHandler.kt → extract isNewDevice from LoginSessionService
-FR-016 → [MODIFY] LoginHandler.kt → include MFA context
-FR-017 → [MODIFY] LoginHandler.kt → include promotion context
-FR-019 → [MODIFY] LoginHandler.kt → add dedup guard
-FR-020 → [MODIFY] LoginHandler.kt → add structured logging
-FR-021 → [MODIFY] LoginHandler.kt → add try-catch around eventService.record()
+FR-001 → [ADD] UserLoggedInEvent.kt (src/main/kotlin/.../auth/domain/event/) → NEW enriched domain event
+FR-002 → [ADD] UserLoginFailedEvent.kt (src/main/kotlin/.../auth/domain/event/) → NEW domain event
+FR-003 → [ADD] LoginFailureReason.kt (src/main/kotlin/.../auth/domain/event/) → NEW enum
+FR-004 → [ADD] LoginEventRecorder.kt (src/main/kotlin/.../auth/application/event/) → NEW helper service
+FR-005 → [MODIFY] LoginHandler.kt (src/main/kotlin/.../auth/application/command/) → inject LoginEventRecorder, call recordLoginSuccess()
+FR-006 → [MODIFY] LoginHandler.kt (src/main/kotlin/.../auth/application/command/) → add failure event recording at catch points
+FR-007 → [REUSE] OutboxPoller.kt → no changes needed (topic driven by event data)
+FR-008 → [MODIFY] AuthDomainEvents.kt (src/main/kotlin/.../auth/application/command/) → remove old UserLoggedInEvent
+FR-009 → [REUSE] EventEnvelope.kt → no changes needed
+FR-010 → [ADD] LoginEventRecorder.kt → fire-and-forget error handling
+FR-011 → [REUSE] TokenEventRecorder.kt → no changes needed (complementary event)
+FR-012 → [REUSE] EventEnvelope.id (UUID) → deduplication key
+FR-013 → [ADD] LoginEventRecorder.kt → structured logging
+FR-014 → [ADD] LoginEventRecorder.kt → correlationId threading
 ```
 
 ## 13. Agent Notes (Tổng hợp bổ sung)
@@ -244,32 +224,30 @@ FR-021 → [MODIFY] LoginHandler.kt → add try-catch around eventService.record
 > Phần này agent TỰ DO bổ sung thông tin phân tích ngoài template.
 
 ### Observations
-- Feature này là **mirror pattern** của `user_registration_event` (đã implement thành công, archived `2026-08-20-user_registration_event/`). Pattern: enriched domain event → EventService.record() → event store + outbox → Kafka. Complexity: MEDIUM.
-- `LoginHandler` hiện có 12 constructor dependencies — thêm `EventService` sẽ là 13. Vẫn acceptable cho CQRS handler nhưng nên monitor.
-- **Critical gap**: `LoginHandler` hiện tại KHÔNG record bất kỳ domain event nào vào event store. Chỉ có `LoginSessionService.recordLogin()` (writes to `login_sessions` table) và minimal `UserLoggedInEvent` qua Spring ApplicationEvent (in-process only). Đây là gap lớn trong audit trail completeness.
-- `UserLoggedInEvent` hiện tại trong `AuthDomainEvents.kt` chỉ có 2 fields (userId, domainCode) và eventType = `USER_LOGGED_IN` — không follow dot-notation convention như `UserRegisteredEvent` (`iam.user.registered`).
-- MFA flow là complexity point: LoginHandler return `MfaRequired` result (partial login) → MFA verify xảy ra trong `MfaService.verifyTotp()` / `MfaController.verifyMfa()`. Event phải emit ở MFA verify success point, không phải LoginHandler.
+- Feature này là **mirror pattern** của `user_registration_event` (đã implement thành công, archived `2026-08-20-user_registration_event/`). Pattern: enriched domain event → helper recorder → EventService.record() → event store + outbox → Kafka. Complexity: MEDIUM.
+- **Key design decision**: Sử dụng `LoginEventRecorder` helper service (mirroring `TokenEventRecorder`) thay vì inject EventService trực tiếp vào LoginHandler. Lý do: (1) encapsulate topic routing logic, (2) centralize error handling, (3) keep LoginHandler focused on auth logic, (4) consistent với established pattern.
+- **Critical gap discovered**: `LoginHandler` hiện tại KHÔNG record bất kỳ domain event nào vào event store cho login actions. Chỉ có: (a) `LoginSessionEntity` qua `LoginSessionService.recordLogin()` (DB table `login_sessions`), (b) minimal `UserLoggedInEvent` qua `ApplicationEventPublisher` (in-process Spring event, NOT persisted), (c) `TokenIssuedEvent` via `TokenEventRecorder` (covers token issuance, NOT login context). Đây là gap lớn trong audit trail completeness.
+- Existing `UserLoggedInEvent` trong `AuthDomainEvents.kt` chỉ có 2 fields (userId, domainCode) và eventType = `USER_LOGGED_IN` — KHÔNG follow dot-notation convention (`iam.{aggregate}.{action}`) đã thiết lập bởi `UserRegisteredEvent` (`iam.user.registered`), `TokenIssuedEvent` (`iam.token.issued`).
+- MFA flow là complexity point: LoginHandler return `LoginResult.MfaRequired` (partial login) → MFA verify xảy ra trong `MfaService.verifyTotp()` / `MfaController.verifyMfa()`. Decision: DEFER MFA login events to separate scope — ban đầu chỉ cover non-MFA successful login.
 
 ### Related Features / Precedents
 - `user_registration_event` (archived: `2026-08-20-user_registration_event/`) — **PRIMARY reference**. Enriched `UserRegisteredEvent`, EventService integration trong RegisterHandler, outbox + Kafka relay. Exact same pattern cần follow.
-- `auth-core-features` (archived: `2026-08-21-auth-core-features/`) — LoginHandler CQRS extraction, LoginSessionService, LoginRateLimitService.
-- `auth-login-admin` (archived: `2026-08-11-auth-login-admin/`) — Login + admin session patterns.
-- `anonymous-login-optimization` (archived: `2026-08-20-anonymous-login-optimization/`) — Anonymous session + Redis pattern, session promotion flow.
+- `jwt-token-validation` (archived: `2026-08-26-jwt-token-validation/`) — `TokenValidationFailedEvent`, `ValidationFailureReason` enum, fire-and-forget recording in JwtAuthFilter. Same failure event + enum pattern.
+- `auth-core-features` (archived: `2026-08-21-auth-core-features/`) — LoginHandler CQRS extraction, LoginSessionService, LoginRateLimitService, MFA integration.
+- `anonymous-login-optimization` (archived: `2026-08-20-anonymous-login-optimization/`) — Session promotion flow, PromotionResult status.
 
 ### Integration Notes
-- **EventService** (reuse): Không cần modify. `record()` method generic, accept any `DomainEvent`. Call pattern: `eventService.record(aggregateType, aggregateId, event, topic, partitionKey, correlationId)`.
-- **OutboxPoller** (reuse): Không cần modify. Polls `event_outbox` table, relay to Kafka by topic field.
-- **LoginSessionService** (read-only): Cần call `detectNewDevice()` hoặc get `isNewDevice` from recorded session để enrich event.
-- **KafkaConfig** (no change): Topic auto-create enabled by default in dev, manual creation in prod.
+- **LoginEventRecorder** (NEW): Mirrors `TokenEventRecorder` exactly — @Component, inject EventService, 2 public methods (success/failure), try/catch all exceptions, log.warn on failure, log.debug on success.
+- **EventService** (REUSE): Không cần modify. `record()` method generic, accept any `DomainEvent`. Call pattern: `eventService.record(aggregateType, aggregateId, event, topic, partitionKey, correlationId)`.
+- **OutboxPoller** (REUSE): Không cần modify. Polls `event_outbox` table, relay to Kafka by topic field.
+- **LoginSessionService** (READ-ONLY reference): Cần extract `isNewDevice` from `recordLogin()` result. `LoginSessionService.recordLogin()` returns `LoginSessionEntity` which has `isNewDevice` flag.
 
 ### Suggested Approach
-1. **Phase 1**: Create `UserLoggedInEvent.kt` và `UserLoginFailedEvent.kt` trong `auth.domain.event` package — follow `UserRegisteredEvent` pattern exactly.
-2. **Phase 2**: Modify `LoginCommand.kt` — add `correlationId: String?` field.
-3. **Phase 3**: Modify `CqrsAuthController.kt` — extract `X-Correlation-ID` header, pass to LoginCommand.
-4. **Phase 4**: Modify `LoginHandler.kt` — inject `EventService`, record `UserLoggedInEvent` after token generation, record `UserLoginFailedEvent` in catch blocks.
-5. **Phase 5**: Clean up `AuthDomainEvents.kt` — remove old `UserLoggedInEvent` definition (keep `SessionRevokedEvent`).
-6. **Phase 6**: Address MFA flow — add event recording in MFA verify success path (scope extension).
-7. **Phase 7**: Tests — unit tests cho event recording, integration tests cho outbox relay.
+1. **Phase 1**: Create `UserLoggedInEvent.kt`, `UserLoginFailedEvent.kt`, `LoginFailureReason.kt` trong `auth.domain.event` package — follow `UserRegisteredEvent` + `TokenValidationFailedEvent` patterns.
+2. **Phase 2**: Create `LoginEventRecorder.kt` trong `auth.application.event` package — mirror `TokenEventRecorder` exactly.
+3. **Phase 3**: Modify `LoginHandler.kt` — inject `LoginEventRecorder`, call `recordLoginSuccess()` after token generation + session recording, call `recordLoginFailure()` at each exception throw site.
+4. **Phase 4**: Clean up `AuthDomainEvents.kt` — remove old `UserLoggedInEvent` class (keep `SessionRevokedEvent`).
+5. **Phase 5**: Tests — unit tests cho LoginEventRecorder (fire-and-forget), unit tests cho LoginHandler event recording integration, verify no exception propagation.
 
 ### Context from Confluence Images
 N/A
