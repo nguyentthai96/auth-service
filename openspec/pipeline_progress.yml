@@ -1,5 +1,5 @@
 current_feature: cache-starter-migration-upgrade
-current_workflow: wf_pre_openspec
+current_workflow: wf_brainstorm_openspec
 features:
   anonymous-login-optimization:
     workflows:
@@ -99,6 +99,11 @@ features:
         tokens: 0
   cache-starter-migration-upgrade:
     workflows:
+      wf_brainstorm_openspec:
+        duration: 688
+        status: success
+        strike_count: 0
+        tokens: 0
       wf_feature_research:
         duration: 877
         status: success
@@ -148,8 +153,8 @@ stats:
   partial_features: 0
   remaining_features: 0
   skipped_features: 0
-  total_duration: 12286
+  total_duration: 12974
   total_features: 5
   total_tokens: 0
 status: running
-updated_at: '2026-08-24T10:16:01.453525+00:00'
+updated_at: '2026-08-24T10:27:32.442095+00:00'
