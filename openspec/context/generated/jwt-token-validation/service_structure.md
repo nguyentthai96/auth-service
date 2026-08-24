@@ -1,72 +1,70 @@
 # Service Structure
 
-_Generated: 2026-08-26_
+_Generated: 2025-01-20_
 
-## auth-service
+## auth-service (auth module)
 
 ### Detected Packages
 
-- `com.ntt.authservice.auth.domain.event`: Domain events — TokenIssuedEvent, TokenRevokedEvent, EventEnvelope, IssuanceContext, RevocationType
-- `com.ntt.authservice.auth.domain.model`: Domain models — User, AuthToken, UserStatus, TokenIssuanceMetadata
-- `com.ntt.authservice.auth.domain.model.vo`: Value objects — UserId, PasswordHash, Email, DomainCode
-- `com.ntt.authservice.auth.domain.service`: Domain services — TokenHasher
-- `com.ntt.authservice.auth.application`: Application services — JwtService, AuthService, MfaService, OtpService, SessionPromotionService, etc.
-- `com.ntt.authservice.auth.application.command`: Command handlers — LoginHandler, RegisterHandler, RefreshTokenHandler, TokenGenerator, RevokeSessionsHandler, etc.
-- `com.ntt.authservice.auth.application.event`: Event services — EventService, TokenEventRecorder, RateLimitExceededEvent, NewDeviceLoginEvent
-- `com.ntt.authservice.auth.application.query`: Query handlers — BuildAuthResponseHandler
-- `com.ntt.authservice.auth.application.port.out`: Outbound ports (interfaces) — TokenStore, EventStorePort, OutboxPort, UserPort, DomainPort, SsoGateway, CaptchaGateway, EventPublisher, PermissionCache
-- `com.ntt.authservice.auth.application.cipher`: Cipher services — EncryptedAuditService, X25519KeyExchangeServiceImpl, DecryptionVaultService
-- `com.ntt.authservice.auth.adapter.in.web`: REST controllers — TokenController, AuthController, etc.
-- `com.ntt.authservice.auth.adapter.in.web.dto`: Request/Response DTOs — IntrospectionRequest, IntrospectionResponse, TokenDtos, etc.
-- `com.ntt.authservice.auth.adapter.in.web.filter`: Web filters — LoginRateLimitFilter, ServiceAuthFilter
-- `com.ntt.authservice.auth.adapter.in.kafka`: Kafka consumers — PermissionChangedConsumer
-- `com.ntt.authservice.auth.adapter.out.persistence`: JPA adapters — TokenStorePersistenceAdapter, UserPersistenceAdapter, OutboxPersistenceAdapter, DomainPersistenceAdapter
-- `com.ntt.authservice.auth.adapter.out.persistence.entity`: JPA entities — EventStoreEntity, EventOutboxEntity, LoginSessionEntity, etc.
-- `com.ntt.authservice.auth.adapter.out.persistence.repository`: JPA repositories — LoginSessionRepository, EventOutboxJpaRepository, etc.
-- `com.ntt.authservice.auth.adapter.out.persistence.mapper`: Entity mappers — UserEntityMapper
-- `com.ntt.authservice.auth.adapter.out.event`: Event publishers — OutboxPoller, SpringEventPublisher, KafkaEventPublisher
-- `com.ntt.authservice.auth.adapter.out.http`: HTTP clients — HttpCaptchaGateway, HttpSsoGateway, SsoProviderClient, CaptchaClient
-- `com.ntt.authservice.auth.adapter.out.gateway`: Gateway adapters — CaptchaGatewayAdapter
-- `com.ntt.authservice.auth.adapter.out.sso`: SSO adapters — OAuth2TokenExchanger
-- `com.ntt.authservice.auth.adapter.out.cache`: Cache adapters (empty — reserved for cache implementations)
-- `com.ntt.authservice.auth.adapter.out.cipher`: Cipher adapters — RedisAntiReplayValidator, RedisCipherKeySessionResolver, etc.
-- `com.ntt.authservice.rbac.domain.model`: RBAC domain models
-- `com.ntt.authservice.rbac.domain.service`: RBAC domain services
-- `com.ntt.authservice.rbac.application`: RBAC application services
-- `com.ntt.authservice.rbac.application.query`: RBAC query handlers — GetPermissionsHandler
-- `com.ntt.authservice.rbac.adapter.in.web`: RBAC controllers
-- `com.ntt.authservice.rbac.adapter.out.persistence.entity`: RBAC entities — TokenBlacklistEntity, RefreshTokenEntity, PermissionEntities
-- `com.ntt.authservice.rbac.adapter.out.persistence.repository`: RBAC repositories — TokenBlacklistRepository, RefreshTokenRepository
-- `com.ntt.authservice.rbac.adapter.out.persistence.mapper`: RBAC mappers
-- `com.ntt.authservice.pbac.application`: PBAC application services — policy evaluation
-- `com.ntt.authservice.pbac.adapter.in.web`: PBAC controllers
-- `com.ntt.authservice.pbac.adapter.out.persistence`: PBAC persistence
-- `com.ntt.authservice.shared.config`: Configuration — SecurityConfig, SecurityProperties, RedisConfig, KafkaConfig, JacksonConfig, I18nConfig, HttpClientConfig, JpaAuditingConfig, ObservabilityConfig, OutboxProperties, RedisLuaScriptConfig
-- `com.ntt.authservice.shared.security`: Security — JwtAuthFilter
-- `com.ntt.authservice.shared.exception`: Exceptions — AuthException hierarchy, AuthErrorCode, GlobalExceptionHandler
-- `com.ntt.authservice.shared.filter`: Filters — IdempotencyFilter
-- `com.ntt.authservice.shared.i18n`: I18n — DatabaseMessageSource, I18nMessageEntity, I18nMessageRepository
-- `com.ntt.authservice.shared.persistence`: Base entities — VersionedAuditableEntity
-- `com.ntt.authservice.shared.audit`: Audit — AuditLogEntity, AuditLogService, AuditLogRepository
-- `com.ntt.authservice.shared.cache`: Cache (empty — reserved for cache abstractions)
+- `auth.application` — Application services (JwtService, TokenBlacklistCacheService, ClaimValidator chain, ServiceTokenService, LoginSessionService, MfaService, etc.)
+- `auth.application.command` — CQRS command handlers (16 handlers detected)
+- `auth.application.query` — CQRS query handlers (2 handlers detected)
+- `auth.application.event` — Event services (EventService, TokenEventRecorder, NewDeviceLoginEvent, RateLimitExceededEvent)
+- `auth.application.port.out` — Outbound ports (TokenStore, EventStorePort, OutboxPort, UserPort, DomainPort, SsoGateway, CaptchaGateway, NotificationGateway, EventPublisher)
+- `auth.application.cipher` — E2EE cipher services (4 files)
+- `auth.adapter.in.web` — REST controllers (TokenController, CqrsAuthController, MfaController, SessionController, etc. — 13 controllers)
+- `auth.adapter.in.web.dto` — DTOs (TokenDtos, AuthResponse, RequestDtos, MfaDtos, SsoDtos, AnonymousDtos)
+- `auth.adapter.in.web.filter` — HTTP filters (ServiceAuthFilter, LoginRateLimitFilter, ContentLanguageFilter, ClientMetadataFilter)
+- `auth.adapter.in.kafka` — Kafka consumers (2 files)
+- `auth.adapter.out` — Outbound adapters (8 directories)
+- `auth.domain.event` — Domain events (TokenIssuedEvent, TokenRevokedEvent, TokenValidationFailedEvent, ValidationFailureReason, etc.)
+- `auth.domain.model` — Domain models (5 files)
+- `auth.domain.service` — Domain services (TokenHasher)
+
+## auth-service (rbac module)
+
+### Detected Packages
+
+- `rbac.adapter.out.persistence.entity` — JPA entities (PermissionEntities.kt — includes TokenBlacklistEntity)
+- `rbac.adapter.out.persistence.repository` — JPA repositories (Repositories.kt — includes TokenBlacklistRepository)
+- `rbac.application` — RBAC application services (2 files)
+- `rbac.domain` — RBAC domain models (2 files)
+
+## auth-service (shared module)
+
+### Detected Packages
+
+- `shared.security` — Security filters (JwtAuthFilter)
+- `shared.config` — Configuration (SecurityProperties, SecurityConfig, plus 9 other config files — 11 total)
+- `shared.exception` — Exception hierarchy (AuthException, AuthErrorCode, GlobalExceptionHandler, AuthCoreExceptions, CipherExceptions, AnonymousExceptions, AuthExceptions)
+- `shared.filter` — Generic filters (1 file)
+- `shared.audit` — Audit services (3 files)
+- `shared.i18n` — Internationalization (3 files)
+- `shared.persistence` — Shared persistence utilities (1 file)
+- `shared.cache` — Cache utilities (0 files — empty)
+
+## auth-service (pbac module)
+
+### Detected Packages
+
+- `pbac` — Policy-Based Access Control (2 directories)
 
 ### Not Found
 
-- `factory/` package (no dedicated factory package — factory logic embedded in command handlers)
+- `shared.cache` — directory exists but empty (Caffeine cache is programmatic in TokenBlacklistCacheService, not through Spring Cache)
 
 ### Naming Convention
 
-- Controllers: `*Controller` (e.g., TokenController, AuthController)
-- Services: `*Service` (e.g., JwtService, AuthService, EventService)
-- Handlers: `*Handler` (e.g., LoginHandler, RefreshTokenHandler)
-- Commands: `*Command` (e.g., LoginCommand, RefreshTokenCommand)
-- Ports: `*Port`, `*Store`, `*Gateway`, `*Cache` (e.g., TokenStore, EventStorePort, SsoGateway)
-- Adapters: `*PersistenceAdapter`, `*Gateway` impl (e.g., TokenStorePersistenceAdapter, HttpSsoGateway)
-- Entities: `*Entity` (e.g., TokenBlacklistEntity, EventStoreEntity)
-- DTOs: `*Request`, `*Response` (e.g., IntrospectionRequest, IntrospectionResponse)
-- Events: `*Event` (e.g., TokenIssuedEvent, TokenRevokedEvent)
-- Enums: Descriptive (e.g., IssuanceContext, RevocationType, AuthErrorCode)
-- Config: `*Config`, `*Properties` (e.g., SecurityConfig, SecurityProperties)
-- Filters: `*Filter` (e.g., JwtAuthFilter, IdempotencyFilter)
-- Language: Kotlin
-- Architecture: Hexagonal (Clean Architecture) — domain/application/adapter layers
+- **Controllers**: `*Controller` (e.g., `TokenController`, `CqrsAuthController`)
+- **Services**: `*Service` (e.g., `JwtService`, `TokenBlacklistCacheService`)
+- **Filters**: `*Filter` (e.g., `JwtAuthFilter`, `ServiceAuthFilter`)
+- **Validators**: `*ClaimValidator` (e.g., `IssuerClaimValidator`)
+- **Events**: `*Event` (e.g., `TokenValidationFailedEvent`)
+- **DTOs**: `*Request`, `*Response`, `*Dtos` suffix in grouped files
+- **Entities**: `*Entity` (e.g., `TokenBlacklistEntity`)
+- **Repositories**: `*Repository` (e.g., `TokenBlacklistRepository`)
+- **Ports**: interface in `port.out/` (e.g., `TokenStore`, `EventStorePort`)
+- **Commands**: `*Command` + `*Handler` (CQRS pattern)
+- **Properties**: `*Properties` (e.g., `SecurityProperties`, `BlacklistCacheProperties`)
+- **Exceptions**: `*Exception` (e.g., `ClaimValidationException`)
+- **Error Codes**: `AuthErrorCode` enum (AUTH_001–AUTH_062)

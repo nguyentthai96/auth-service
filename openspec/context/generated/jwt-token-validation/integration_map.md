@@ -1,69 +1,70 @@
 # Integration Map
 
-_Generated: 2026-08-26_
+_Generated: 2025-01-20_
 
-## Redis (Distributed Cache)
+## Redis (Distributed Cache — L2 Blacklist)
 
-- Client: `StringRedisTemplate` (Spring Data Redis) — injected in 12+ services
-  - `AnonymousSessionHandler` — `src/main/kotlin/com/ntt/authservice/auth/application/command/AnonymousSessionHandler.kt`
-  - `RenewAnonymousTokenHandler` — `src/main/kotlin/com/ntt/authservice/auth/application/command/RenewAnonymousTokenHandler.kt`
-  - `MfaRateLimitService` — `src/main/kotlin/com/ntt/authservice/auth/application/MfaRateLimitService.kt`
-  - `LoginRateLimitService` — `src/main/kotlin/com/ntt/authservice/auth/application/LoginRateLimitService.kt`
-  - `AnonymousRateLimitService` — `src/main/kotlin/com/ntt/authservice/auth/application/AnonymousRateLimitService.kt`
-  - `OtpService` — `src/main/kotlin/com/ntt/authservice/auth/application/OtpService.kt`
-  - `SessionPromotionService` — `src/main/kotlin/com/ntt/authservice/auth/application/SessionPromotionService.kt`
-  - `MfaService` — `src/main/kotlin/com/ntt/authservice/auth/application/MfaService.kt`
-  - `IdempotencyFilter` — `src/main/kotlin/com/ntt/authservice/shared/filter/IdempotencyFilter.kt`
-  - `RedisAntiReplayValidator` — `src/main/kotlin/com/ntt/authservice/auth/adapter/out/cipher/RedisAntiReplayValidator.kt`
-  - `RedisCipherKeySessionResolver` — `src/main/kotlin/com/ntt/authservice/auth/adapter/out/cipher/RedisCipherKeySessionResolver.kt`
-  - `DecryptionVaultService` — `src/main/kotlin/com/ntt/authservice/auth/application/cipher/DecryptionVaultService.kt`
-- Protocol: Redis (Lettuce driver via Spring Data Redis)
-- Configuration: `RedisConfig` — `src/main/kotlin/com/ntt/authservice/shared/config/RedisConfig.kt`
-- Key patterns: `otp:{userId}:{channel}`, `session:*`, `rate_limit:*`, `cipher:*`
+- Client: `StringRedisTemplate` (Spring auto-configured)
+- Protocol: Redis protocol
+- Used by: `TokenBlacklistCacheService` — `src/main/kotlin/com/ntt/authservice/auth/application/TokenBlacklistCacheService.kt`
+- Operations:
+  - `redisTemplate.hasKey("token:blacklist:{jti}")` — read (blacklist check)
+  - `redisTemplate.opsForValue().set(key, "1", Duration)` — write (cache populate + write-through)
+- Key format: `token:blacklist:{jti}`
+- TTL: Remaining token lifetime (configurable)
+- Circuit breaker: AtomicInteger-based, threshold=5, reset=30s (configurable via `SecurityProperties.BlacklistCacheProperties`)
+- Configuration: `SecurityProperties.BlacklistCacheProperties.redisKeyPrefix`, `redisTimeoutMs`, `circuitBreakerThreshold`, `circuitBreakerResetSeconds`
 
-## Kafka (Event Bus)
+## Caffeine (In-Process Cache — L1 Blacklist)
 
-- Client: `KafkaEventPublisher` — `src/main/kotlin/com/ntt/authservice/auth/adapter/out/event/KafkaEventPublisher.kt`
-- Protocol: Kafka (spring-kafka)
-- Configuration: `KafkaConfig` — `src/main/kotlin/com/ntt/authservice/shared/config/KafkaConfig.kt`
-- Topics: `iam.token.issued`, `iam.token.revoked`, `iam.user.registered`, `iam.user.logged_in`
-- Pattern: Transactional outbox → `OutboxPoller` polls outbox table → publishes to Kafka
+- Client: `com.github.benmanes.caffeine.cache.Cache<String, Boolean>` (programmatic, NOT Spring Cache)
+- Protocol: In-process API
+- Used by: `TokenBlacklistCacheService` — `src/main/kotlin/com/ntt/authservice/auth/application/TokenBlacklistCacheService.kt`
+- Operations:
+  - `caffeineCache.getIfPresent(jti)` — read
+  - `caffeineCache.put(jti, true)` — write
+- TTL: 30s default (`SecurityProperties.BlacklistCacheProperties.caffeineTtlSeconds`)
+- Max size: 10,000 entries (`SecurityProperties.BlacklistCacheProperties.caffeineMaxSize`)
 
-## PostgreSQL (Database)
+## PostgreSQL (Database — L3 Blacklist + Event Store)
 
-- Client: JPA/Hibernate via Spring Data JPA
-- Entities: `EventStoreEntity`, `EventOutboxEntity`, `TokenBlacklistEntity`, `RefreshTokenEntity`, `LoginSessionEntity`, `UserEntity`, etc.
-- Repositories: `TokenBlacklistRepository`, `RefreshTokenRepository`, `LoginSessionRepository`, `EventOutboxJpaRepository`, `ProcessedEventJpaRepository`
-- Migration: Flyway
-- Configuration: via `base-data-starter` (base-core module)
+- Client: Spring Data JPA (`TokenBlacklistRepository`)
+- Protocol: JDBC (via Spring Data JPA)
+- Used by:
+  - `TokenBlacklistCacheService` — `src/main/kotlin/com/ntt/authservice/auth/application/TokenBlacklistCacheService.kt`
+  - `EventService` — `src/main/kotlin/com/ntt/authservice/auth/application/event/EventService.kt`
+- Operations:
+  - `tokenBlacklistRepository.existsByTokenJti(jti)` — L3 blacklist check
+  - `eventStorePort.append(...)` — event store persist
+  - `outboxPort.insert(...)` — outbox for Kafka relay
+- Tables: `token_blacklist`, `event_store`, `event_outbox`
+- Repository: `TokenBlacklistRepository` — `src/main/kotlin/com/ntt/authservice/rbac/adapter/out/persistence/repository/Repositories.kt`
+- Entity: `TokenBlacklistEntity` — `src/main/kotlin/com/ntt/authservice/rbac/adapter/out/persistence/entity/PermissionEntities.kt`
 
-## HTTP Clients (External)
+## Kafka (Message Queue — Validation Events)
 
-- `HttpSsoGateway` — `src/main/kotlin/com/ntt/authservice/auth/adapter/out/http/HttpSsoGateway.kt`
-  - Protocol: HTTP
-  - Purpose: SSO token exchange with external providers (Google, Keycloak)
-  - Client: `SsoProviderClient` — `src/main/kotlin/com/ntt/authservice/auth/adapter/out/http/SsoProviderClient.kt`
-  - Request/Response: provider-specific OAuth2 token/userinfo
+- Client: `KafkaEventPublisher` (via `OutboxPoller` scheduled relay)
+- Protocol: Kafka producer
+- Used by: `EventService` → `OutboxPort.insert()` → `OutboxPoller` → `KafkaEventPublisher`
+- Topics:
+  - `iam.token.validation-failed` — validation failure events
+  - `iam.token.issued` — token issuance events
+  - `iam.token.revoked` — token revocation events
+- Flow: `TokenEventRecorder.recordValidationFailure(event)` → `EventService.record(aggregateType="Token", aggregateId=0L, topic="iam.token.validation-failed")` → transactional persist (event store + outbox) → async relay by `OutboxPoller`
+- Partition key: token JTI (or "unknown" if unavailable)
 
-- `HttpCaptchaGateway` — `src/main/kotlin/com/ntt/authservice/auth/adapter/out/http/HttpCaptchaGateway.kt`
-  - Protocol: HTTP
-  - Purpose: CAPTCHA verification
-  - Client: `CaptchaClient` — `src/main/kotlin/com/ntt/authservice/auth/adapter/out/http/CaptchaClient.kt`
+## JJWT Library (JWT Processing)
 
-## base-core Module (Library)
-
-- `base-web-starter`: Web configuration, BaseControllerAdvice
-- `base-data-starter`: JPA/Flyway auto-configuration
-- `base-security-starter`: Security base configuration
-- `base-cache-starter`: TwoLevelCacheManager, CacheInvalidationPublisher, CacheProperties
-- `com.ntt.basecore.exception.BusinessException`: Base exception class
-- `com.ntt.basecore.exception.base.ErrorCodeBase`: Error code interface
-- `com.ntt.basecore.domain.web.BaseControllerAdvice`: Base controller advice
-- Configuration: `SecurityConfig.twoLevelCacheManager()` — `src/main/kotlin/com/ntt/authservice/shared/config/SecurityConfig.kt` (L106-116)
+- Client: `io.jsonwebtoken.Jwts` (JJWT 0.12.x)
+- Protocol: In-process API
+- Used by: `JwtService` — `src/main/kotlin/com/ntt/authservice/auth/application/JwtService.kt`
+- Operations:
+  - `Jwts.builder()...signWith()...compact()` — token generation
+  - `Jwts.parser().verifyWith(key).clockSkewSeconds(60).build().parseSignedClaims(token)` — token parsing
+- Key types: RSA KeyPair (RS256), SecretKey (HMAC-SHA256 legacy)
 
 ## NOT DETECTED
 
-- gRPC integrations
-- GraphQL integrations
-- SOAP/XML integrations
-- WebSocket integrations
+- External HTTP clients (REST/WebClient/Feign) — JWT validation is self-contained, no outbound HTTP calls
+- gRPC — not used
+- AMQP/RabbitMQ — not used
