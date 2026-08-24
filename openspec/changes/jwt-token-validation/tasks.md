@@ -13,6 +13,18 @@ _Scope: BUG-001 fix + 49 test cases + Micrometer observability_
 
 ---
 
+## Changes
+
+[MAINTENANCE] All 16 FRs from previous EXTEND iteration already implemented. This iteration focuses on **bug fix + test hardening + observability**:
+
+**Bug Fix (2 production files modify)**: `ValidationFailureReason.kt` — add `ISSUER_MISMATCH` and `CLAIM_VALIDATION_FAILED` enum values. `JwtAuthFilter.kt` — fix `mapValidatorToReason()` to correctly map `IssuerClaimValidator` failures (was incorrectly mapped to `SIGNATURE_INVALID`).
+**Observability (2 production files modify)**: `TokenBlacklistCacheService.kt` — inject `MeterRegistry`, add counters for cache tier hit/miss, circuit breaker transitions, gauge for Caffeine size. `JwtAuthFilter.kt` — inject `MeterRegistry`, add counter for validation result, timer for validation duration.
+**Test Hardening (6 new test files, 2 modified test files)**: `TokenBlacklistCacheServiceTest.kt` (~13 TCs), `ClaimValidatorChainTest.kt` (~5 TCs), `IssuerClaimValidatorTest.kt` (~3 TCs), `AudienceClaimValidatorTest.kt` (~5 TCs), `TokenTypeClaimValidatorTest.kt` (~6 TCs), `JwtAuthFilterTest.kt` (~11 TCs). Update `TokenEventRecorderTest.kt` (+3 TCs for `recordValidationFailure()`), `TokenIntrospectionIntegrationTest.kt` (+3 TCs for ClaimValidatorChain integration).
+
+**Total**: 3 production files modified (additive only), 6 new test files, 2 updated test files, ~49 test cases.
+
+---
+
 ## Task Summary
 
 | # | Task | Action | File | Scope |
