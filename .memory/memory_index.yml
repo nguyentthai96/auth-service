@@ -10,6 +10,7 @@ features:
   erp-iam-system: completed
   jwt-token-validation: completed
   tps-performance-testing: completed
+  user-login-event: completed
 lessons:
 - action: 'Mitigate ''PROXY_DOWN'' errors in wf_brainstorm_openspec. Common errors:
     Error code: 502 - {''type'': ''error'', ''error'': {''type'': ''api_error'', ''message'':
@@ -95,5 +96,5 @@ lessons:
   id: L007
   type: failure_pattern
 total_failures: 35
-total_records: 140
-total_successes: 105
+total_records: 141
+total_successes: 106
