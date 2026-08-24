@@ -7,14 +7,11 @@ import com.ntt.authservice.auth.application.port.out.DomainEvent
  *
  * Note: UserRegisteredEvent REMOVED — consolidated into
  * com.ntt.authservice.auth.domain.event.UserRegisteredEvent (FR-002).
+ *
+ * Note: UserLoggedInEvent REMOVED — consolidated into
+ * com.ntt.authservice.auth.domain.event.UserLoggedInEvent (user-login-event feature).
+ * Enriched version with 13 fields replaces the minimal 2-field version.
  */
-
-data class UserLoggedInEvent(
-    val userId: Long,
-    val domainCode: String
-) : DomainEvent {
-    override val eventType: String = "USER_LOGGED_IN"
-}
 
 data class SessionRevokedEvent(
     val userId: Long,

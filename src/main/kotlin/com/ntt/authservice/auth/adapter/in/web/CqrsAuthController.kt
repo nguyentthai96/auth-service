@@ -135,6 +135,7 @@ class CqrsAuthController(
         httpResponse: HttpServletResponse
     ): ResponseEntity<Any> {
         val anonymousTokenJti = extractAnonymousTokenJti(request.anonymousToken)
+        val correlationId = httpRequest.getHeader("X-Correlation-ID") ?: httpRequest.getHeader("X-Request-ID")
 
         val command = LoginCommand(
             username = request.username,
@@ -146,7 +147,8 @@ class CqrsAuthController(
             userAgent = httpRequest.getHeader("User-Agent"),
             deviceFingerprint = httpRequest.getHeader("X-Device-Fingerprint"),
             anonymousSessionId = request.anonymousSessionId,
-            anonymousTokenJti = anonymousTokenJti
+            anonymousTokenJti = anonymousTokenJti,
+            correlationId = correlationId
         )
         val result = loginHandler.handle(command)
         return when (result) {
