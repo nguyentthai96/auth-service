@@ -37,3 +37,18 @@ data class RefreshTokenRequestDto(
 data class SwitchDomainRequestDto(
     @field:NotBlank val domainCode: String
 )
+
+data class ChangePasswordRequestDto(
+    @field:NotBlank(message = "Old password is required")
+    val oldPassword: String,
+
+    @field:NotBlank(message = "New password is required")
+    @field:Size(min = 8, message = "New password must be at least 8 characters")
+    val newPassword: String
+)
+
+data class ForgotPasswordRequestDto(
+    @field:NotBlank(message = "Email is required")
+    @field:Email(message = "Email must be valid")
+    val email: String
+)

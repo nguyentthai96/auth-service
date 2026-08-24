@@ -174,7 +174,7 @@ class GroupController(
     fun assignRole(
         @PathVariable domainId: Long,
         @PathVariable groupId: Long,
-        @RequestBody request: AssignRoleRequest
+        @Valid @RequestBody request: AssignRoleRequest
     ): ResponseEntity<Void> {
         val groupRole = GroupRoleEntity().apply {
             this.groupId = groupId
@@ -189,7 +189,7 @@ class GroupController(
     fun addUserToGroup(
         @PathVariable domainId: Long,
         @PathVariable groupId: Long,
-        @RequestBody request: AddUserToGroupRequest
+        @Valid @RequestBody request: AddUserToGroupRequest
     ): ResponseEntity<Void> {
         val userGroup = UserGroupEntity().apply {
             userId = request.userId

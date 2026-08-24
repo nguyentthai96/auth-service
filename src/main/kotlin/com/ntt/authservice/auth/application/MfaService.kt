@@ -1,5 +1,7 @@
 package com.ntt.authservice.auth.application
 
+import com.ntt.authservice.auth.application.port.out.NotificationGateway
+import com.ntt.authservice.auth.domain.service.TokenHasher
 import com.ntt.authservice.auth.adapter.`in`.web.dto.AuthResponse
 import com.ntt.authservice.auth.adapter.out.persistence.entity.MfaRecoveryCodeEntity
 import com.ntt.authservice.auth.adapter.out.persistence.repository.MfaRecoveryCodeRepository
@@ -29,7 +31,8 @@ class MfaService(
     private val redisTemplate: StringRedisTemplate,
     private val auditLogService: AuditLogService,
     private val rateLimitService: MfaRateLimitService,
-    private val recoveryCodeRepository: MfaRecoveryCodeRepository
+    private val recoveryCodeRepository: MfaRecoveryCodeRepository,
+    private val notificationGateway: NotificationGateway
 ) {
 
     private val log = LoggerFactory.getLogger(MfaService::class.java)
@@ -49,8 +52,8 @@ class MfaService(
         when (method) {
             "SMS", "EMAIL" -> {
                 val channel = method.lowercase()
-                otpService.generateOtp(userId, channel)
-                // TODO: dispatch actual SMS/Email via notification service
+                val code = otpService.generateOtp(userId, channel)
+                notificationGateway.sendOtp(userId, channel, code)
             }
             "TOTP" -> {
                 // TOTP is stateless — no server-side action needed
@@ -89,6 +92,11 @@ class MfaService(
         // MFA login rate limit check (FR-003) — applies to all MFA methods
         rateLimitService.checkAndIncrement(userId, RateLimitType.MFA_LOGIN)
 
+        // Pre-load user once — avoids duplicate findById in TOTP + trusted device branches
+        val user = userRepository.findById(userId).orElseThrow {
+            ResourceNotFoundException("User", userId)
+        }
+
         when (method) {
             "SMS", "EMAIL" -> {
                 // OTP-specific rate limit check (FR-001)
@@ -96,9 +104,6 @@ class MfaService(
                 otpService.verifyOtp(userId, method.lowercase(), code)
             }
             "TOTP" -> {
-                val user = userRepository.findById(userId).orElseThrow {
-                    ResourceNotFoundException("User", userId)
-                }
                 val encryptedSecret = user.totpSecretEncrypted
                     ?: throw TotpNotSetupException()
                 val secret = totpService.decryptSecret(encryptedSecret)
@@ -115,9 +120,6 @@ class MfaService(
 
         // Save trusted device hash if requested (FR-005)
         if (trustDevice && !deviceHash.isNullOrBlank()) {
-            val user = userRepository.findById(userId).orElseThrow {
-                ResourceNotFoundException("User", userId)
-            }
             user.trustedDeviceHash = deviceHash
             user.trustedDeviceSetAt = java.time.Instant.now()
             userRepository.save(user)
@@ -210,8 +212,8 @@ class MfaService(
             throw MfaMaxAttemptsException("Maximum resend attempts exceeded")
         }
 
-        otpService.generateOtp(userId, method.lowercase())
-        // TODO: dispatch actual SMS/Email
+        val code = otpService.generateOtp(userId, method.lowercase())
+        notificationGateway.sendOtp(userId, method.lowercase(), code)
 
         val newMfaToken = jwtService.generateMfaToken(userId, method)
         return LoginResult.MfaRequired(
@@ -350,8 +352,9 @@ class MfaService(
 
     private fun generateSecureCode(): String {
         val chars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789" // exclude confusable chars: I, O, 0, 1
+        val random = java.security.SecureRandom()
         return (1..RECOVERY_CODE_LENGTH)
-            .map { chars[java.security.SecureRandom().nextInt(chars.length)] }
+            .map { chars[random.nextInt(chars.length)] }
             .joinToString("")
             .chunked(4)
             .joinToString("-") // Format: XXXX-XXXX
@@ -359,7 +362,6 @@ class MfaService(
 
     private fun hashRecoveryCode(code: String): String {
         val normalized = code.replace("-", "").uppercase()
-        val digest = java.security.MessageDigest.getInstance("SHA-256")
-        return digest.digest(normalized.toByteArray()).joinToString("") { "%02x".format(it) }
+        return TokenHasher.hashHex(normalized)
     }
 }

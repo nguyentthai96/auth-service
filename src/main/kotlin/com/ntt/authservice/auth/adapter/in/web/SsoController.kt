@@ -1,8 +1,9 @@
 package com.ntt.authservice.auth.adapter.`in`.web
 
 import com.ntt.authservice.auth.adapter.`in`.web.dto.*
-import com.ntt.authservice.auth.application.AuthService
 import com.ntt.authservice.auth.application.SsoAdapter
+import com.ntt.authservice.auth.application.query.BuildAuthResponseHandler
+import com.ntt.authservice.auth.application.query.BuildAuthResponseQuery
 import jakarta.validation.Valid
 import org.springframework.context.MessageSource
 import org.springframework.context.i18n.LocaleContextHolder
@@ -17,7 +18,7 @@ import org.springframework.web.bind.annotation.*
 @RequestMapping("/api/auth/sso")
 class SsoController(
     private val ssoAdapter: SsoAdapter,
-    private val authService: AuthService,
+    private val buildAuthResponseHandler: BuildAuthResponseHandler,
     private val messageSource: MessageSource
 ) {
 
@@ -27,7 +28,9 @@ class SsoController(
             code = request.code,
             provider = request.provider,
             redirectUri = request.redirectUri,
-            authResponseBuilder = { userId -> authService.buildAuthResponseForUser(userId) }
+            authResponseBuilder = { userId ->
+                AuthResponse.from(buildAuthResponseHandler.handle(BuildAuthResponseQuery(userId)))
+            }
         )
         return ResponseEntity.ok(response)
     }

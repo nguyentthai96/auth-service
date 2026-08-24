@@ -20,9 +20,9 @@ class DomainLookupService(
      * Priority: isPrimary flag → first active membership → error.
      */
     fun getPrimaryDomainCode(userId: Long): String {
-        val membership = userDomainRepository.findAllByUserIdAndActiveTrue(userId)
-            .firstOrNull { it.isPrimary }
-            ?: userDomainRepository.findAllByUserIdAndActiveTrue(userId).firstOrNull()
+        val memberships = userDomainRepository.findAllByUserIdAndActiveTrue(userId)
+        val membership = memberships.firstOrNull { it.isPrimary }
+            ?: memberships.firstOrNull()
             ?: throw ResourceNotFoundException("DomainMembership", userId)
 
         val domain = domainPort.findById(membership.domainId)
@@ -37,9 +37,9 @@ class DomainLookupService(
      * Priority: isPrimary flag → first active membership → error.
      */
     fun getPrimaryDomainId(userId: Long): Long {
-        val membership = userDomainRepository.findAllByUserIdAndActiveTrue(userId)
-            .firstOrNull { it.isPrimary }
-            ?: userDomainRepository.findAllByUserIdAndActiveTrue(userId).firstOrNull()
+        val memberships = userDomainRepository.findAllByUserIdAndActiveTrue(userId)
+        val membership = memberships.firstOrNull { it.isPrimary }
+            ?: memberships.firstOrNull()
             ?: throw ResourceNotFoundException("DomainMembership", userId)
 
         return membership.domainId

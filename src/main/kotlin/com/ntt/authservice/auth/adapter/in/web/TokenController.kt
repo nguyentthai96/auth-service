@@ -5,7 +5,9 @@ import com.ntt.authservice.auth.application.ClaimValidationStatus
 import com.ntt.authservice.auth.application.ClaimValidatorChain
 import com.ntt.authservice.auth.application.JwtService
 import com.ntt.authservice.auth.application.TokenBlacklistCacheService
-import com.ntt.authservice.auth.application.AuthService
+import com.ntt.authservice.auth.application.command.RevokeSessionsCommand
+import com.ntt.authservice.auth.application.command.RevokeSessionsHandler
+import com.ntt.authservice.auth.domain.service.TokenHasher
 import jakarta.servlet.http.HttpServletRequest
 import jakarta.validation.Valid
 import org.springframework.context.MessageSource
@@ -13,9 +15,7 @@ import org.springframework.context.i18n.LocaleContextHolder
 import org.springframework.http.CacheControl
 import org.springframework.http.ResponseEntity
 import org.springframework.web.bind.annotation.*
-import java.security.MessageDigest
 import java.time.Duration
-import java.util.*
 
 /**
  * Token management endpoints — introspection (RFC 7662), JWKS, session revocation.
@@ -27,7 +27,7 @@ import java.util.*
 @RestController
 class TokenController(
     private val jwtService: JwtService,
-    private val authService: AuthService,
+    private val revokeSessionsHandler: RevokeSessionsHandler,
     private val tokenBlacklistCacheService: TokenBlacklistCacheService,
     private val claimValidatorChain: ClaimValidatorChain,
     private val messageSource: MessageSource
@@ -87,7 +87,7 @@ class TokenController(
             .mapNotNull { it["kid"] as? String }
             .sorted()
             .joinToString(",")
-        val etag = "\"${sha256(kidString)}\""
+        val etag = "\"${TokenHasher.hash(kidString)}\""
 
         // Conditional request support — If-None-Match → 304
         val ifNoneMatch = request.getHeader("If-None-Match")
@@ -106,18 +106,9 @@ class TokenController(
 
     @PostMapping("/api/auth/sessions/{userId}/revoke-all")
     fun revokeAllSessions(@PathVariable userId: Long): ResponseEntity<Map<String, Any?>> {
-        val count = authService.revokeAllSessions(userId)
+        val count = revokeSessionsHandler.handle(RevokeSessionsCommand(userId))
         val locale = LocaleContextHolder.getLocale()
         val message = messageSource.getMessage("auth.sessions_revoked_all", null, "All sessions revoked", locale)
         return ResponseEntity.ok(mapOf("revokedCount" to count, "userId" to userId, "message" to message))
-    }
-
-    /**
-     * Compute SHA-256 hex string (for ETag generation).
-     */
-    private fun sha256(input: String): String {
-        val digest = MessageDigest.getInstance("SHA-256")
-        val hash = digest.digest(input.toByteArray())
-        return Base64.getUrlEncoder().withoutPadding().encodeToString(hash)
     }
 }

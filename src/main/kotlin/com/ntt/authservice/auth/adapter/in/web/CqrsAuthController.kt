@@ -1,7 +1,9 @@
 package com.ntt.authservice.auth.adapter.`in`.web
 
 import com.ntt.authservice.auth.adapter.`in`.web.dto.AuthResponse
+import com.ntt.authservice.auth.adapter.`in`.web.dto.ChangePasswordRequestDto
 import com.ntt.authservice.auth.adapter.`in`.web.dto.DataTransferredInfo
+import com.ntt.authservice.auth.adapter.`in`.web.dto.ForgotPasswordRequestDto
 import com.ntt.authservice.auth.application.DomainLookupService
 import com.ntt.authservice.auth.application.JwtService
 import com.ntt.authservice.auth.application.LoginResult
@@ -10,8 +12,10 @@ import com.ntt.authservice.auth.application.PasswordPolicyService
 import com.ntt.authservice.auth.application.PromotionResult
 import com.ntt.authservice.auth.application.RegisterResult
 import com.ntt.authservice.auth.application.command.*
+import com.ntt.authservice.auth.application.port.out.NotificationGateway
 import com.ntt.authservice.auth.application.query.BuildAuthResponseQuery
 import com.ntt.authservice.auth.application.query.BuildAuthResponseHandler
+import com.ntt.authservice.rbac.adapter.out.persistence.repository.UserRepository
 import com.ntt.authservice.shared.config.SecurityProperties
 import com.ntt.authservice.shared.exception.InvalidCredentialsException
 import jakarta.servlet.http.Cookie
@@ -47,7 +51,9 @@ class CqrsAuthController(
     private val domainLookupService: DomainLookupService,
     private val securityProperties: SecurityProperties,
     private val messageSource: MessageSource,
-    private val jwtService: JwtService
+    private val jwtService: JwtService,
+    private val notificationGateway: NotificationGateway,
+    private val userRepository: UserRepository
 ) {
 
     private val log = org.slf4j.LoggerFactory.getLogger(CqrsAuthController::class.java)
@@ -209,7 +215,11 @@ class CqrsAuthController(
     @PostMapping("/forgot-password")
     fun forgotPassword(@Valid @RequestBody request: ForgotPasswordRequestDto): ResponseEntity<Map<String, String>> {
         // Always return 200 to prevent email enumeration
-        // TODO: trigger password reset email
+        val user = userRepository.findByEmailAndActiveTrue(request.email)
+        if (user != null) {
+            val resetToken = java.util.UUID.randomUUID().toString()
+            notificationGateway.sendPasswordResetLink(user.id!!, user.email, resetToken)
+        }
         val message = messageSource.getMessage("auth.password_reset_sent", null, "If the email exists, a reset link has been sent", LocaleContextHolder.getLocale())
             ?: "If the email exists, a reset link has been sent"
         return ResponseEntity.ok(mapOf("message" to message))
@@ -237,7 +247,7 @@ class CqrsAuthController(
 
     @PostMapping("/switch-domain")
     fun switchDomain(
-        @RequestBody request: com.ntt.authservice.auth.adapter.`in`.web.dto.SwitchDomainRequestDto,
+        @Valid @RequestBody request: com.ntt.authservice.auth.adapter.`in`.web.dto.SwitchDomainRequestDto,
         @RequestHeader("Authorization") authHeader: String
     ): ResponseEntity<AuthResponse> {
         val userId = getCurrentUserId()

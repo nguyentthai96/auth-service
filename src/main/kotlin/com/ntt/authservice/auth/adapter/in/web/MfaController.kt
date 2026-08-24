@@ -1,9 +1,10 @@
 package com.ntt.authservice.auth.adapter.`in`.web
 
 import com.ntt.authservice.auth.adapter.`in`.web.dto.*
-import com.ntt.authservice.auth.application.AuthService
 import com.ntt.authservice.auth.application.MfaService
 import com.ntt.authservice.auth.application.JwtService
+import com.ntt.authservice.auth.application.query.BuildAuthResponseHandler
+import com.ntt.authservice.auth.application.query.BuildAuthResponseQuery
 import jakarta.validation.Valid
 import org.springframework.context.MessageSource
 import org.springframework.context.i18n.LocaleContextHolder
@@ -18,7 +19,7 @@ import org.springframework.web.bind.annotation.*
 @RequestMapping("/api/auth/mfa")
 class MfaController(
     private val mfaService: MfaService,
-    private val authService: AuthService,
+    private val buildAuthResponseHandler: BuildAuthResponseHandler,
     private val jwtService: JwtService,
     private val messageSource: MessageSource
 ) {
@@ -30,7 +31,9 @@ class MfaController(
             code = request.code,
             trustDevice = request.trustDevice,
             deviceHash = request.deviceHash,
-            authResponseBuilder = { userId -> authService.buildAuthResponseForUser(userId) }
+            authResponseBuilder = { userId ->
+                AuthResponse.from(buildAuthResponseHandler.handle(BuildAuthResponseQuery(userId)))
+            }
         )
         return ResponseEntity.ok(response)
     }
@@ -101,7 +104,9 @@ class MfaController(
         val response = mfaService.verifyRecoveryCodeMfa(
             mfaToken = request.mfaToken,
             code = request.code,
-            authResponseBuilder = { userId -> authService.buildAuthResponseForUser(userId) }
+            authResponseBuilder = { userId ->
+                AuthResponse.from(buildAuthResponseHandler.handle(BuildAuthResponseQuery(userId)))
+            }
         )
         return ResponseEntity.ok(response)
     }
