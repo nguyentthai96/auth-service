@@ -2,8 +2,8 @@
   "feature": "erp-iam-system",
   "workflow": "wf_openspec",
   "outcome": "success",
-  "timestamp": "2026-08-21T08:17:38.271114+00:00",
-  "duration_seconds": 797,
+  "timestamp": "2026-08-24T04:01:20.338649+00:00",
+  "duration_seconds": 334,
   "tokens_used": 0,
   "prompt_layer_tokens": {},
   "output_artifacts": [

@@ -11,8 +11,9 @@ import org.springframework.boot.context.properties.ConfigurationProperties
  *   CAPTCHA provider defaults to `noop` (disabled) — set to `altcha`, `turnstile`, `hcaptcha`, or `recaptcha` in production.
  * - MFA token TTL: `mfa.mfaTokenTtlSeconds` (default: 300s / 5 minutes) — JWT challenge token lifetime.
  * - OTP TTL: `mfa.otpTtlSeconds` (default: 300s / 5 minutes) — Redis-backed OTP code lifetime.
- * - Trusted device: `mfa.trustedDeviceTtlDays` (default: 30 days) — currently stored as SHA-256 hash on UserEntity,
- *   TTL enforcement deferred to future migration (no Redis-backed expiry yet).
+ * - Trusted device: `mfa.trustedDeviceTtlDays` (default: 30 days) — SHA-256 hash on UserEntity.
+ *   TTL enforcement implemented in User.requiresMfa() via trustedDeviceSetAt column (V10 migration).
+ *   Used by LoginHandler (CQRS path) and AuthService (legacy path, @Deprecated).
  * - JWT: RS256 asymmetric signing (primary), HMAC-SHA256 fallback for legacy migration (7-day window).
  * - Password: BCrypt strength 12, account locks after 3 failed attempts for 15 minutes.
  */
@@ -83,7 +84,8 @@ data class SecurityProperties(
      * @property totpWindow TOTP time-step drift tolerance — default 1 (±30 seconds). Uses dev.samstevens.totp library.
      * @property mfaTokenTtlSeconds MFA challenge JWT token lifetime — default 300s (5 minutes). Contains userId + method claims.
      * @property trustedDeviceTtlDays Trusted device validity period — default 30 days.
-     *   Currently stored as SHA-256 hash on UserEntity.trustedDeviceHash; TTL enforcement deferred to future migration.
+     *   SHA-256 hash on UserEntity.trustedDeviceHash. TTL enforcement implemented in
+     *   User.requiresMfa() via trustedDeviceSetAt column (V10 migration). Default: 30 days.
      */
     data class MfaProperties(
         val otpTtlSeconds: Long = 300,

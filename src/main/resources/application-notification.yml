@@ -1,0 +1,8 @@
+# Notification gateway configuration
+app:
+  notification:
+    # Provider: "logging" (dev — OTP codes logged to console) or "kafka" (production — events published to Kafka)
+    provider: ${NOTIFICATION_PROVIDER:logging}
+
+    kafka:
+      topic: notification.send

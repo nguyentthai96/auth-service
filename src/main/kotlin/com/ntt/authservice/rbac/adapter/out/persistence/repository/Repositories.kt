@@ -12,6 +12,7 @@ import java.time.Instant
 @Repository
 interface UserRepository : JpaRepository<UserEntity, Long> {
     fun findByUsernameAndActiveTrue(username: String): UserEntity?
+    fun findByEmailAndActiveTrue(email: String): UserEntity?
     fun existsByUsername(username: String): Boolean
     fun existsByEmail(email: String): Boolean
 }

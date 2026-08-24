@@ -1,19 +1,15 @@
 {
   "feature": "erp-iam-system",
   "workflow": "wf_openspec_apply",
-  "outcome": "failure",
-  "timestamp": "2026-08-21T08:41:05.562227+00:00",
-  "duration_seconds": 1407,
+  "outcome": "success",
+  "timestamp": "2026-08-24T04:32:59.535623+00:00",
+  "duration_seconds": 1899,
   "tokens_used": 0,
   "prompt_layer_tokens": {},
-  "output_artifacts": [],
-  "errors": [
-    "Output validation failed: 50 tasks still uncompleted in tasks.md",
-    "Output validation failed: 50 tasks still uncompleted in tasks.md",
-    "Error code: 502 - {'type': 'error', 'error': {'type': 'api_error', 'message': 'All upstream endpoints failed'}}",
-    "Output validation failed: 50 tasks still uncompleted in tasks.md",
-    "Error code: 502 - {'type': 'error', 'error': {'type': 'api_error', 'message': 'All upstream endpoints failed'}}"
+  "output_artifacts": [
+    "/home/nguyentthai96/Desktop/bigbang/boilerplate/services/auth-service/openspec/changes/erp-iam-system/tasks.md"
   ],
+  "errors": [],
   "lesson_extracted": null,
   "recovery_pattern": null
 }
