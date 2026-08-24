@@ -300,6 +300,37 @@ Use Spring AOP `@AfterReturning` / `@AfterThrowing` on LoginHandler.handle() to 
                                                └─────────┘  └──────────┘
 ```
 
+## Selected Direction
+
+**Approach 1: Full Mirror Pattern with Centralized Failure Capture** — chosen for its proven reliability and consistency with the existing codebase.
+
+**Summary**: Create a dedicated `LoginEventRecorder` @Component (mirroring `TokenEventRecorder` exactly) with two methods: `recordLoginSuccess(UserLoggedInEvent, userId, correlationId)` and `recordLoginFailure(UserLoginFailedEvent, correlationId)`. Integrate into `LoginHandler.handle()` using a centralized try-catch that catches all `AuthException` subclasses, maps them to `LoginFailureReason` enum values via a private `mapToFailureReason()` function, records the failure event (fire-and-forget), then rethrows the original exception. Success events are recorded after login session recording and anonymous session promotion (step 12 in the flow), capturing full enriched context including `isNewDevice` from `LoginSessionService.recordLogin()` return value and `sessionPromotionStatus` from `SessionPromotionService`.
+
+**Why this approach wins:**
+1. **Pattern consistency** — follows the exact same architecture as `TokenEventRecorder` + `TokenIssuedEvent`, `UserRegisteredEvent` + `RegisterHandler`. Zero architectural innovation needed.
+2. **Centralized failure capture** — a single `catch (e: AuthException)` wrapping the entire `handle()` body ensures no failure path is missed, including `RateLimitExceededException` that can bubble up from `loginRateLimitService.recordFailedAttempt()`. Future new exceptions are automatically captured.
+3. **MFA safety** — MFA checkpoint returns `LoginResult.MfaRequired` (early return, NOT exception), so it correctly does NOT trigger failure event recording.
+4. **Minimal code change** — 4 new files (domain events + recorder), 3 modified files (LoginHandler, LoginCommand, AuthDomainEvents cleanup), 1 minor modify (CqrsAuthController for correlationId). No new DB tables, no new endpoints.
+5. **Fire-and-forget proven** — `LoginEventRecorder` catches ALL exceptions from `EventService.record()`, logs WARN, never blocks authentication flow. Same resilience pattern used by `TokenEventRecorder` in production.
+
+**Key design decisions embedded in this direction:**
+- `LoginEventRecorder` is a SEPARATE class from `TokenEventRecorder` (SRP — login vs token lifecycle)
+- Exception-to-reason mapping lives as private function in `LoginHandler` (handler-specific, keeps recorder generic)
+- `correlationId` added to `LoginCommand` (extracted from `X-Correlation-ID` HTTP header in controller)
+- Old `UserLoggedInEvent` in `AuthDomainEvents.kt` safely removed (verified zero usages, zero listeners)
+- Event ordering: TokenIssuedEvent (step 9) → LoginSession (step 10) → SessionPromotion (step 11) → UserLoggedInEvent (step 12) → return Success (step 13)
+
+## Pre-classifications (preliminary)
+- Feature type: EXTEND (adding event recording to existing login flow)
+- Flow type: Command (LoginHandler is CQRS write-side)
+- Affected modules: `auth.domain.event` (3 new files), `auth.application.event` (1 new file), `auth.application.command` (2 modified files), `auth.adapter.in.web` (1 minor modify)
+
+## GitNexus Findings (if explored)
+- Not explored via GitNexus — grep-based codebase investigation was sufficient for this feature
+- Related processes discovered via grep: LoginHandler flow (12 steps), TokenEventRecorder pattern, EventService.record() pipeline
+- Key symbols verified: `LoginHandler.handle()`, `TokenEventRecorder.recordIssuance()`, `EventService.record()`, `UserRegisteredEvent`, `ValidationFailureReason`, `AuthDomainEvents.UserLoggedInEvent`
+- Architecture insight: existing event sourcing pipeline is production-grade and fully reusable — no infrastructure work needed
+
 ### Files Changed Summary
 
 ```
