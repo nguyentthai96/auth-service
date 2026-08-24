@@ -212,9 +212,8 @@ features:
         strike_count: 0
         tokens: 0
       wf_openspec_apply:
-        duration: 0
-        started_at: '2026-08-24T12:12:15.546429+00:00'
-        status: in_progress
+        duration: 663
+        status: success
         strike_count: 0
         tokens: 0
       wf_pre_openspec:
@@ -229,8 +228,8 @@ stats:
   partial_features: 1
   remaining_features: 0
   skipped_features: 0
-  total_duration: 15865
+  total_duration: 16528
   total_features: 6
   total_tokens: 0
 status: running
-updated_at: '2026-08-24T12:12:15.546411+00:00'
+updated_at: '2026-08-24T12:23:19.265409+00:00'
