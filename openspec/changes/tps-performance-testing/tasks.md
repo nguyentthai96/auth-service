@@ -1,10 +1,55 @@
 <!-- self-contained: true -->
-# Implementation Tasks: tps-performance-testing
+<!-- pipeline: wf_openspec_apply -->
+<!-- locked_profile: { flow: "Command", factory: "N/A", feature_type: "EXTEND", transaction_flow: "Command" } -->
+<!-- context_loaded: true -->
+<!-- reuse_rules_loaded: true -->
+
+# Tasks: tps-performance-testing
 
 _Generated: 2026-08-27_
 _Profile: Command | N/A | EXTEND_
 _Direction: 4-Phase Hybrid (from brainstorm — Approach 2)_
 _FRs: 10/10 covered_
+
+---
+
+## Changes
+
+[EXTEND] Thiết lập framework kiểm thử hiệu năng toàn diện cho auth-service qua 4 phases, triển khai 10 FRs. Toàn bộ test-scoped — **không thay đổi production code**.
+
+**Phase 1 — Foundation (base-testing-starter, 4 new files, 1 modified)**: Add `datasource-proxy` dependency. Create `DataSourceProxyConfig` (@TestConfiguration wrapping DataSource with `ProxyDataSourceBuilder`), `QueryCountAssertions` (Kotlin DSL `assertQueryCount(select=N) { block }`), `@AssertQueryCount` annotation, `AssertQueryCountExtension` (JUnit 5 BeforeEach/AfterEach).
+
+**Phase 2 — Integration Tests (auth-service, 2 new files, 2 modified)**: Add `spring-cloud-contract-wiremock` + `datasource-proxy` testImplementation. Create `WireMockExternalServiceTest` (SSO/Captcha latency/fault simulation, circuit breaker verification via `@AutoConfigureWireMock(port=0)`) and `QueryCountIntegrationTest` (N+1 detection). Enhance `CacheEncryptionIntegrationTest` (NONE/FULL/PARTIAL raw Redis data format verification).
+
+**Phase 3 — K6 Expansion (2 new scripts, 3 modified files)**: Create `helpers.js` (shared `loginAndGetToken()`), `cache_benchmark.js` (TPS benchmark across encryption modes). Rewrite `auth_flow.js` (50→500 VUs, ramping-vus + constant-arrival-rate dual scenario, `localhost:8080`). Rewrite `profile_flow.js` (constant-arrival-rate, dynamic token). Add `k6CacheBenchmark` Gradle Exec task.
+
+**Phase 4 — JMH + CI/CD (2 new benchmark files, 1 modified build)**: Add `me.champeau.jmh` v0.7.2 plugin + `jmh-core` 1.37 dependencies. Create `EncryptionBenchmark` (AES-GCM throughput ops/sec) and `SerializationBenchmark` (Jackson 3.x ops/sec) in `src/jmh/kotlin/`. JMH config: fork 2, warmup 5, measurement 5, JSON output. CI/CD gate enforced via K6 thresholds (P95<200ms login, P95<150ms profile, error<1%) → exit code 99 → BUILD FAILED.
+
+**Total**: 10 new files, 7 modified files, 17 tasks across 4 phases. Zero production code changes.
+
+---
+
+## Task Summary
+
+| # | Task | Action | File | Phase | FRs |
+|---|------|--------|------|-------|-----|
+| 1 | Add datasource-proxy to base-testing-starter | MODIFY | `base-testing-starter/build.gradle.kts` | 1 | FR-009 |
+| 2 | Create DataSourceProxyConfig | NEW | `assertion/DataSourceProxyConfig.kt` | 1 | FR-009 |
+| 3 | Create QueryCountAssertions DSL | NEW | `assertion/QueryCountAssertions.kt` | 1 | FR-001 |
+| 4 | Create @AssertQueryCount annotation | NEW | `assertion/AssertQueryCount.kt` | 1 | FR-001 |
+| 5 | Create AssertQueryCountExtension | NEW | `assertion/AssertQueryCountExtension.kt` | 1 | FR-001, FR-008 |
+| 6 | Add WireMock + datasource-proxy deps to auth-service | MODIFY | `auth-service/build.gradle.kts` | 2 | FR-002, FR-009 |
+| 7 | Create WireMockExternalServiceTest | NEW | `WireMockExternalServiceTest.kt` | 2 | FR-002 |
+| 8 | Enhance CacheEncryptionIntegrationTest | MODIFY | `CacheEncryptionIntegrationTest.kt` | 2 | FR-007 |
+| 9 | Create QueryCountIntegrationTest | NEW | `QueryCountIntegrationTest.kt` | 2 | FR-008 |
+| 10 | Create helpers.js shared utility | NEW | `tests/load/helpers.js` | 3 | FR-003, FR-010 |
+| 11 | Expand auth_flow.js to multi-scenario | MODIFY | `tests/load/auth_flow.js` | 3 | FR-003, FR-006 |
+| 12 | Expand profile_flow.js | MODIFY | `tests/load/profile_flow.js` | 3 | FR-003 |
+| 13 | Create cache_benchmark.js | NEW | `tests/load/cache_benchmark.js` | 3 | FR-010 |
+| 14 | Add k6CacheBenchmark Gradle task | MODIFY | `auth-service/build.gradle.kts` | 3 | FR-004 |
+| 15 | Add JMH plugin and configuration | MODIFY | `auth-service/build.gradle.kts` | 4 | FR-005 |
+| 16 | Create EncryptionBenchmark | NEW | `benchmark/EncryptionBenchmark.kt` | 4 | FR-005 |
+| 17 | Create SerializationBenchmark | NEW | `benchmark/SerializationBenchmark.kt` | 4 | FR-005 |
 
 ---
 
