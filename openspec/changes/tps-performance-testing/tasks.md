@@ -55,31 +55,31 @@ _FRs: 10/10 covered_
 
 ## Phase 1: Foundation — datasource-proxy in base-testing-starter
 
-- [ ] **Task 1: Add datasource-proxy dependency to base-testing-starter**
+- [x] **Task 1: Add datasource-proxy dependency to base-testing-starter**
   - File: `base-testing-starter/build.gradle.kts` | Action: [MODIFY]
   - FR: FR-009 — Datasource-proxy configuration
   - Pattern: Add `api("net.ttddyy:datasource-proxy:1.10")` in dependencies block. Use `api` scope for transitive exposure to consuming services.
   - Dependencies: None (first task)
 
-- [ ] **Task 2: Create DataSourceProxyConfig**
+- [x] **Task 2: Create DataSourceProxyConfig**
   - File: `base-testing-starter/src/main/kotlin/com/ntt/basecore/testing/assertion/DataSourceProxyConfig.kt` | Action: [NEW]
   - FR: FR-009 — Datasource-proxy configuration
   - Pattern: `@TestConfiguration` class with `@Bean @Primary fun dataSourceProxy(originalDataSource: DataSource): DataSource` wrapping via `ProxyDataSourceBuilder.create(originalDataSource).countQuery().build()`. Only active when explicitly imported by test class.
   - Dependencies: datasource-proxy library (Task 1)
 
-- [ ] **Task 3: Create QueryCountAssertions DSL**
+- [x] **Task 3: Create QueryCountAssertions DSL**
   - File: `base-testing-starter/src/main/kotlin/com/ntt/basecore/testing/assertion/QueryCountAssertions.kt` | Action: [NEW]
   - FR: FR-001 — Assert số lượng SQL queries
   - Pattern: Kotlin `object` with `inline fun assertQueryCount(select: Int? = null, insert: Int? = null, update: Int? = null, delete: Int? = null, block: () -> Unit)`. Uses `QueryCountHolder.clear()` before and after block. Asserts each non-null query type count. On mismatch: `fail("Expected $expected SELECT queries, but got $actual. Total queries: S=... I=... U=... D=...")`.
   - Dependencies: DataSourceProxyConfig (Task 2)
 
-- [ ] **Task 4: Create @AssertQueryCount annotation**
+- [x] **Task 4: Create @AssertQueryCount annotation**
   - File: `base-testing-starter/src/main/kotlin/com/ntt/basecore/testing/assertion/AssertQueryCount.kt` | Action: [NEW]
   - FR: FR-001 — Assert số lượng SQL queries
   - Pattern: `@Target(AnnotationTarget.FUNCTION) @Retention(AnnotationRetention.RUNTIME) @ExtendWith(AssertQueryCountExtension::class) annotation class AssertQueryCount(val select: Int = -1, val insert: Int = -1, val update: Int = -1, val delete: Int = -1)`. Value `-1` = don't assert.
   - Dependencies: AssertQueryCountExtension (Task 5)
 
-- [ ] **Task 5: Create AssertQueryCountExtension**
+- [x] **Task 5: Create AssertQueryCountExtension**
   - File: `base-testing-starter/src/main/kotlin/com/ntt/basecore/testing/assertion/AssertQueryCountExtension.kt` | Action: [NEW]
   - FR: FR-001, FR-008 — Assert queries + N+1 detection
   - Pattern: Implements JUnit 5 `BeforeEachCallback` + `AfterEachCallback`. `beforeEach()`: `QueryCountHolder.clear()`. `afterEach()`: read `@AssertQueryCount` annotation from test method, compare expected vs actual via `QueryCountHolder.getGrandTotal()`, `QueryCountHolder.clear()`.
@@ -89,25 +89,25 @@ _FRs: 10/10 covered_
 
 ## Phase 2: Integration Tests — auth-service
 
-- [ ] **Task 6: Add WireMock + datasource-proxy dependencies to auth-service**
+- [x] **Task 6: Add WireMock + datasource-proxy dependencies to auth-service**
   - File: `auth-service/build.gradle.kts` | Action: [MODIFY]
   - FR: FR-002, FR-009
   - Pattern: Add in TESTING section: `testImplementation("org.springframework.cloud:spring-cloud-contract-wiremock")` and `testImplementation("net.ttddyy:datasource-proxy:1.10")`. Note: datasource-proxy is also in base-testing-starter via `api` scope, but explicit declaration ensures version alignment.
   - Dependencies: None (build config)
 
-- [ ] **Task 7: Create WireMockExternalServiceTest**
+- [x] **Task 7: Create WireMockExternalServiceTest**
   - File: `auth-service/src/test/kotlin/com/ntt/authservice/auth/adapter/out/http/WireMockExternalServiceTest.kt` | Action: [NEW]
   - FR: FR-002 — Giả lập latency HTTP services
   - Pattern: `@SpringBootTest @AutoConfigureWireMock(port = 0) @ActiveProfiles("test")`. Override `app.security.sso.provider-base-url` and `app.security.captcha.verify-url` with `http://localhost:${wiremock.server.port}` via `@DynamicPropertySource`. Test scenarios: (1) SSO latency > 10s timeout → exception, (2) SSO circuit breaker opens after 5+ failures (Resilience4j: COUNT_BASED window 10, 50% threshold, min 5 calls), (3) SSO fallback throws `AuthException(SSO_TOKEN_INVALID, HTTP 503)`, (4) Captcha fallback returns `true` (graceful degradation), (5) Captcha noop bypasses WireMock.
   - Dependencies: spring-cloud-contract-wiremock (Task 6), HttpSsoGateway, HttpCaptchaGateway, HttpClientConfig
 
-- [ ] **Task 8: Enhance CacheEncryptionIntegrationTest**
+- [x] **Task 8: Enhance CacheEncryptionIntegrationTest**
   - File: `auth-service/src/test/kotlin/com/ntt/authservice/auth/application/CacheEncryptionIntegrationTest.kt` | Action: [MODIFY]
   - FR: FR-007 — Test cache encryption correctness
   - Pattern: Keep existing test. Add 3 new test methods: (1) `mode NONE - raw data should be valid JSON` — trigger cache write via MockMvc API call, read raw Redis via `StringRedisTemplate`, assert `raw.contains("{\"")`. (2) `mode FULL - raw data should NOT be valid JSON` — same trigger, assert raw is NOT valid JSON (encrypted). (3) `mode PARTIAL - JSON structure with encrypted field values` — assert JSON parseable but field values are not plaintext. Fixed encryption key: `dGVzdC1lbmNyeXB0aW9uLWtleS0xMjM0NTY3OA==` in application-test.yml. Use Redis Testcontainer.
   - Dependencies: StringRedisTemplate, base-cache-starter encryption config
 
-- [ ] **Task 9: Create QueryCountIntegrationTest**
+- [x] **Task 9: Create QueryCountIntegrationTest**
   - File: `auth-service/src/test/kotlin/com/ntt/authservice/auth/application/QueryCountIntegrationTest.kt` | Action: [NEW]
   - FR: FR-008 — Phát hiện N+1 queries tự động
   - Pattern: `@SpringBootTest @ActiveProfiles("test") @Import(DataSourceProxyConfig::class)`. Test methods: (1) `login should not produce N+1 queries` — `assertQueryCount(select = N) { mockMvc.perform(POST /api/v1/auth/login) }`, (2) `token refresh should execute expected SELECT count` — `@AssertQueryCount(select = 1)` annotation. On N+1 detection → test FAILS with detailed query list.
@@ -117,31 +117,31 @@ _FRs: 10/10 covered_
 
 ## Phase 3: K6 Expansion
 
-- [ ] **Task 10: Create helpers.js shared utility**
+- [x] **Task 10: Create helpers.js shared utility**
   - File: `auth-service/tests/load/helpers.js` | Action: [NEW]
   - FR: FR-003, FR-010 — K6 shared utility
   - Pattern: Export `loginAndGetToken(baseUrl)` function: POST `/api/v1/auth/login` with `{username: 'loaduser', password: 'password123'}`, parse response, return `data.accessToken`. Fallback: return `null` if login fails.
   - Dependencies: None
 
-- [ ] **Task 11: Expand auth_flow.js to multi-scenario**
+- [x] **Task 11: Expand auth_flow.js to multi-scenario**
   - File: `auth-service/tests/load/auth_flow.js` | Action: [MODIFY]
   - FR: FR-003, FR-006 — K6 expansion + CI/CD gate
   - Pattern: Complete rewrite. Import `loginAndGetToken` from `./helpers.js`. Define `export const options` with `scenarios`: (1) `auth_login`: executor `ramping-vus`, stages `[{duration:'10s',target:100},{duration:'20s',target:500},{duration:'10s',target:0}]`, exec `loginFlow`. (2) `profile_get`: executor `constant-arrival-rate`, rate 100, preAllocatedVUs 200, duration '30s', exec `profileFlow`. Thresholds: `'http_req_duration{scenario:auth_login}': ['p(95)<200']`, `'http_req_duration{scenario:profile_get}': ['p(95)<150']`, `'http_req_failed': ['rate<0.01']`. URL: `http://localhost:8080` (not `host.docker.internal`). Export named functions `loginFlow()` and `profileFlow()`.
   - Dependencies: helpers.js (Task 10)
 
-- [ ] **Task 12: Expand profile_flow.js**
+- [x] **Task 12: Expand profile_flow.js**
   - File: `auth-service/tests/load/profile_flow.js` | Action: [MODIFY]
   - FR: FR-003 — K6 expansion
   - Pattern: Complete rewrite. Import `loginAndGetToken` from `./helpers.js`. Executor: `constant-arrival-rate`, rate 100 req/s, preAllocatedVUs 200, duration 30s. Setup: call `loginAndGetToken()` in setup function. Default function: GET `/api/v1/profiles/me` with `Authorization: Bearer ${token}`. Thresholds: `'http_req_duration': ['p(95)<150']`, `'http_req_failed': ['rate<0.01']`. URL: `http://localhost:8080`.
   - Dependencies: helpers.js (Task 10)
 
-- [ ] **Task 13: Create cache_benchmark.js**
+- [x] **Task 13: Create cache_benchmark.js**
   - File: `auth-service/tests/load/cache_benchmark.js` | Action: [NEW]
   - FR: FR-010 — Cache benchmark K6 script
   - Pattern: Import `loginAndGetToken` from `./helpers.js`. Executor: `constant-arrival-rate`, rate 100 req/s, preAllocatedVUs 200, duration 30s. Env var: `__ENV.CACHE_ENCRYPTION_MODE` (default: `NONE`). Flow: login → profile get (exercises cache write + read). Tag results with `{ encryption_mode: __ENV.CACHE_ENCRYPTION_MODE }`. Thresholds: `'http_req_duration': ['p(95)<200']`, `'http_req_failed': ['rate<0.01']`.
   - Dependencies: helpers.js (Task 10)
 
-- [ ] **Task 14: Add k6CacheBenchmark Gradle task**
+- [x] **Task 14: Add k6CacheBenchmark Gradle task**
   - File: `auth-service/build.gradle.kts` | Action: [MODIFY]
   - FR: FR-004 — K6 Gradle integration
   - Pattern: Add `tasks.register<Exec>("k6CacheBenchmark")` after existing k6ProfileRun task. `group = "Verification"`. `description = "Run K6 Cache Encryption Benchmark"`. `workingDir = file("tests/load")`. Accept `cacheMode` project property: `val encryptionMode = project.findProperty("cacheMode")?.toString() ?: "NONE"`. Docker command: `docker run --rm -i -v ${workingDir}:/scripts -e CACHE_ENCRYPTION_MODE=$encryptionMode --network host grafana/k6 run /scripts/cache_benchmark.js`. Usage: `./gradlew k6CacheBenchmark -PcacheMode=FULL`.
@@ -151,19 +151,19 @@ _FRs: 10/10 covered_
 
 ## Phase 4: JMH + CI/CD Gate
 
-- [ ] **Task 15: Add JMH plugin and configuration**
+- [x] **Task 15: Add JMH plugin and configuration**
   - File: `auth-service/build.gradle.kts` | Action: [MODIFY]
   - FR: FR-005 — JMH microbenchmark setup
   - Pattern: Add plugin: `id("me.champeau.jmh") version "0.7.2"` in plugins block. Add dependencies: `jmh("org.openjdk.jmh:jmh-core:1.37")` and `jmh("org.openjdk.jmh:jmh-generator-annprocess:1.37")`. Add jmh config block: `jmh { fork.set(2); warmupIterations.set(5); iterations.set(5); resultFormat.set("JSON"); resultsFile.set(project.file("build/results/jmh/results.json")) }`.
   - Dependencies: None (build config)
 
-- [ ] **Task 16: Create EncryptionBenchmark**
+- [x] **Task 16: Create EncryptionBenchmark**
   - File: `auth-service/src/jmh/kotlin/com/ntt/authservice/benchmark/EncryptionBenchmark.kt` | Action: [NEW]
   - FR: FR-005 — JMH microbenchmark
   - Pattern: `@BenchmarkMode(Mode.Throughput) @OutputTimeUnit(TimeUnit.SECONDS) @State(Scope.Thread) open class EncryptionBenchmark`. `@Setup fun setup()`: initialize AES-GCM `Cipher` with test key, prepare 1KB test payload (typical session data size). Benchmark methods: `@Benchmark fun encryptAesGcm(bh: Blackhole)` — encrypt payload, consume result. `@Benchmark fun decryptAesGcm(bh: Blackhole)` — decrypt pre-encrypted data, consume result. No Spring context — manual dependency instantiation.
   - Dependencies: JMH plugin (Task 15), AES-GCM (javax.crypto)
 
-- [ ] **Task 17: Create SerializationBenchmark**
+- [x] **Task 17: Create SerializationBenchmark**
   - File: `auth-service/src/jmh/kotlin/com/ntt/authservice/benchmark/SerializationBenchmark.kt` | Action: [NEW]
   - FR: FR-005 — JMH microbenchmark
   - Pattern: `@BenchmarkMode(Mode.Throughput) @OutputTimeUnit(TimeUnit.SECONDS) @State(Scope.Thread) open class SerializationBenchmark`. `@Setup fun setup()`: create `JsonMapper.builder().build()` (Jackson 3.x), create test object matching typical auth response size. Benchmark methods: `@Benchmark fun serialize(bh: Blackhole)` — `jsonMapper.writeValueAsBytes(testObject)`, consume. `@Benchmark fun deserialize(bh: Blackhole)` — `jsonMapper.readValue(bytes, TestDto::class.java)`, consume. No Spring context.
