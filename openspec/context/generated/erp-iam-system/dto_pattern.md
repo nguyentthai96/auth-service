@@ -1,8 +1,8 @@
 # DTO Pattern
 
-_Generated: 2026-08-05 (refreshed)_
+_Generated: 2025-07-15 (refreshed)_
 
-## Request DTOs
+## auth-service — Request DTOs
 
 - `RegisterRequestDto` — `src/main/kotlin/com/ntt/authservice/auth/adapter/in/web/dto/RequestDtos.kt`
   - Fields: `username`, `email`, `password`, `fullName`, `phone`, `domainCode`, `anonymousSessionId`, `anonymousToken`
@@ -33,15 +33,14 @@ _Generated: 2026-08-05 (refreshed)_
 - Anonymous DTOs — `src/main/kotlin/com/ntt/authservice/auth/adapter/in/web/dto/AnonymousDtos.kt`
   - Contains: Anonymous session create/renew DTOs
 
-## Response DTOs
+## auth-service — Response DTOs
 
 - `AuthResponse` — `src/main/kotlin/com/ntt/authservice/auth/adapter/in/web/dto/AuthResponse.kt`
   - Fields: `accessToken`, `refreshToken`, `tokenType`, `expiresIn`, `userId`, `username`, `activeDomain`, `roles`, `permissions`, `promotedFromAnonymous`, `dataTransferred`, `message`
   - Pattern: `data class` with `companion object { fun from(token: AuthToken) }` factory method
   - JSON: `@JsonInclude(Include.NON_NULL)` for optional fields
-  - Domain mapping: `AuthResponse.from(AuthToken)` — domain to DTO conversion via extension
 
-## CQRS Command DTOs
+## auth-service — CQRS Command DTOs
 
 - `LoginCommand` — `src/main/kotlin/com/ntt/authservice/auth/application/command/LoginCommand.kt`
 - `RegisterCommand` — `src/main/kotlin/com/ntt/authservice/auth/application/command/RegisterCommand.kt`
@@ -51,12 +50,25 @@ _Generated: 2026-08-05 (refreshed)_
 - `SwitchDomainCommand` — `src/main/kotlin/com/ntt/authservice/auth/application/command/SwitchDomainCommand.kt`
 - `RevokeSessionsCommand` — `src/main/kotlin/com/ntt/authservice/auth/application/command/RevokeSessionsCommand.kt`
 
-## Result DTOs (Application Layer)
+## auth-service — Result DTOs (Application Layer)
 
 - `LoginResult` — `src/main/kotlin/com/ntt/authservice/auth/application/LoginResult.kt`
 - `RegisterResult` — `src/main/kotlin/com/ntt/authservice/auth/application/RegisterResult.kt`
 - `PromotionResult` — `src/main/kotlin/com/ntt/authservice/auth/application/PromotionResult.kt`
 - `AnonymousSessionResult` — `src/main/kotlin/com/ntt/authservice/auth/application/AnonymousSessionResult.kt`
+
+## account-service — DTOs
+
+- `ProfileDtos.kt` — `account-service/src/main/kotlin/com/ntt/accountservice/profile/adapter/in/web/dto/ProfileDtos.kt`
+  - Contains: Profile request/response DTOs for CRUD operations
+
+- `DeviceDtos.kt` — `account-service/src/main/kotlin/com/ntt/accountservice/device/adapter/in/web/dto/DeviceDtos.kt`
+  - Contains: Device management request/response DTOs
+
+## system-admin-service — DTOs
+
+- NOT DETECTED — No dedicated DTO files found in system-admin-service adapter/in/web packages
+  - ⚠️ Assumption: DTOs may be inline in controller files or entity-based responses
 
 ## DTO Patterns Observed
 
@@ -72,6 +84,7 @@ _Generated: 2026-08-05 (refreshed)_
 | Package (web) | `adapter.in.web.dto` | All request/response DTOs |
 | Package (app) | `application.command` | CQRS commands |
 | Serialization | Jackson module-kotlin | `com.fasterxml.jackson.module:jackson-module-kotlin` |
+| Null handling | `@JsonInclude(Include.NON_NULL)` | Optional fields |
 
 ## NOT DETECTED
 
@@ -79,3 +92,4 @@ _Generated: 2026-08-05 (refreshed)_
 - Base DTO abstract class — all DTOs are standalone `data class`
 - Swagger/OpenAPI `@Schema` annotations — not yet added
 - Builder pattern (`@Builder`, `@SuperBuilder`) — Kotlin `data class` with default params instead
+- system-admin-service dedicated DTO files

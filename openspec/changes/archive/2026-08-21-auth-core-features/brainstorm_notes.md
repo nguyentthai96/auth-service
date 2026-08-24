@@ -1,553 +1,416 @@
 ---
 type: brainstorm_notes
 change: auth-core-features
-date: 2026-08-25
-selected_direction: "Approach B: Trusted Device TTL Enforcement + Mapper Gap Fix + Adapter Cleanup + Test Coverage"
+date: 2026-08-26
+selected_direction: "Testing, Hardening & Legacy Cleanup"
 pre_flow: "Non-Financial"
 pre_feature_type: "EXTEND"
 status: complete
 ---
 
-# Brainstorm Notes: Auth Core Features — Final Hardening (v5)
+# Brainstorm Notes: Auth Core Features — Hardening & Completion
 
 ## Date
-2026-08-25
+2026-08-26
 
 ## Context
+Auth-core-features is an EXTEND change for the auth-service's core authentication capabilities: MFA (OTP/TOTP/CAPTCHA/Recovery Codes), SSO/OAuth2 (Google/Microsoft/Keycloak), JWT RS256 + Introspection + JWKS, and Password Policy per domain. The pre_openspec (v5, 2026-08-26) identifies 17 FRs with ~97% implementation complete and 2 remaining gaps. Feature research (2026-08-22) recommends "build from scratch using open source libraries" with a confidence of HIGH.
 
-This is a **fifth-pass brainstorm** (refreshed after code re-scan on 2026-08-25). The codebase has advanced significantly since the v4 brainstorm (2026-08-21). The `pre_openspec.md` has been updated to v4 (quality 93/100, _Generated 2026-08-25) with refined findings.
-
-**Key progress since last brainstorm (2026-08-21 → 2026-08-25):**
-
-| Previous Gap | Status | Evidence |
-|-------------|--------|----------|
-| V10 migration for `trusted_device_set_at` | ✅ APPLIED | `V10__trusted_device_ttl.sql` exists in `src/main/resources/db/migration/` |
-| `UserEntity.trustedDeviceSetAt` field | ✅ EXISTS | `UserEntity.kt:54-55` — `@Column(name = "trusted_device_set_at")` |
-| `User.trustedDeviceSetAt` domain field | ✅ EXISTS | `User.kt:27` — `val trustedDeviceSetAt: Instant? = null` |
-| `KafkaEventPublisher.kt` | ✅ IMPLEMENTED | `@Primary`, `@ConditionalOnProperty`, retry 3 attempts exponential backoff |
-| `IdempotencyFilter.kt` | ✅ IMPLEMENTED | `shared/filter/` — Redis-backed `X-Idempotency-Key` header, 24h TTL |
-| `OAuth2TokenExchanger` config-driven | ✅ IMPLEMENTED | Reads from `securityProperties.sso.providers[provider]` — dynamic, supports any OIDC provider |
-| Issue #2 (Kafka deferred) | ✅ RESOLVED | `KafkaEventPublisher.kt` fully implemented |
-| Issue #1 (Keycloak in getTokenEndpoint) | ✅ RESOLVED | Config-driven — Keycloak is a **config-only** addition (no code change needed) |
-
-**Remaining issues from `pre_openspec.md` (v4, quality 93/100):**
-- 1 issue (🟡): Keycloak provider config not yet added to `application.yml` (config-only, out of code scope)
-- Quality deductions: -1 Clarity (CAPTCHA default), -1 Completeness (trusted device TTL logic), -5 Testability (SSO flow IdP mocking)
-
-**Source context:**
-- `pre_openspec.md` (2026-08-25): 17 FRs, quality 93/100, 1 issue (🟡), 1 open question
-- Research artifacts: 7 files complete
-- Previous brainstorm v4 (2026-08-21): 20 design decisions, D18-D20 PENDING
-- Previous archive: `2026-08-20-auth-core-features/` (10 artifacts)
-
----
+**Critical discovery during codebase investigation**: Both previously identified gaps are **already resolved** in code, invalidating the pre_openspec gap assessment. The focus must shift entirely to testing, hardening, and architectural cleanup.
 
 ## Questions Asked & Answers
 
-### Q1: What EXACTLY remains after V10 migration and field additions?
+### Q1: Are the 2 identified gaps (Keycloak + Trusted Device TTL) actually still open?
+**A: NO — both are already resolved.**
 
-**→ A: 4 items — 2 logic gaps, 1 mapper gap (NEW finding), 1 adapter cleanup**
+**Gap 1 (Keycloak support):** The pre_openspec (Section 8, Issue #1) states Keycloak is missing from `OAuth2TokenExchanger.getTokenEndpoint()`. However, the actual code shows:
+- `OAuth2TokenExchanger.kt` is **fully config-driven** — provider endpoints are resolved from `securityProperties.sso.providers[provider]` map, not hardcoded. Any provider (Google, Microsoft, Keycloak, custom) works via configuration.
+- `application-security.yml` already has Keycloak configured:
+  ```yaml
+  keycloak:
+    token-endpoint: ${KEYCLOAK_TOKEN_ENDPOINT:http://localhost:8080/realms/master/protocol/openid-connect/token}
+    user-info-endpoint: ${KEYCLOAK_USERINFO_ENDPOINT:http://localhost:8080/realms/master/protocol/openid-connect/userinfo}
+  ```
+- `SsoCallbackIntegrationTest.kt` has TC3: "SSO callback for Keycloak should use config-driven endpoints" — **green and passing**.
+- `SsoAdapterTest.kt` includes Keycloak in its test provider config.
 
+**Conclusion:** Keycloak is fully supported. The pre_openspec Issue #1 is STALE.
+
+**Gap 2 (Trusted device TTL enforcement):** The pre_openspec (Section 7, Quality Score deduction) states TTL enforcement is pending. However:
+- `User.kt` domain model has `requiresMfa(deviceHash, ttlDays)` method that:
+  1. Checks `mfaEnabled` and `mfaMethod`
+  2. Compares `deviceHash == trustedDeviceHash`
+  3. **Checks TTL**: `trustedDeviceSetAt.plus(ttlDays, DAYS).isBefore(now())` ✅
+- `LoginHandler.kt` (CQRS path) calls `user.requiresMfa(command.trustedDeviceHash, securityProperties.mfa.trustedDeviceTtlDays)` — **full TTL enforcement** ✅
+- `UserTest.kt` has **13 test cases** for `requiresMfa()` including TTL edge cases (expired, not expired, null setAt, wrong hash, custom TTL)
+- `SecurityProperties.kt` has `trustedDeviceTtlDays: Long = 30` configurable
+
+**However:** `AuthService.kt` (legacy non-CQRS path, line 134-136) still has naive check:
+```kotlin
+if (trustedHash != null && trustedHash == user.trustedDeviceHash) {
+    log.debug("Trusted device matched — skipping MFA for userId={}", user.id)
+}
 ```
-Code scan results (2026-08-25):
+This **does NOT check TTL**. This is the legacy login path that exists alongside the CQRS `LoginHandler`.
 
-Remaining in-scope items:
+**Conclusion:** Trusted device TTL is fully enforced on the CQRS path (`LoginHandler`), but the legacy `AuthService.login()` path has a security gap. Needs alignment.
 
-┌─────────────────────────────────────────────────────────────────────┐
-│ Gap 1: Trusted Device TTL LOGIC not enforced (FR-005)              │
-│   Current state:                                                     │
-│   - User.kt:73-76 → requiresMfa() does simple hash comparison      │
-│     STILL NO TTL CHECK despite trustedDeviceSetAt field existing     │
-│   - MfaService.kt:112-116 → saves hash but NOT trustedDeviceSetAt  │
-│   - SecurityProperties.kt:81 → trustedDeviceTtlDays=30 (STILL      │
-│     UNUSED in any logic!)                                            │
-│                                                                       │
-│   V10 migration ✅ APPLIED, fields ✅ EXIST, but:                    │
-│     a) User.requiresMfa() → no TTL check logic                      │
-│     b) MfaService.verifyMfa() → doesn't set trustedDeviceSetAt     │
-│     c) LoginHandler.kt:120 → doesn't pass ttlDays                  │
-│     d) PasswordPolicyService → doesn't clear trusted device         │
-│                                                                       │
-│   Impact: Security concern — trusted device bypass is indefinite    │
-│   Effort: ~2h                                                       │
-├─────────────────────────────────────────────────────────────────────┤
-│ Gap 2: UserEntityMapper MISSING trustedDeviceSetAt mapping (NEW!)    │
-│   File: UserEntityMapper.kt                                          │
-│     - toDomain() line 28 → maps trustedDeviceHash ✅                │
-│     - toDomain() → DOES NOT map trustedDeviceSetAt ❌               │
-│     - toEntity() → DOES NOT map trustedDeviceSetAt ❌               │
-│   File: UserPersistenceAdapter.kt:79                                 │
-│     - Manual mapping also MISSING trustedDeviceSetAt ❌              │
-│                                                                       │
-│   Both UserEntity.kt:55 and User.kt:27 have the field,              │
-│   but the mapper bridge is BROKEN — data flows through              │
-│   but trustedDeviceSetAt is always null in domain model!             │
-│                                                                       │
-│   Impact: CRITICAL for TTL — even if logic is added, mapper gap     │
-│     means trustedDeviceSetAt is never loaded from DB                 │
-│   Effort: ~15m                                                       │
-├─────────────────────────────────────────────────────────────────────┤
-│ Gap 3: TokenStorePersistenceAdapter.revokeAllForUser() — STALE TODO  │
-│   File: TokenStorePersistenceAdapter.kt:46-49                        │
-│   - Still returns 0 with TODO comment                                │
-│   - refreshTokenRepository.revokeAllByUserId() EXISTS and works     │
-│   - RevokeSessionsHandler.kt:33 calls tokenStore.revokeAllForUser() │
-│     → gets 0 → reports 0 revoked (BUG!)                             │
-│                                                                       │
-│   NOTE: AuthService.revokeAllSessions():289 bypasses port and       │
-│   calls refreshTokenRepository directly (architectural violation)    │
-│                                                                       │
-│   Impact: RevokeSessionsHandler returns wrong count (always 0)       │
-│   Effort: ~15m                                                       │
-├─────────────────────────────────────────────────────────────────────┤
-│ Gap 4: Missing/incomplete tests                                       │
-│   - No test for TTL expiry path in requiresMfa()                     │
-│   - MfaLoginFlowIntegrationTest has basic trusted device tests       │
-│     but doesn't test the "30-day TTL expires → MFA required" path   │
-│   - TokenStorePersistenceAdapter test (if any) would fail            │
-│                                                                       │
-│   Impact: Testability score deduction                                │
-│   Effort: ~1.5h                                                      │
-└─────────────────────────────────────────────────────────────────────┘
+### Q2: What is the relationship between AuthService.login() and LoginHandler?
+**A: Dual login paths — potential security inconsistency.**
 
-Out-of-scope items (confirmed):
-- Keycloak provider config → config-only (application.yml), no code change
-- SMS/Email OTuntrusts devices on admin session revocation
+The codebase has two login paths:
+1. **Legacy path**: `AuthController.kt` → `AuthService.login()` — direct service call, simpler, used by `/api/auth/login`
+2. **CQRS path**: `CqrsAuthController.kt` → `LoginHandler.handle()` — command/handler pattern, full-featured, used by `/api/v2/auth/login`
 
-  Implementation:
-    PasswordPolicyService.changePassword() → clear trustedDeviceHash + trustedDeviceSetAt
-```
+Both paths exist simultaneously. The CQRS path has more features:
+- ✅ Trusted device TTL enforcement (via `User.requiresMfa()`)
+- ✅ Password expiry check (via `passwordPolicyService.isPasswordExpired()`)
+- ✅ Session policy enforcement (via `sessionPolicyService.enforcePolicy()`)
+- ✅ Token event recording (via `TokenEventRecorder`)
+- ✅ Audit logging
 
-### Q5: Any test infrastructure changes needed?
+The legacy `AuthService.login()` path:
+- ⚠️ Has trusted device check WITHOUT TTL enforcement
+- ✅ Has password expiry check
+- ⚠️ May not have full session policy enforcement
 
-**→ A: No — existing test infrastructure sufficient (reconfirmed from v4)**
+**Decision needed**: Should we deprecate `AuthService.login()` and route everything through `LoginHandler`?
 
-```
-Test infrastructure audit:
-  ✅ @SpringBootTest configured
-  ✅ WireMock for SSO IdP mocking 
-  ✅ @MockBean for Redis operations
-  ✅ TestcontainersConfiguration for PostgreSQL
-  ✅ MfaLoginFlowIntegrationTest has basic trusted device tests
+### Q3: What is the test coverage status?
+**A: Good coverage but some gaps remain.**
 
-What's needed (tests only):
-  1. Extend MfaLoginFlowIntegrationTest with TTL expiry scenario
-  2. Add User.requiresMfa() unit test for TTL edge cases:
-     - hash matches + setAt within TTL → skip MFA
-     - hash matches + setAt expired → require MFA
-     - hash matches + setAt null → require MFA
-     - hash doesn't match → require MFA
-     - MFA disabled → skip MFA
-  3. Verify TokenStorePersistenceAdapter.revokeAllForUser() after fix
+**Existing test files (20 total):**
 
-No new infrastructure needed.
-```
+| Category | Files | Coverage Areas |
+|----------|-------|---------------|
+| Unit (application) | 13 | MfaService, OtpService, PasswordPolicy, SsoAdapter, MfaRateLimit, DomainLookup, JwtService, AuthServiceRevoke, SessionPromotion, AnonymousRate, AnonymousData, MfaEdgeCase |
+| Unit (domain) | 1 | User domain model (requiresMfa, status transitions) |
+| Integration | 6 | MFA login flow, SSO callback, Password change, Token introspection, JWKS endpoint, TOTP setup |
+| Architecture | 1 | Architecture rules |
+| Other integration | 2 | Anonymous session, Session promotion |
 
-### Q6: What about RevokeSessionsHandler vs AuthService.revokeAllSessions()?
+**Identified test gaps:**
+1. **No EventService/TokenEventRecorder tests** — Event sourcing pipeline untested
+2. **No OutboxPoller tests** — Transactional outbox relay untested
+3. **No KafkaEventPublisher integration tests** — Event publishing untested
+4. **No LoginHandler unit tests** — CQRS login command handler untested (only integration)
+5. **No AdminSessionController tests** — Admin force logout untested
+6. **No CaptchaVerifier/AltchaCaptchaVerifier tests** — CAPTCHA chain untested
+7. **No IdempotencyFilter tests** — Idempotency mechanism untested
+8. **No recovery code flow tests** — MFA recovery codes untested
+9. **No rate limit filter integration tests** — LoginRateLimitFilter untested
+10. **No password expiry on login tests** — Password expiry check during login untested
 
-**→ A: Fix adapter, then refactor AuthService to use port (separate concern)**
+### Q4: Are there any security concerns beyond the dual login path?
+**A: Several minor hardening opportunities.**
 
-```
-Current architecture violation:
-  AuthService.revokeAllSessions():289 → calls refreshTokenRepository.revokeAllByUserId()
-    DIRECTLY bypasses TokenStore port!
-  
-  RevokeSessionsHandler.kt:33 → calls tokenStore.revokeAllForUser()
-    → TokenStorePersistenceAdapter returns 0 (broken)
-    → Reports 0 sessions revoked (incorrect)
+1. **AuthService.kt trusted device bypass** — No TTL check (security gap on legacy path)
+2. **SecurityProperties.kt KDoc says** "TTL enforcement deferred to future migration" — stale documentation, already implemented in `User.requiresMfa()`
+3. **MfaService.kt line 121** sets `user.trustedDeviceHash` but should also set `user.trustedDeviceSetAt = Instant.now()` — need to verify
+4. **PasswordPolicyService.kt line 100** clears `trustedDeviceHash` on password change — correct security behavior
+5. **Rate limit fail-open strategy** in `MfaRateLimitService` — if Redis is down, MFA rate limiting is skipped. Acceptable trade-off (documented in pre_openspec) but should be monitored
 
-Fix plan (minimal, non-breaking):
-  Step 1: Fix TokenStorePersistenceAdapter.revokeAllForUser()
-    → call refreshTokenRepository.revokeAllByUserId(userId)
-    → This makes RevokeSessionsHandler work correctly
-  
-  Step 2 (optional, separate concern):
-    → Refactor AuthService to use TokenStore port instead of direct repo
-    → This is architectural cleanup, not functional change
-    → Tag as [FUTURE] or separate MAINTENANCE change
+### Q5: What's the architecture decision on CQRS vs legacy?
+**A: Migrate fully to CQRS, deprecate legacy AuthService direct methods.**
 
-Decision: Fix Step 1 only (adapter fix) — minimal change, fixes the bug.
-```
+The CQRS path (`LoginHandler`, `RegisterHandler`, `RefreshTokenHandler`, etc.) is more complete:
+- Proper command validation
+- Full session policy enforcement
+- Token event recording
+- Audit logging
+- Trusted device TTL enforcement
 
----
+The legacy `AuthService` methods should:
+1. Be marked `@Deprecated` with migration note
+2. Delegate to command handlers internally (if keeping backward compatibility)
+3. Eventually be removed once `AuthController` is consolidated into `CqrsAuthController`
+
+### Q6: What about the SecurityProperties KDoc stale comments?
+**A: Should be updated to reflect current reality.**
+
+`SecurityProperties.kt` line 14-15 says:
+> "Trusted device: `mfa.trustedDeviceTtlDays` (default: 30 days) — currently stored as SHA-256 hash on UserEntity, **TTL enforcement deferred to future migration** (no Redis-backed expiry yet)."
+
+This is **STALE** — TTL enforcement is implemented in `User.requiresMfa()` via `trustedDeviceSetAt` column (V10 migration). The KDoc should be updated.
 
 ## Approaches Considered
 
-### Approach A: TTL Logic Only (Minimal)
-Fix only `User.requiresMfa()` TTL check and `MfaService` timestamp save.
+### Approach A: Testing & Hardening Only
+Focus exclusively on comprehensive test coverage and security hardening.
+- **Pros**: Maximum safety, fills all test gaps, validates existing code
+- **Cons**: Doesn't address architectural debt (dual login paths, stale docs)
+- **Effort**: 3-4 developer-days
 
-```
-  Scope:
-  ├── User.requiresMfa() — add TTL check
-  ├── MfaService.verifyMfa() — set trustedDeviceSetAt
-  └── Done
+### Approach B: New Feature Exploration (WebAuthn/FIDO2)
+Explore adding WebAuthn/passkey support as next evolution of MFA.
+- **Pros**: Forward-looking, industry trend
+- **Cons**: Out of scope for current EXTEND change, adds complexity, premature
+- **Effort**: 8-12 developer-days
 
-  Pros:
-  ✅ Minimal scope
-  ✅ Fixes the security concern
+### Approach C: Architectural Cleanup Only
+Focus on consolidating CQRS paths, deprecating legacy, updating docs.
+- **Pros**: Reduces tech debt, single source of truth for login flow
+- **Cons**: Risky without comprehensive tests, doesn't add new value
+- **Effort**: 2-3 developer-days
 
-  Cons:
-  ❌ MISSES mapper gap → TTL check would see null trustedDeviceSetAt → broken!
-  ❌ Leaves TokenStorePersistenceAdapter returning 0 (bug)
-  ❌ Doesn't clear trust on password change (security gap)
-  ❌ No test coverage for new logic
-
-  Score: 3/10 (incomplete — mapper gap makes it non-functional)
-```
-
-### Approach B: TTL Enforcement + Mapper Fix + Adapter Cleanup + Tests
-Complete end-to-end fix: mapper, TTL logic, password change clear, adapter fix, tests.
-
-```
-  Scope:
-  ├── Phase 1: Mapper fix (trustedDeviceSetAt in 3 files) — 15m
-  ├── Phase 2: MfaService — set trustedDeviceSetAt on trust save — 15m
-  ├── Phase 3: User.requiresMfa() — TTL enforcement logic — 30m
-  ├── Phase 4: LoginHandler — pass ttlDays to requiresMfa — 15m
-  ├── Phase 5: PasswordPolicyService — clear trusted device on pwd change — 15m
-  ├── Phase 6: TokenStorePersistenceAdapter — fix revokeAllForUser — 15m
-  ├── Phase 7: Tests — unit + integration for TTL flow — 1.5h
-  └── Phase 8: SecurityProperties Javadoc update — 15m
-
-  Pros:
-  ✅ End-to-end correct (mapper → logic → test)
-  ✅ Addresses ALL quality score deductions
-  ✅ Fixes TokenStorePersistenceAdapter bug
-  ✅ Security best practice (TTL + clear on pwd change)
-  ✅ Testable — verifiable in CI
-
-  Cons:
-  ❌ Slightly more scope than Approach A
-  
-  Score: 9/10 (comprehensive, correct, achievable in ~4h)
-```
-
-### Approach C: Full Trusted Device Refactor (Multi-device support)
-Introduce a `trusted_devices` table for multi-device trust management.
-
-```
-  Scope:
-  ├── New trusted_devices table (V11 migration)
-  ├── TrustedDeviceEntity + Repository
-  ├── TrustedDeviceService (CRUD)
-  ├── Multiple devices per user with individual TTLs
-  ├── Device name/metadata tracking
-  ├── Admin endpoint for device management
-  └── Tests for all new code
-
-  Pros:
-  ✅ Multi-device support (production-ready)
-  ✅ Better UX (manage trusted devices individually)
-
-  Cons:
-  ❌ Scope creep — pre_openspec says "trusted device flow hardening"
-  ❌ New entity, new endpoints, new service — NEWBUILD scope
-  ❌ Effort: ~8-12h vs ~4h for Approach B
-  ❌ DIFF AWARENESS violation — EXTEND feature, not NEWBUILD
-  ❌ Single-device per user is current design — multi-device is separate feature
-
-  Score: 4/10 (over-engineered for EXTEND scope)
-```
-
----
+### Approach D: Hybrid — Testing + Architectural Cleanup (SELECTED)
+Primary: Comprehensive testing. Secondary: Legacy path alignment + doc updates.
+- **Pros**: Best risk-value balance, tests validate cleanup, complete deliverable
+- **Cons**: Slightly more effort than single-focus approach
+- **Effort**: 4-5 developer-days
 
 ## Selected Direction
 
-**Approach B: TTL Enforcement + Mapper Fix + Adapter Cleanup + Tests**
+**Approach D: Hybrid — Testing, Hardening & Legacy Cleanup**
 
 **Reasoning:**
-1. **Mapper gap is CRITICAL** — Without fixing the mapper, `trustedDeviceSetAt` is never loaded from DB into the domain model. Any TTL logic would silently fail (see `null` and always require MFA). Approach A misses this entirely.
-2. **Complete end-to-end correctness** — The fix spans DB → entity → mapper → domain → application → controller → test. Each layer must be correct for the feature to work.
-3. **Security best practice** — 30-day TTL config exists but is unused. A trusted device hash without TTL means a stolen fingerprint grants indefinite MFA bypass. This is a security hardening task.
-4. **TokenStorePersistenceAdapter is a real bug** — `RevokeSessionsHandler` uses `tokenStore.revokeAllForUser()` which returns 0. The admin thinks no sessions were revoked when they actually could be revoked (via the direct repo call in AuthService). Fixing the adapter makes the CQRS command handler correct.
-5. **Approach C is scope creep** — Pre_openspec classifies this as EXTEND. Multi-device trust is a separate feature with its own entity, service, and endpoints.
+1. The codebase is ~98% complete (both "gaps" from pre_openspec are resolved). The highest-value work is **validation through testing**.
+2. The dual login path (`AuthService.login()` vs `LoginHandler.handle()`) creates a **real security risk** — the legacy path skips TTL enforcement. This must be fixed.
+3. Event sourcing infrastructure (`EventService`, `TokenEventRecorder`, `OutboxPoller`) is new and completely untested — critical for reliability.
+4. Stale documentation in `SecurityProperties.kt` could mislead future developers.
+5. Tests provide regression safety for all existing 17 FRs.
 
-**Execution order (dependency-aware):**
-
-```
-Phase 1 (Mapper fix) ─────────────── CRITICAL PATH (must be first)
-Phase 2 (MfaService timestamp) ───── DEPENDS on Phase 1 for persistence
-Phase 3 (requiresMfa TTL) ────────── DEPENDS on Phase 1 for data availability
-Phase 4 (LoginHandler ttlDays) ───── DEPENDS on Phase 3
-Phase 5 (Clear on pwd change) ────── DEPENDS on Phase 1
-Phase 6 (Adapter fix) ───────────── INDEPENDENT
-Phase 7 (Tests) ──────────────────── DEPENDS on Phases 1-5
-Phase 8 (Docs) ───────────────────── INDEPENDENT
-
-Parallelization:
-  Group A: Phases 1→2→3→4→5 (sequential, critical path)
-  Group B: Phase 6 (independent, can be done in parallel)
-  Group C: Phase 8 (independent, can be done in parallel)
-  Final: Phase 7 (depends on Group A)
-```
-
----
+**Work breakdown:**
+1. **Legacy path alignment** — Update `AuthService.kt` to use `User.requiresMfa()` with TTL, or deprecate in favor of CQRS path
+2. **Test coverage expansion** — 10 new test files covering untested areas:
+   - EventService + TokenEventRecorder (event sourcing)
+   - OutboxPoller (transactional outbox)
+   - LoginHandler (CQRS login)
+   - AdminSessionController (force logout)
+   - CaptchaVerifier chain
+   - IdempotencyFilter
+   - MFA recovery codes
+   - LoginRateLimitFilter
+   - Password expiry on login
+   - WireMock-based SSO provider tests
+3. **Documentation updates** — Fix stale KDoc in SecurityProperties.kt
+4. **Pre_openspec corrections** — Mark Issue #1 (Keycloak) as RESOLVED, update Quality Score
 
 ## Pre-classifications (preliminary)
-- Feature type: EXTEND
-- Flow type: Non-Financial (authentication identity verification)
+- Feature type: EXTEND (confirmed — enhancing existing auth-core with testing + hardening)
+- Flow type: Non-Financial (confirmed — authentication/identity, no financial transactions)
 - Affected modules:
-  - `auth/domain/model/User.kt` — MODIFY (TTL check in `requiresMfa()`)
-  - `auth/application/MfaService.kt` — MODIFY (set `trustedDeviceSetAt` on trust save)
-  - `auth/application/PasswordPolicyService.kt` — MODIFY (clear trusted device on password change)
-  - `auth/application/command/LoginHandler.kt` — MODIFY (pass `ttlDays` to `requiresMfa()`)
-  - `auth/adapter/out/persistence/mapper/UserEntityMapper.kt` — MODIFY (add `trustedDeviceSetAt` to both directions)
-  - `auth/adapter/out/persistence/UserPersistenceAdapter.kt` — MODIFY (add `trustedDeviceSetAt` to manual mapping)
-  - `auth/adapter/out/persistence/TokenStorePersistenceAdapter.kt` — MODIFY (fix stale TODO — call `revokeAllByUserId()`)
-  - `shared/config/SecurityProperties.kt` — MODIFY (update Javadoc — TTL now enforced)
-  - `test/` — MODIFY/NEW (trusted device TTL unit tests, integration test extension)
-
----
+  - `auth/application` — AuthService.kt legacy path fix, all application services under test
+  - `auth/application/command` — LoginHandler test coverage
+  - `auth/application/event` — EventService, TokenEventRecorder test coverage
+  - `auth/adapter/out/event` — OutboxPoller test coverage
+  - `auth/adapter/in/web` — AdminSessionController, CaptchaController test coverage
+  - `auth/adapter/in/web/filter` — LoginRateLimitFilter, IdempotencyFilter test coverage
+  - `auth/domain/model` — User domain model (already well-tested, verify TTL edge cases)
+  - `shared/config` — SecurityProperties KDoc updates
+  - `shared/filter` — IdempotencyFilter test coverage
 
 ## Codebase Investigation Findings
 
-### User.requiresMfa() — Current Implementation (UNCHANGED since v4)
+### Finding 1: OAuth2TokenExchanger is Config-Driven (Keycloak RESOLVED)
 
-```kotlin
-// File: auth/domain/model/User.kt (lines 72-76)
-fun requiresMfa(deviceHash: String?): Boolean {
-    if (!mfaEnabled || mfaMethod == "NONE") return false
-    return deviceHash == null || deviceHash != trustedDeviceHash
-}
+```
+    ┌──────────────────────┐
+    │   SecurityProperties │
+    │  sso.providers map   │
+    │  ┌──────────────┐    │
+    │  │ google:      │    │
+    │  │  tokenUrl    │    │
+    │  │  userInfoUrl │    │
+    │  ├──────────────┤    │
+    │  │ microsoft:   │    │
+    │  │  tokenUrl    │    │
+    │  │  userInfoUrl │    │
+    │  ├──────────────┤    │
+    │  │ keycloak:    │    │  ← Already configured
+    │  │  tokenUrl    │    │  ← Environment-driven
+    │  │  userInfoUrl │    │
+    │  └──────────────┘    │
+    └──────────┬───────────┘
+               │
+    ┌──────────▼───────────┐
+    │ OAuth2TokenExchanger │
+    │                      │
+    │ getTokenEndpoint()   │──→ providers[provider]?.tokenEndpoint
+    │ getUserInfoEndpoint()│──→ providers[provider]?.userInfoEndpoint
+    │                      │
+    │ NO hardcoded URLs    │  ← Config-driven since refactor
+    └──────────────────────┘
 ```
 
-**Issue**: No TTL check. `trustedDeviceSetAt` field exists on domain model but is not used. `SecurityProperties.mfa.trustedDeviceTtlDays = 30` is configured but completely unused.
+### Finding 2: Trusted Device TTL — Dual Path Inconsistency
 
-**Target implementation:**
-```kotlin
-fun requiresMfa(deviceHash: String?, ttlDays: Long = 30): Boolean {
-    if (!mfaEnabled || mfaMethod == "NONE") return false
-    if (deviceHash == null || deviceHash != trustedDeviceHash) return true
-    // Device hash matches — check TTL
-    val setAt = trustedDeviceSetAt ?: return true  // No timestamp → treat as expired
-    return setAt.plus(ttlDays, ChronoUnit.DAYS).isBefore(Instant.now())
-}
+```
+    ┌─────────────────────────────────────────────────────┐
+    │                  Login Request                       │
+    └────────────┬────────────────────────┬───────────────┘
+                 │                        │
+    ┌────────────▼───────────┐  ┌────────▼────────────────┐
+    │ AuthController         │  │ CqrsAuthController      │
+    │ POST /api/auth/login   │  │ POST /api/v2/auth/login │
+    └────────────┬───────────┘  └────────┬────────────────┘
+                 │                        │
+    ┌────────────▼───────────┐  ┌────────▼────────────────┐
+    │ AuthService.login()    │  │ LoginHandler.handle()   │
+    │                        │  │                          │
+    │ trustedHash ==         │  │ user.requiresMfa(        │
+    │   user.trustedDevice   │  │   hash,                  │
+    │   Hash                 │  │   securityProperties     │
+    │                        │  │   .mfa.trustedDeviceTtl  │
+    │ ⚠️ NO TTL CHECK       │  │   Days                   │
+    │                        │  │ )                        │
+    │ SECURITY GAP           │  │ ✅ TTL ENFORCED         │
+    └────────────────────────┘  └──────────────────────────┘
 ```
 
-### UserEntityMapper — MISSING trustedDeviceSetAt (NEW FINDING)
+**Resolution**: Align `AuthService.login()` to use `User.requiresMfa()` or deprecate legacy path.
 
+### Finding 3: Event Sourcing Pipeline (Complete but Untested)
+
+```
+    ┌─────────────┐     ┌──────────────┐     ┌──────────────┐
+    │ TokenEvent   │────▶│ EventService │────▶│ EventStore   │
+    │ Recorder     │     │              │     │ Port         │
+    │              │     │ record()     │     │              │
+    │ recordIssu-  │     │ ┌──────────┐ │     │ append()     │
+    │ ance()       │     │ │ envelope │ │     └──────┬───────┘
+    │ recordRevo-  │     │ │ → store  │ │            │
+    │ cation()     │     │ │ → outbox │ │     ┌──────▼───────┐
+    └─────────────┘     │ └──────────┘ │     │ EventStore   │
+                         └──────────────┘     │ Persistence  │
+                                              │ Adapter      │
+    ┌─────────────┐     ┌──────────────┐     └──────────────┘
+    │ OutboxPoller │────▶│ Kafka Event  │
+    │              │     │ Publisher    │
+    │ @Scheduled   │     │              │
+    │ SELECT FOR   │     │ @Primary     │
+    │ UPDATE SKIP  │     │ @Conditional │
+    │ LOCKED       │     │ OnProperty   │
+    │              │     │              │
+    │ batch=50     │     │ retry=3      │
+    │ poll=100ms   │     │ backoff=exp  │
+    └──────────────┘     └──────────────┘
+    
+    ⚠️ ZERO TEST COVERAGE for this pipeline
+```
+
+### Finding 4: Test Coverage Map
+
+```
+    ┌────────────────────────────────────────────────────────┐
+    │ Test Coverage Assessment                               │
+    │                                                        │
+    │ ✅ Well-tested (unit + integration):                   │
+    │   • MfaService (10KB + 7KB edge cases)                │
+    │   • OtpService (4KB)                                  │
+    │   • PasswordPolicyService (7KB)                       │
+    │   • SsoAdapter (8KB) + SSO integration (10KB)         │
+    │   • JwtService anonymous (6KB)                        │
+    │   • MfaRateLimitService (9KB)                         │
+    │   • User domain model (10KB)                          │
+    │   • MFA login flow integration (13KB)                 │
+    │   • Token introspection integration (5KB)             │
+    │   • JWKS endpoint integration (5KB)                   │
+    │   • Password change integration (9KB)                 │
+    │   • TOTP setup flow integration (10KB)                │
+    │   • Session promotion (11KB + 11KB)                   │
+    │   • Anonymous session (9KB)                           │
+    │   • AuthService revoke sessions (4KB)                 │
+    │                                                        │
+    │ ❌ UNTESTED:                                           │
+    │   • EventService + TokenEventRecorder                 │
+    │   • OutboxPoller (transactional outbox)                │
+    │   • KafkaEventPublisher                               │
+    │   • LoginHandler (CQRS command)                       │
+    │   • AdminSessionController                            │
+    │   • CaptchaVerifier / AltchaCaptchaVerifier           │
+    │   • IdempotencyFilter                                 │
+    │   • MFA Recovery Codes flow                           │
+    │   • LoginRateLimitFilter                              │
+    │   • Password expiry on login                          │
+    │   • ServiceTokenService + ServiceAuthFilter           │
+    └────────────────────────────────────────────────────────┘
+```
+
+## Detailed Design Hints for `/wf_openspec`
+
+### Task 1: Legacy Login Path TTL Fix
 ```kotlin
-// File: auth/adapter/out/persistence/mapper/UserEntityMapper.kt
-// toDomain() — line 28 maps trustedDeviceHash BUT NOT trustedDeviceSetAt!
-fun UserEntity.toDomain() = User(
-    ...
-    trustedDeviceHash = this.trustedDeviceHash,
-    // MISSING: trustedDeviceSetAt = this.trustedDeviceSetAt,
-    passwordChangedAt = this.passwordChangedAt,
-    ...
-)
-
-// toEntity() — line 49 maps trustedDeviceHash BUT NOT trustedDeviceSetAt!
-fun User.toEntity(existing: UserEntity? = null): UserEntity {
-    entity.apply {
-        ...
-        trustedDeviceHash = this@toEntity.trustedDeviceHash
-        // MISSING: trustedDeviceSetAt = this@toEntity.trustedDeviceSetAt
-        passwordChangedAt = this@toEntity.passwordChangedAt
+// AuthService.kt — Replace lines 131-137:
+// FROM:
+if (user.mfaEnabled && user.mfaMethod != "NONE") {
+    val trustedHash = request.trustedDeviceHash
+    if (trustedHash != null && trustedHash == user.trustedDeviceHash) {
+        log.debug("Trusted device matched — skipping MFA")
+    } else {
+        return mfaService.initiateMfa(user.id!!, user.mfaMethod)
     }
 }
-```
 
-**Impact**: Without this fix, `User.trustedDeviceSetAt` is always `null` in the domain model — making TTL checks always treat device as expired.
-
-### UserPersistenceAdapter — ALSO MISSING trustedDeviceSetAt
-
-```kotlin
-// File: auth/adapter/out/persistence/UserPersistenceAdapter.kt (lines 70-83)
-// Manual mapping also DOES NOT include trustedDeviceSetAt
-private fun UserEntity.toDomainModel() = User(
-    ...
-    trustedDeviceHash = this.trustedDeviceHash,
-    // MISSING: trustedDeviceSetAt = this.trustedDeviceSetAt,
-    passwordChangedAt = this.passwordChangedAt,
-    ...
-)
-```
-
-### MfaService.verifyMfa() — Missing Timestamp Save
-
-```kotlin
-// File: auth/application/MfaService.kt (lines 112-118)
-if (trustDevice && !deviceHash.isNullOrBlank()) {
-    val user = userRepository.findById(userId).orElseThrow { ... }
-    user.trustedDeviceHash = deviceHash
-    // MISSING: user.trustedDeviceSetAt = Instant.now()
-    userRepository.save(user)
-    ...
+// TO (use domain method with TTL):
+val domainUser = userMapper.toDomain(user) // or construct User domain model
+if (domainUser.requiresMfa(request.trustedDeviceHash, securityProperties.mfa.trustedDeviceTtlDays)) {
+    return mfaService.initiateMfa(user.id!!, user.mfaMethod)
 }
 ```
 
-**Fix**: Add `user.trustedDeviceSetAt = java.time.Instant.now()` before save.
-
-### TokenStorePersistenceAdapter — Stale TODO (UNCHANGED)
-
+### Task 2: SecurityProperties KDoc Fix
 ```kotlin
-// File: auth/adapter/out/persistence/TokenStorePersistenceAdapter.kt (lines 46-49)
-override fun revokeAllForUser(userId: Long): Int {
-    // TODO: Add custom query findAllByUserIdAndRevokedFalse for batch revocation
-    return 0
-}
+// Update comment at line 14-15:
+// FROM: "TTL enforcement deferred to future migration"
+// TO: "TTL enforcement implemented in User.requiresMfa() via trustedDeviceSetAt column (V10 migration)"
 ```
 
-**Fix**: `return refreshTokenRepository.revokeAllByUserId(userId)` — repo method ALREADY EXISTS at `Repositories.kt:81`.
-
-### OAuth2TokenExchanger — Config-Driven (RESOLVED)
-
+### Task 3: MfaService Trusted Device SetAt Verification
 ```kotlin
-// File: auth/adapter/out/sso/OAuth2TokenExchanger.kt (lines 41-43)
-private fun getTokenEndpoint(provider: String): String =
-    securityProperties.sso.providers[provider]?.tokenEndpoint
-        ?: throw SsoTokenInvalidException("Unknown SSO provider: $provider")
+// MfaService.kt line 121 — verify this also sets trustedDeviceSetAt:
+user.trustedDeviceHash = deviceHash
+user.trustedDeviceSetAt = Instant.now()  // Must be set for TTL to work
 ```
 
-**Status**: ✅ Config-driven. Keycloak support = add config in `application.yml`. No code change needed.
+### Test Strategy Matrix
 
-### SecurityProperties — TTL Config (STILL UNUSED)
-
-```kotlin
-// File: shared/config/SecurityProperties.kt (line 81)
-val trustedDeviceTtlDays: Long = 30,
-// Javadoc says: "TTL enforcement deferred to future migration"
-// → NOW is the time! V10 migration applied, field exists.
-```
-
----
-
-## Architecture Diagram — Trusted Device TTL Flow (Updated)
-
-```
-    Data Flow for Trusted Device TTL (end-to-end):
-
-    ┌──────────────────────────────────────────────────────────────┐
-    │ Persistence Layer                                            │
-    │   UserEntity.trustedDeviceSetAt          ← EXISTS in DB ✅   │
-    │   UserEntityMapper.toDomain()            ← NOT MAPPED ❌    │
-    │   UserPersistenceAdapter.toDomainModel() ← NOT MAPPED ❌    │
-    └──────────────────────┬───────────────────────────────────────┘
-                           │
-    ┌──────────────────────▼───────────────────────────────────────┐
-    │ Domain Layer                                                 │
-    │   User.trustedDeviceSetAt                ← EXISTS field ✅   │
-    │   User.requiresMfa(hash, ttlDays)        ← TTL CHECK ❌     │
-    └──────────────────────┬───────────────────────────────────────┘
-                           │
-    ┌──────────────────────▼───────────────────────────────────────┐
-    │ Application Layer                                            │
-    │   LoginHandler.handle()                                      │
-    │     → user.requiresMfa(hash)             ← NEEDS ttlDays    │
-    │   MfaService.verifyMfa()                                     │
-    │     → user.trustedDeviceHash = hash      ← EXISTS ✅        │
-    │     → user.trustedDeviceSetAt = now()     ← MISSING ❌      │
-    │   PasswordPolicyService.changePassword()                     │
-    │     → clear trustedDeviceHash            ← MISSING ❌       │
-    │     → clear trustedDeviceSetAt           ← MISSING ❌       │
-    └──────────────────────────────────────────────────────────────┘
-```
-
-```
-    Login Flow (with trusted device TTL):
-
-    ┌──────────────────────────────────────────────────────────────┐
-    │                    POST /api/auth/login                      │
-    │                         │                                    │
-    │                    LoginHandler                              │
-    │                         │                                    │
-    │        user.requiresMfa(deviceHash, ttlDays=30)              │
-    │                    ┌────┴─────┐                              │
-    │              MFA disabled    MFA enabled                      │
-    │                    │          │                               │
-    │              issue JWT   ┌───┴────┐                          │
-    │                     no hash/   hash matches DB?              │
-    │                     mismatch  ┌───┴────┐                     │
-    │                          │   NO        YES                   │
-    │                     MFA      │         │                     │
-    │                    required  MFA   ┌───┴───────┐             │
-    │                          required  setAt+TTL   setAt+TTL     │
-    │                                    < now       >= now        │
-    │                                    (EXPIRED)   (VALID)       │
-    │                                      │           │           │
-    │                                 MFA required  skip MFA       │
-    │                                               issue JWT      │
-    └──────────────────────────────────────────────────────────────┘
-
-
-    Password Change Flow (clear trusted device):
-
-    ┌──────────────────────────────────────────────────────────────┐
-    │          POST /api/auth/change-password                      │
-    │                         │                                    │
-    │              PasswordPolicyService.changePassword()           │
-    │                         │                                    │
-    │              validate old password ✅                         │
-    │              validate new password (Passay) ✅                │
-    │              check history ✅                                 │
-    │                         │                                    │
-    │              update passwordHash                             │
-    │              insert password_history                          │
-    │              prune old history                                │
-    │              update passwordChangedAt                         │
-    │              CLEAR trustedDeviceHash = null  ← NEW           │
-    │              CLEAR trustedDeviceSetAt = null ← NEW           │
-    │                         │                                    │
-    │              200 OK                                           │
-    └──────────────────────────────────────────────────────────────┘
-```
-
----
-
-## Design Decisions (Full History)
-
-| # | Decision | Status |
-|---|----------|--------|
-| D1-D10 | Initial auth-core decisions | ✅ ALL IMPLEMENTED |
-| D11 | Config-driven SSO providers | ✅ IMPLEMENTED |
-| D12 | Trusted device save on MFA verify | ✅ IMPLEMENTED (hash only, no timestamp) |
-| D13 | EventPublisher port + adapter | ✅ IMPLEMENTED (Kafka + Spring fallback) |
-| D14 | Defer trusted device TTL | ✅ V10 migration applied, fields exist |
-| D15 | revokeAllSessions: refresh token revocation | ✅ IMPLEMENTED (in AuthService, not adapter) |
-| D16 | getProviders() reads from config | ✅ IMPLEMENTED |
-| D17 | domainId from active domain | ✅ IMPLEMENTED |
-| D18 | trusted_device_set_at DB column | ✅ V10 APPLIED |
-| D19 | Clear trusted device on password change | PENDING (this iteration) |
-| D20 | Fix TokenStorePersistenceAdapter.revokeAllForUser() | PENDING (this iteration) |
-| D21 | **[NEW]** Fix UserEntityMapper trustedDeviceSetAt mapping | PENDING (CRITICAL — this iteration) |
-| D22 | **[NEW]** Pass ttlDays parameter to User.requiresMfa() | PENDING (this iteration) |
-| D23 | **[NEW]** MfaService set trustedDeviceSetAt = now() | PENDING (this iteration) |
-| D24 | **[NEW]** Keep domain model pure (no framework deps) | DECIDED — pass config as params |
-| D25 | **[NEW]** Keycloak support is config-only (resolved) | DECIDED — add to application.yml |
-| D26 | **[NEW]** Force-logout does NOT clear trusted device | DECIDED — only password change does |
-
----
+| Test File | Type | Priority | Key Scenarios |
+|-----------|------|----------|--------------|
+| LoginHandlerTest.kt | Unit | HIGH | MFA checkpoint, TTL enforcement, password expiry, session policy |
+| EventServiceTest.kt | Unit | HIGH | Event envelope creation, store + outbox in transaction |
+| TokenEventRecorderTest.kt | Unit | HIGH | Issuance recording, revocation recording |
+| OutboxPollerTest.kt | Integration | HIGH | Batch processing, retry logic, Kafka publish |
+| AdminSessionControllerTest.kt | Integration | MEDIUM | Force logout, list sessions, session stats |
+| CaptchaVerifierTest.kt | Unit | MEDIUM | CAPTCHA chain, noop provider, ALTCHA PoW |
+| IdempotencyFilterTest.kt | Unit | MEDIUM | Redis key, TTL 24h, duplicate detection |
+| MfaRecoveryCodeTest.kt | Integration | MEDIUM | Generate, verify, single-use, count |
+| LoginRateLimitFilterTest.kt | Integration | MEDIUM | IP limit, username limit, device limit |
+| PasswordExpiryLoginTest.kt | Integration | LOW | Login with expired password → 403 |
 
 ## Open Questions for Design Phase
-
-- [RESOLVED] D18: V10 migration → ✅ APPLIED
-- [RESOLVED] D25: Keycloak support → ✅ Config-driven, no code change
-- [RESOLVED] D26: Force-logout vs password change clearing device trust → Password change YES, force-logout NO
-- [RESOLVED] Q15: ttlDays as parameter vs config injection → Pass as parameter from LoginHandler
-- [RESOLVED] Q16: Clear on force-logout? → NO (see D26)
-- [OPEN] Q17: Should expired trusted device hash be cleared on next login, or left for eventual overwrite?
-  → **Decision (auto-selected)**: Leave for overwrite. When user does MFA verify with trust again, both hash and setAt get fresh values. Clearing on login adds an extra DB write to the critical login path. No security benefit — hash comparison already fails when TTL expired.
-- [OPEN] Q18: Should `User.requiresMfa()` return an enum (MFA_REQUIRED/DEVICE_EXPIRED/SKIP_MFA) for better logging?
-  → **Decision (auto-selected)**: NO — keep boolean. The caller (LoginHandler) doesn't need to distinguish reasons. Add debug logging inside requiresMfa() if needed, but don't change the return type. KISS principle.
+- [RESOLVED] Q1 (Keycloak support): OAuth2TokenExchanger is fully config-driven. Keycloak configured in application-security.yml. Tests passing.
+- [RESOLVED] Q2 (Trusted device TTL): Implemented in User.requiresMfa() domain method. LoginHandler uses it correctly. Only AuthService.kt legacy path needs alignment.
+- [OPEN] Q3: Should `AuthService.login()` (legacy path) be deprecated and consolidated into `LoginHandler.handle()` (CQRS path), or should it be fixed to match CQRS behavior? Decision impacts: controller routing, backward compatibility, test scope.
+  - **Recommendation**: Fix legacy path to use `User.requiresMfa()` for security, mark `@Deprecated`, plan consolidation in future sprint.
+- [OPEN] Q4: Should MFA recovery code flow have its own controller endpoint or be integrated into existing MfaController? Currently `MfaRecoveryCodeEntity` + repository exist but no controller endpoint found.
+  - **Recommendation**: Add to `MfaController` — `POST /api/auth/mfa/recovery/generate`, `POST /api/auth/mfa/recovery/verify`, `GET /api/auth/mfa/recovery/count`.
+- [OPEN] Q5: Event sourcing tests — should they use embedded Kafka or mock KafkaEventPublisher? 
+  - **Recommendation**: Unit tests mock `EventStorePort` + `OutboxPort`. Integration tests use `@EmbeddedKafka` or Testcontainers for OutboxPoller → Kafka round-trip.
 
 ## Open Questions for URD Analysis
+- None — URD analysis complete via research artifacts + pre_openspec. All FRs mapped and traced.
 
-- None — URD analysis is complete in pre_openspec.md (v4).
+## Risk Assessment
 
----
+| Risk | Probability | Impact | Mitigation |
+|------|:-:|:-:|------------|
+| AuthService.kt legacy path exploited (no TTL on trusted device) | LOW | MEDIUM | Priority fix — align with User.requiresMfa() |
+| Event sourcing pipeline silent failures (no tests) | MEDIUM | HIGH | Comprehensive unit + integration tests |
+| OutboxPoller batch processing edge cases | LOW | MEDIUM | Test with boundary conditions (0, 1, 50, 51 items) |
+| Stale documentation misleading developers | LOW | LOW | KDoc updates in SecurityProperties.kt |
+| Test infrastructure complexity (embedded Kafka, Redis) | LOW | LOW | Use Testcontainers (already likely in project) |
 
-## Estimated Effort
+## Summary Statistics
 
-| Phase | Task | Effort | Priority | Dependencies |
-|-------|------|--------|----------|-------------|
-| 1 | UserEntityMapper — add `trustedDeviceSetAt` to toDomain + toEntity | 15m | CRITICAL | None |
-| 1b | UserPersistenceAdapter — add `trustedDeviceSetAt` to mapping | 10m | CRITICAL | None |
-| 2 | MfaService — set `trustedDeviceSetAt = now()` on trust save | 15m | HIGH | Phase 1 |
-| 3 | User.requiresMfa() — add TTL check with `ttlDays` param | 30m | HIGH | Phase 1 |
-| 4 | LoginHandler — pass `securityProperties.mfa.trustedDeviceTtlDays` | 15m | HIGH | Phase 3 |
-| 5 | PasswordPolicyService — clear `trustedDeviceHash` + `trustedDeviceSetAt` on pwd change | 15m | MEDIUM | Phase 1 |
-| 6 | TokenStorePersistenceAdapter — fix `revokeAllForUser()` | 15m | LOW | None |
-| 7 | Tests — TTL unit test + integration test extension | 1.5h | HIGH | Phases 1-5 |
-| 8 | SecurityProperties Javadoc update (TTL now enforced) | 15m | LOW | None |
-| **Total** | | **~4h** | | |
+| Metric | Value |
+|--------|-------|
+| FRs total | 17 |
+| FRs fully implemented | 17 (100%) |
+| Pre_openspec gaps identified | 2 |
+| Pre_openspec gaps actually remaining | 0 (both resolved) |
+| New gap discovered | 1 (AuthService.kt legacy TTL bypass) |
+| Test files existing | 20 |
+| Test files needed | ~10 new |
+| Estimated effort | 4-5 developer-days |
+| Risk level | LOW (all code exists, just needs validation) |

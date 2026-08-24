@@ -1,6 +1,6 @@
-# Impact Analysis: auth-core-features — Trusted Device Hardening & Cleanup (v5)
+# Impact Analysis: auth-core-features — Testing, Hardening & Legacy Cleanup (v6)
 
-_Generated: 2026-08-25_
+_Generated: 2026-08-26_
 
 ---
 
@@ -10,129 +10,95 @@ _Generated: 2026-08-25_
 
 | # | File | Line Range | Chức năng |
 |---|------|-----------|-----------|
-| 1 | [UserEntityMapper.kt](file:///home/nguyentthai96/Desktop/bigbang/boilerplate/services/auth-service/src/main/kotlin/com/ntt/authservice/auth/adapter/out/persistence/mapper/UserEntityMapper.kt) | L28 (toDomain), L49 (toEntity) | **CRITICAL**: Map `trustedDeviceSetAt` in both directions — currently MISSING |
-| 2 | [User.kt](file:///home/nguyentthai96/Desktop/bigbang/boilerplate/services/auth-service/src/main/kotlin/com/ntt/authservice/auth/domain/model/User.kt) | L73-76 (requiresMfa) | Replace hash-only check with TTL-aware logic using `ttlDays` parameter |
-| 3 | [MfaService.kt](file:///home/nguyentthai96/Desktop/bigbang/boilerplate/services/auth-service/src/main/kotlin/com/ntt/authservice/auth/application/MfaService.kt) | Trusted device save section (after trustedDeviceHash assignment) | Set `trustedDeviceSetAt = Instant.now()` alongside hash save |
-| 4 | [LoginHandler.kt](file:///home/nguyentthai96/Desktop/bigbang/boilerplate/services/auth-service/src/main/kotlin/com/ntt/authservice/auth/application/command/LoginHandler.kt) | requiresMfa call site | Pass `securityProperties.mfa.trustedDeviceTtlDays` param |
-| 5 | [PasswordPolicyService.kt](file:///home/nguyentthai96/Desktop/bigbang/boilerplate/services/auth-service/src/main/kotlin/com/ntt/authservice/auth/application/PasswordPolicyService.kt) | After passwordChangedAt assignment | Clear `trustedDeviceHash` + `trustedDeviceSetAt` on pwd change |
-| 6 | [UserPersistenceAdapter.kt](file:///home/nguyentthai96/Desktop/bigbang/boilerplate/services/auth-service/src/main/kotlin/com/ntt/authservice/auth/adapter/out/persistence/UserPersistenceAdapter.kt) | User construction (if manual mapping used) | Add `trustedDeviceSetAt` to domain model construction |
-| 7 | [TokenStorePersistenceAdapter.kt](file:///home/nguyentthai96/Desktop/bigbang/boilerplate/services/auth-service/src/main/kotlin/com/ntt/authservice/auth/adapter/out/persistence/TokenStorePersistenceAdapter.kt) | L46-49 (revokeAllForUser) | Fix stale TODO — delegate to `refreshTokenRepository.revokeAllByUserId()` |
+| 1 | [AuthService.kt](file:///home/nguyentthai96/Desktop/bigbang/boilerplate/services/auth-service/src/main/kotlin/com/ntt/authservice/auth/application/AuthService.kt) | L131-137 (login trusted device check) | **SECURITY FIX**: Replace naive hash comparison with `User.requiresMfa(hash, ttlDays)` for TTL enforcement. Add `@Deprecated` annotation on `login()` method. |
+| 2 | [SecurityProperties.kt](file:///home/nguyentthai96/Desktop/bigbang/boilerplate/services/auth-service/src/main/kotlin/com/ntt/authservice/shared/config/SecurityProperties.kt) | L14-15 (KDoc comment) | **DOC FIX**: Update stale comment from "TTL enforcement deferred to future migration" to reflect current implementation. |
 
-### 1.2 NEW Files
+### 1.2 NEW Files (Tests Only)
 
-No new files needed. V10 migration already applied. UserEntity field already exists.
+| # | File | Type | Priority |
+|---|------|------|----------|
+| 1 | `src/test/kotlin/.../auth/application/command/LoginHandlerTest.kt` | Unit test | HIGH |
+| 2 | `src/test/kotlin/.../auth/application/event/EventServiceTest.kt` | Unit test | HIGH |
+| 3 | `src/test/kotlin/.../auth/application/event/TokenEventRecorderTest.kt` | Unit test | HIGH |
+| 4 | `src/test/kotlin/.../auth/application/CaptchaVerifierTest.kt` | Unit test | MEDIUM |
+| 5 | `src/test/kotlin/.../auth/adapter/out/event/OutboxPollerTest.kt` | Integration test | HIGH |
+| 6 | `src/test/kotlin/.../auth/integration/AdminSessionControllerTest.kt` | Integration test | MEDIUM |
+| 7 | `src/test/kotlin/.../shared/filter/IdempotencyFilterTest.kt` | Integration test | MEDIUM |
+| 8 | `src/test/kotlin/.../auth/integration/MfaRecoveryCodeFlowTest.kt` | Integration test | MEDIUM |
+| 9 | `src/test/kotlin/.../auth/integration/LoginRateLimitFilterTest.kt` | Integration test | MEDIUM |
+| 10 | `src/test/kotlin/.../auth/integration/PasswordExpiryLoginTest.kt` | Integration test | LOW |
+| 11 | `src/test/kotlin/.../auth/integration/LegacyLoginTtlTest.kt` | Integration test | HIGH |
 
-### 1.3 Test Files to MODIFY
+### 1.3 Existing Test Files — NO MODIFICATION NEEDED
 
-| # | File | Change |
-|---|------|--------|
-| 1 | `src/test/kotlin/com/ntt/authservice/auth/domain/model/UserTest.kt` | Add TTL expiry test scenarios for `requiresMfa()` |
-| 2 | `src/test/kotlin/com/ntt/authservice/auth/integration/MfaLoginFlowIntegrationTest.kt` | Add TTL-aware trusted device integration test |
+All 20+ existing test files remain unchanged. The v5 tasks (UserTest TTL, MfaLoginFlowIntegrationTest TTL) were already completed.
 
 ---
 
 ## 2. Call Tree — LOGIC CẦN SỬA
 
-> BẮT BUỘC ASCII tree. Ghi annotation `// ←` ở điểm quan trọng.
-
-### 2.1 LoginHandler.handle() — TTL Check (Gap 1b)
+### 2.1 AuthService.login() — TTL Alignment (Gap 1)
 
 ```
-⟶ LoginHandler.handle(command: LoginCommand)
-├── userPort.findByUsername(command.username) → user: User
-│   └── UserPersistenceAdapter → UserEntityMapper.toDomain()
-│       └── trustedDeviceSetAt = this.trustedDeviceSetAt  // ← MUST FIX MAPPER (Gap 1a)
+⟶ AuthService.login(request: LoginRequest)
+├── userRepository.findByUsername(request.username) → userEntity: UserEntity
 ├── validate credentials (BCrypt match)
-├── unlockIfExpired(now)
-├── check account status (Active/Locked/etc.)
-├── captcha check (if required)
-├── password expiry check
-├── user.requiresMfa(command.trustedDeviceHash, securityProperties.mfa.trustedDeviceTtlDays)  // ← MODIFY: add ttlDays param
-│   ├── !mfaEnabled || mfaMethod == "NONE" → return false
-│   ├── deviceHash == null || deviceHash != trustedDeviceHash → return true
-│   ├── trustedDeviceSetAt == null → return true  // ← NEW: no timestamp = expired
-│   └── setAt.plus(ttlDays, DAYS).isBefore(now()) → return true/false  // ← NEW: TTL check
-├── MFA required? → generateMfaResult(userId, mfaMethod)
-└── MFA not required → generate full auth response
+├── check account status (Active/Locked)
+├── check mfaEnabled && mfaMethod != "NONE"
+│   ├── BEFORE (current — SECURITY GAP):
+│   │   ├── val trustedHash = request.trustedDeviceHash
+│   │   ├── trustedHash != null && trustedHash == user.trustedDeviceHash?
+│   │   │   ├── YES → skip MFA (⚠️ NO TTL CHECK — indefinite bypass)
+│   │   │   └── NO → mfaService.initiateMfa(userId, mfaMethod)
+│   │
+│   └── AFTER (fixed):
+│       ├── val domainUser = userEntityMapper.toDomain(userEntity)  // ← NEW
+│       ├── domainUser.requiresMfa(request.trustedDeviceHash, securityProperties.mfa.trustedDeviceTtlDays)  // ← CHANGE
+│       │   ├── !mfaEnabled || mfaMethod == "NONE" → return false
+│       │   ├── deviceHash == null || deviceHash != trustedDeviceHash → return true
+│       │   ├── trustedDeviceSetAt == null → return true (safe default)
+│       │   └── setAt.plus(ttlDays, DAYS).isBefore(now()) → true/false  // ← TTL check
+│       ├── TRUE → mfaService.initiateMfa(userId, mfaMethod)
+│       └── FALSE → continue to token generation
+├── generate auth tokens
+└── return AuthResponse
 ```
 
-### 2.2 MfaService.verifyMfa() — Save Timestamp (Gap 1b)
+### 2.2 SecurityProperties.kt — KDoc Update (Gap 2)
 
 ```
-⟶ MfaService.verifyMfa(mfaToken, code, trustDevice, deviceHash)
-├── jwtService.parseMfaToken(mfaToken) → claims (userId, method, exp)
-├── verify code (OTP via Redis or TOTP via library)
-├── rateLimitService.resetCounters(userId)
-├── trustDevice && !deviceHash.isNullOrBlank()?
-│   ├── user = userRepository.findById(userId)
-│   ├── user.trustedDeviceHash = deviceHash
-│   ├── user.trustedDeviceSetAt = Instant.now()  // ← NEW LINE (Gap 1b)
-│   ├── userRepository.save(user)
-│   └── auditLogService.logEvent(TRUSTED_DEVICE_SET)
-├── auditLogService.logEvent(MFA_VERIFY_SUCCESS)
-└── return authResponseBuilder(userId)
-```
-
-### 2.3 PasswordPolicyService.changePassword() — Clear Trust (Gap 1b)
-
-```
-⟶ PasswordPolicyService.changePassword(userId, oldPassword, newPassword, domainId)
-├── user = userRepository.findById(userId)
-├── validate old password (BCrypt match)
-├── validatePasswordStrength(newPassword, domainId)
-├── checkPasswordHistory(userId, newPassword, historyCount)
-├── passwordEncoder.encode(newPassword) → newHash
-├── save to password_history
-├── user.passwordHash = newHash
-├── user.passwordChangedAt = Instant.now()
-├── user.trustedDeviceHash = null     // ← NEW (clear device trust on pwd change)
-├── user.trustedDeviceSetAt = null    // ← NEW (clear device trust on pwd change)
-├── userRepository.save(user)
-├── pruneHistory(userId, historyCount)
-└── auditLogService.logEvent(PASSWORD_CHANGED)
-```
-
-### 2.4 TokenStorePersistenceAdapter.revokeAllForUser() — Fix (Gap 2)
-
-```
-⟶ TokenStorePersistenceAdapter.revokeAllForUser(userId)
-├── BEFORE: return 0  // ← stale TODO
-└── AFTER:  return refreshTokenRepository.revokeAllByUserId(userId)  // ← FIX
-            └── @Modifying @Query("UPDATE RefreshTokenEntity SET revoked=true WHERE userId=:userId AND revoked=false")
+⟶ SecurityProperties (KDoc/comment fix only)
+├── BEFORE L14-15: "TTL enforcement deferred to future migration"
+└── AFTER L14-15: "TTL enforcement implemented in User.requiresMfa() via trustedDeviceSetAt (V10)"
+    └── No behavioral change — documentation only
 ```
 
 ---
 
 ## 3. Blast Radius
 
-### 🔴 Direct Impact — auth-service (7 files)
+### 🔴 Direct Impact — auth-service (2 production files)
 
 | # | File | Link | Cách sử dụng |
 |---|------|------|-------------|
-| 1 | `UserEntityMapper.kt` | [UserEntityMapper](file:///home/nguyentthai96/Desktop/bigbang/boilerplate/services/auth-service/src/main/kotlin/com/ntt/authservice/auth/adapter/out/persistence/mapper/UserEntityMapper.kt) | MODIFY: map trustedDeviceSetAt. Called by UserPersistenceAdapter. CRITICAL for data flow. |
-| 2 | `User.kt` | [User](file:///home/nguyentthai96/Desktop/bigbang/boilerplate/services/auth-service/src/main/kotlin/com/ntt/authservice/auth/domain/model/User.kt) | MODIFY: TTL logic in requiresMfa(). Called by LoginHandler.handle(). |
-| 3 | `MfaService.kt` | [MfaService](file:///home/nguyentthai96/Desktop/bigbang/boilerplate/services/auth-service/src/main/kotlin/com/ntt/authservice/auth/application/MfaService.kt) | MODIFY: 1 line added (set timestamp). Called by MfaController. |
-| 4 | `LoginHandler.kt` | [LoginHandler](file:///home/nguyentthai96/Desktop/bigbang/boilerplate/services/auth-service/src/main/kotlin/com/ntt/authservice/auth/application/command/LoginHandler.kt) | MODIFY: pass ttlDays param. Called by CqrsAuthController. |
-| 5 | `PasswordPolicyService.kt` | [PasswordPolicyService](file:///home/nguyentthai96/Desktop/bigbang/boilerplate/services/auth-service/src/main/kotlin/com/ntt/authservice/auth/application/PasswordPolicyService.kt) | MODIFY: 2 lines added (clear trust). Called by AuthController, CqrsAuthController. |
-| 6 | `UserPersistenceAdapter.kt` | [UserPersistenceAdapter](file:///home/nguyentthai96/Desktop/bigbang/boilerplate/services/auth-service/src/main/kotlin/com/ntt/authservice/auth/adapter/out/persistence/UserPersistenceAdapter.kt) | MODIFY: add trustedDeviceSetAt to manual mapping (if used). Implements UserPort. |
-| 7 | `TokenStorePersistenceAdapter.kt` | [TokenStorePersistenceAdapter](file:///home/nguyentthai96/Desktop/bigbang/boilerplate/services/auth-service/src/main/kotlin/com/ntt/authservice/auth/adapter/out/persistence/TokenStorePersistenceAdapter.kt) | MODIFY: fix stale TODO. Implements TokenStore port. |
+| 1 | `AuthService.kt` | [AuthService](file:///home/nguyentthai96/Desktop/bigbang/boilerplate/services/auth-service/src/main/kotlin/com/ntt/authservice/auth/application/AuthService.kt) | MODIFY: login() trusted device check — use User.requiresMfa() with TTL. Add @Deprecated. |
+| 2 | `SecurityProperties.kt` | [SecurityProperties](file:///home/nguyentthai96/Desktop/bigbang/boilerplate/services/auth-service/src/main/kotlin/com/ntt/authservice/shared/config/SecurityProperties.kt) | MODIFY: KDoc update only. No behavioral change. |
 
-### 🟡 Indirect Impact — auth-service (4 files)
+### 🟡 Indirect Impact — auth-service (3 files, NO changes needed)
 
 | # | File | Link | Cách sử dụng |
 |---|------|------|-------------|
-| 1 | `AuthService.kt` | [AuthService](file:///home/nguyentthai96/Desktop/bigbang/boilerplate/services/auth-service/src/main/kotlin/com/ntt/authservice/auth/application/AuthService.kt) | No code change. Uses UserEntity.trustedDeviceHash independently. |
-| 2 | `CqrsAuthController.kt` | [CqrsAuthController](file:///home/nguyentthai96/Desktop/bigbang/boilerplate/services/auth-service/src/main/kotlin/com/ntt/authservice/auth/adapter/in/web/CqrsAuthController.kt) | No change. Calls LoginHandler.handle() with same LoginCommand signature. |
-| 3 | `RevokeSessionsHandler.kt` | [RevokeSessionsHandler](file:///home/nguyentthai96/Desktop/bigbang/boilerplate/services/auth-service/src/main/kotlin/com/ntt/authservice/auth/application/command/RevokeSessionsHandler.kt) | No change. Calls tokenStore.revokeAllForUser() via port. Now receives actual count. |
-| 4 | `SecurityProperties.kt` | [SecurityProperties](file:///home/nguyentthai96/Desktop/bigbang/boilerplate/services/auth-service/src/main/kotlin/com/ntt/authservice/shared/config/SecurityProperties.kt) | No change. `trustedDeviceTtlDays = 30` already exists. Now activated by LoginHandler. |
+| 1 | `AuthController.kt` | [AuthController](file:///home/nguyentthai96/Desktop/bigbang/boilerplate/services/auth-service/src/main/kotlin/com/ntt/authservice/auth/adapter/in/web/AuthController.kt) | No change. Calls AuthService.login() — same interface, improved behavior. |
+| 2 | `UserEntityMapper.kt` | [UserEntityMapper](file:///home/nguyentthai96/Desktop/bigbang/boilerplate/services/auth-service/src/main/kotlin/com/ntt/authservice/auth/adapter/out/persistence/mapper/UserEntityMapper.kt) | No change. May need to be injected into AuthService if not already. toDomain() maps trustedDeviceSetAt correctly (v5 fix). |
+| 3 | `User.kt` | [User](file:///home/nguyentthai96/Desktop/bigbang/boilerplate/services/auth-service/src/main/kotlin/com/ntt/authservice/auth/domain/model/User.kt) | No change. requiresMfa(hash, ttlDays) already implemented. Used by AuthService after fix. |
 
 ### 🟠 Cross-service Impact (0 files)
 
-No cross-service impact. All changes are internal to auth-service. Trusted device is server-side only.
+No cross-service impact. All changes are internal to auth-service. The legacy login endpoint (`/api/auth/login`) maintains the same request/response contract.
 
 ### 🟢 Shared Utilities (0 changes)
 
-No shared utility changes. All exception classes and error codes already exist.
+No shared utility changes. No new exceptions, error codes, or DTOs.
 
 ---
 
@@ -140,20 +106,18 @@ No shared utility changes. All exception classes and error codes already exist.
 
 | Logic Block | Existing Location | Match % | Decision | Impact | Action |
 |---|---|---|---|---|---|
-| `requiresMfa()` hash compare | [User.kt:73-76](file:///home/nguyentthai96/Desktop/bigbang/boilerplate/services/auth-service/src/main/kotlin/com/ntt/authservice/auth/domain/model/User.kt#L73-L76) | 100% | **REUSE** (extend) | 🟢 LOW (1 caller) | Add TTL param + check |
-| `trustedDeviceHash` save | [MfaService.kt](file:///home/nguyentthai96/Desktop/bigbang/boilerplate/services/auth-service/src/main/kotlin/com/ntt/authservice/auth/application/MfaService.kt) | 100% | **REUSE** (extend) | 🟢 LOW (1 caller) | Add timestamp set |
-| `changePassword()` flow | [PasswordPolicyService.kt](file:///home/nguyentthai96/Desktop/bigbang/boilerplate/services/auth-service/src/main/kotlin/com/ntt/authservice/auth/application/PasswordPolicyService.kt) | 100% | **REUSE** (extend) | 🟢 LOW (2 callers) | Add trust clear |
-| `UserEntityMapper` mapping | [UserEntityMapper.kt:15-53](file:///home/nguyentthai96/Desktop/bigbang/boilerplate/services/auth-service/src/main/kotlin/com/ntt/authservice/auth/adapter/out/persistence/mapper/UserEntityMapper.kt#L15-L53) | 100% | **REUSE** (extend) | 🟢 LOW | Add 1 field mapping |
-| `revokeAllByUserId()` repo method | [Repositories.kt](file:///home/nguyentthai96/Desktop/bigbang/boilerplate/services/auth-service/src/main/kotlin/com/ntt/authservice/rbac/adapter/out/persistence/repository/Repositories.kt) | 100% | **REUSE** | 🟢 LOW | Wire into adapter |
-| `SecurityProperties.mfa.trustedDeviceTtlDays` | [SecurityProperties.kt](file:///home/nguyentthai96/Desktop/bigbang/boilerplate/services/auth-service/src/main/kotlin/com/ntt/authservice/shared/config/SecurityProperties.kt) | 100% | **REUSE** | 🟢 LOW | Already exists, now activated |
+| `User.requiresMfa(hash, ttlDays)` | [User.kt](file:///home/nguyentthai96/Desktop/bigbang/boilerplate/services/auth-service/src/main/kotlin/com/ntt/authservice/auth/domain/model/User.kt) | 100% | **REUSE** | 🟢 LOW | Call from AuthService.login() |
+| `UserEntityMapper.toDomain()` | [UserEntityMapper.kt](file:///home/nguyentthai96/Desktop/bigbang/boilerplate/services/auth-service/src/main/kotlin/com/ntt/authservice/auth/adapter/out/persistence/mapper/UserEntityMapper.kt) | 100% | **REUSE** | 🟢 LOW | Import into AuthService |
+| `securityProperties.mfa.trustedDeviceTtlDays` | [SecurityProperties.kt](file:///home/nguyentthai96/Desktop/bigbang/boilerplate/services/auth-service/src/main/kotlin/com/ntt/authservice/shared/config/SecurityProperties.kt) | 100% | **REUSE** | 🟢 LOW | Already exists, inject if needed |
+| Test infrastructure (Testcontainers, MockMvc) | Existing test files | 100% | **REUSE** | 🟢 LOW | Follow existing test patterns |
 
 ### No EXTRACT Candidates
 
-All changes in v5 are small field/parameter extensions. No code duplication warrants extraction.
+No code duplication detected that warrants extraction. The legacy path fix reuses existing domain logic.
 
 ### No NEW Components
 
-All necessary components exist. Only modifications to existing components.
+No new production classes, interfaces, or infrastructure needed.
 
 ---
 
@@ -163,25 +127,37 @@ All necessary components exist. Only modifications to existing components.
 
 | Dependency | Type | Key Methods | Ghi chú |
 |-----------|------|-------------|---------|
-| `UserRepository` | JpaRepository (injected in MfaService, PasswordPolicyService) | `findById(Long)`, `save(UserEntity)` | Used for trusted device save + password change |
-| `RefreshTokenRepository` | JpaRepository (injected in TokenStorePersistenceAdapter) | `revokeAllByUserId(Long): Int` | Already exists in Repositories.kt |
-| `SecurityProperties` | @ConfigurationProperties (injected in LoginHandler) | `.mfa.trustedDeviceTtlDays` (Long = 30) | Already exists, currently UNUSED |
-| `AuditLogService` | @Service (injected in MfaService, PasswordPolicyService) | `logEvent(userId, action, ...)` | `TRUSTED_DEVICE_SET` action already exists in `AuditAction` enum |
-| `java.time.temporal.ChronoUnit` | JDK (import) | `ChronoUnit.DAYS` | Already imported in `User.kt` (L7) |
+| `UserEntityMapper` | @Component (inject into AuthService if not present) | `.toDomain(UserEntity)` → `User` | Maps all fields including `trustedDeviceSetAt` (v5 fix applied) |
+| `SecurityProperties` | @ConfigurationProperties (inject into AuthService if not present) | `.mfa.trustedDeviceTtlDays` (Long = 30) | Config key: `app.security.mfa.trusted-device-ttl-days` |
+| `User` (domain model) | Pure Kotlin data class | `.requiresMfa(hash, ttlDays): Boolean` | TTL-aware, backward-compatible (default ttlDays=30) |
+
+### AuthService Constructor — Verify Injections
+
+```kotlin
+// Current AuthService constructor (to verify):
+class AuthService(
+    private val userRepository: UserRepository,
+    private val passwordEncoder: PasswordEncoder,
+    private val jwtService: JwtService,
+    private val mfaService: MfaService,
+    // ... other deps ...
+    // VERIFY: Are these already injected?
+    // private val userEntityMapper: UserEntityMapper     ← NEEDED for toDomain()
+    // private val securityProperties: SecurityProperties  ← NEEDED for ttlDays
+)
+```
+
+If not injected, add both to constructor. Spring Boot will auto-wire.
 
 ### Config Keys
 
 | Key | Source | Value | Nơi dùng |
 |-----|--------|-------|---------|
-| `app.security.mfa.trusted-device-ttl-days` | SecurityProperties.kt | `30` (default) | `LoginHandler.handle()` → `user.requiresMfa(hash, ttlDays)` |
+| `app.security.mfa.trusted-device-ttl-days` | SecurityProperties.kt | `30` (default) | AuthService.login() → `user.requiresMfa(hash, ttlDays)` |
 
 ### Error Codes Thrown
 
-No new error codes. Trusted device TTL expiry triggers existing MFA challenge flow (returns `MfaRequiredResponse`).
-
-| Error Code | Condition | Nơi throw |
-|-----------|-----------|-----------|
-| N/A | Expired device trust | Not thrown — `requiresMfa()` returns `true` → normal MFA flow |
+No new error codes. Trusted device TTL expiry on legacy path triggers existing MFA challenge flow (returns `MfaRequiredResponse`).
 
 ### DTO Reuse Check
 
@@ -193,8 +169,18 @@ No new error codes. Trusted device TTL expiry triggers existing MFA challenge fl
 
 | API Call | Verified Method | Source | Status |
 |---|---|---|---|
-| `user.requiresMfa(hash, ttlDays)` | `User.requiresMfa(deviceHash: String?, ttlDays: Long): Boolean` | User.kt:73 (to be modified) | ✅ Backward-compatible |
-| `refreshTokenRepository.revokeAllByUserId(userId)` | `fun revokeAllByUserId(@Param("userId") userId: Long): Int` | Repositories.kt | ✅ Already exists |
-| `securityProperties.mfa.trustedDeviceTtlDays` | `val trustedDeviceTtlDays: Long = 30` | SecurityProperties.kt | ✅ Already exists |
-| `user.trustedDeviceSetAt = Instant.now()` | `var trustedDeviceSetAt: Instant? = null` | UserEntity.kt:55 (already exists) | ✅ Standard JPA field |
-| `auditLogService.logEvent(userId, TRUSTED_DEVICE_SET, ...)` | `AuditLogService.logEvent(...)` | AuditLogService.kt | ✅ Already exists |
+| `userEntityMapper.toDomain(user)` | `UserEntity.toDomain(): User` | UserEntityMapper.kt | ✅ Exists (maps trustedDeviceSetAt) |
+| `user.requiresMfa(hash, ttlDays)` | `User.requiresMfa(String?, Long): Boolean` | User.kt | ✅ Exists (TTL-aware) |
+| `securityProperties.mfa.trustedDeviceTtlDays` | `val trustedDeviceTtlDays: Long = 30` | SecurityProperties.kt | ✅ Exists |
+| `mfaService.initiateMfa(userId, method)` | `MfaService.initiateMfa(Long, String): MfaRequiredResponse` | MfaService.kt | ✅ Exists (already called) |
+
+### Risk Assessment
+
+| Risk | Probability | Impact | Mitigation |
+|------|:-:|:-:|------------|
+| AuthService constructor change breaks DI | LOW | LOW | Spring auto-wires. Compile-time check. |
+| UserEntityMapper not available as bean | LOW | LOW | @Component annotation — auto-scanned |
+| Legacy path tests discover additional gaps | MEDIUM | LOW | Fix inline during test writing |
+| Event sourcing tests reveal hidden bugs | MEDIUM | MEDIUM | Fix and document in test results |
+
+**Overall Risk Level**: 🟢 LOW — 2 production files changed (1 security fix, 1 doc update), 11 new test files (additive only).

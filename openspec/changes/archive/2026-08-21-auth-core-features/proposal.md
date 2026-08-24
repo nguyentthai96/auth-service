@@ -1,72 +1,86 @@
-# Proposal: Auth Core Features — Trusted Device Hardening & Final Cleanup (v5)
+# Proposal: Auth Core Features — Testing, Hardening & Legacy Cleanup (v6)
 
 > **Change**: auth-core-features | **Type**: EXTEND | **Flow**: Non-Financial
-> **Direction**: Approach B — Trusted Device TTL Enforcement + Mapper Gap Fix + Adapter Cleanup + Test Coverage (from brainstorm v5)
-> **_Generated**: 2026-08-25 (v5 — delta from v4 2026-08-21)
-> **Status**: ~95% implemented — focused on 2 functional gaps (FR-005 TTL + mapper gap) + 1 stale adapter + tests
-> **Archive**: `openspec/changes/archive/2026-08-20-auth-core-features/proposal.md` (previous version)
+> **Direction**: Approach D — Hybrid: Testing + Hardening + Legacy Cleanup (from brainstorm v6)
+> **_Generated**: 2026-08-26 (v6 — delta from v5 2026-08-25)
+> **Status**: ~98% implemented — both v5 gaps (Keycloak + TTL) RESOLVED in code. Focus: testing validation, legacy path security fix, and documentation updates
+> **Archive**: `openspec/changes/archive/2026-08-21-auth-core-features/proposal.md` (v5)
 
 ## Changes
 
-[CHANGED] v4→v5: Pre_openspec + brainstorm refreshed 2026-08-25 with code re-scan. Quality score 92→93 (Kafka issue confirmed resolved). OAuth2TokenExchanger confirmed config-driven (Keycloak = config-only).
-[CHANGED] Mapper gap (D21) elevated to CRITICAL — `trustedDeviceSetAt` not mapped in `UserEntityMapper.kt` despite field existing in both entity and domain model.
-[CHANGED] V10 migration confirmed APPLIED — `trusted_device_set_at` column exists on `users` table. No new migration needed.
-[CHANGED] `KafkaEventPublisher.kt` confirmed implemented with `@Primary`, `@ConditionalOnProperty`, 3-retry exponential backoff.
-[CHANGED] `OAuth2TokenExchanger` confirmed config-driven — Keycloak support is config-only (no code change needed).
-[UNCHANGED] Gap 1: FR-005 trusted device TTL enforcement — `requiresMfa()` still does simple hash comparison without TTL.
-[UNCHANGED] Gap 2: `TokenStorePersistenceAdapter.revokeAllForUser()` still returns 0 — stale TODO.
-[UNCHANGED] Gap 3: Missing tests for trusted device TTL flow + adapter fix.
+[CHANGED] v5→v6: Codebase re-scan 2026-08-26 reveals BOTH v5 gaps are already resolved:
+  - Gap 1 (Keycloak support): `OAuth2TokenExchanger` is config-driven. Keycloak configured in `application-security.yml`. Integration test passing.
+  - Gap 2 (Trusted device TTL): `User.requiresMfa(deviceHash, ttlDays)` implemented with full TTL enforcement. `UserTest.kt` has 13 test cases.
+[CHANGED] v5 tasks (mapper fix, TTL logic, adapter fix) — ALL ALREADY DONE in codebase. v5 tasks are obsolete.
+[NEW] Discovery: `AuthService.kt` (legacy login path) has security gap — trusted device check WITHOUT TTL enforcement (line 131-137).
+[NEW] Discovery: `SecurityProperties.kt` KDoc stale — says "TTL enforcement deferred to future migration" but TTL is implemented.
+[NEW] Discovery: Event Sourcing pipeline (EventService, TokenEventRecorder, OutboxPoller) has ZERO test coverage.
+[NEW] Focus shift: Testing (10+ new test files), legacy path security fix, documentation cleanup.
 
 ---
 
 ## Why
 
-Auth-service has reached ~95% implementation maturity across all 17 FRs. Code re-scan on 2026-08-25 confirms:
-- `KafkaEventPublisher.kt` fully implemented (Issue #2 from pre_openspec v3 — RESOLVED)
-- `OAuth2TokenExchanger` is config-driven via `securityProperties.sso.providers[provider]` (Issue #1 — RESOLVED as config-only)
-- `IdempotencyFilter.kt` (shared/filter) provides generic idempotency for mutating endpoints
-- V10 migration applied — `trusted_device_set_at` column + `trustedDeviceSetAt` field exist in entity and domain model
+Auth-service has reached ~98% implementation maturity across all 17 FRs. The v5 archival tasks (mapper fix, TTL enforcement, adapter fix) were completed between v5 and v6. Codebase re-scan on 2026-08-26 confirms:
 
-**However, 3 items remain that affect security and code quality:**
+1. **v5 Gap 1 (Keycloak) — RESOLVED**: `OAuth2TokenExchanger` is fully config-driven via `securityProperties.sso.providers[provider]`. Keycloak endpoint configured in `application-security.yml`. `SsoCallbackIntegrationTest` TC3 verifies Keycloak flow and is passing.
 
-1. **🟡 Gap 1 — FR-005 Trusted Device TTL + Mapper Gap** (Security — CRITICAL):
-   - `User.requiresMfa()` compares `trustedDeviceHash` without checking when the device was trusted. A stolen device hash grants **indefinite** MFA bypass.
-   - `SecurityProperties.mfa.trustedDeviceTtlDays = 30` exists but is UNUSED.
-   - **NEW finding (v5)**: `UserEntityMapper.toDomain()` and `toEntity()` do NOT map `trustedDeviceSetAt`. The field exists in both `UserEntity` and `User` domain model, but the mapper bridge is BROKEN — `trustedDeviceSetAt` is always `null` in domain model. Without fixing the mapper, any TTL logic would silently fail.
+2. **v5 Gap 2 (Trusted Device TTL) — RESOLVED**: `User.requiresMfa(deviceHash, ttlDays)` domain method implements full TTL enforcement. `LoginHandler` passes `securityProperties.mfa.trustedDeviceTtlDays`. `UserTest.kt` has 13 test cases including TTL edge cases.
 
-2. **🟢 Gap 2 — `TokenStorePersistenceAdapter.revokeAllForUser()` stale TODO**: Returns `0` with TODO comment. The repository method `refreshTokenRepository.revokeAllByUserId()` already exists. The adapter should delegate to it for hexagonal port consistency.
+3. **v5 Gap 3 (Mapper + Adapter) — RESOLVED**: All mapper and adapter fixes from v5 tasks completed.
 
-3. **🟡 Gap 3 — Missing trusted device TTL tests**: No unit test for TTL expiry in `User.requiresMfa()`. No integration test for "trusted device expires after 30 days" scenario. `MfaLoginFlowIntegrationTest` tests hash save but not skip-MFA-on-next-login-with-TTL.
+**However, 3 new items require attention:**
+
+1. **🟡 New Gap 1 — AuthService.kt Legacy Login Path Security Gap** (Security — MEDIUM):
+   - `AuthService.login()` (legacy path at `/api/auth/login`) performs trusted device check WITHOUT TTL enforcement
+   - `LoginHandler.handle()` (CQRS path at `/api/v2/auth/login`) has full TTL enforcement via `User.requiresMfa()`
+   - Both paths exist simultaneously — the legacy path is a security bypass
+   - Fix: Align `AuthService.login()` to use `User.requiresMfa()` with TTL, or deprecate legacy path
+
+2. **🟢 New Gap 2 — Stale Documentation** (Quality — LOW):
+   - `SecurityProperties.kt` KDoc says "TTL enforcement deferred to future migration" — this is now FALSE
+   - Update to reflect current reality: TTL implemented via `User.requiresMfa()` + V10 migration
+
+3. **🔴 New Gap 3 — Comprehensive Test Coverage** (Reliability — HIGH):
+   - Event Sourcing pipeline (EventService, TokenEventRecorder, OutboxPoller) — ZERO tests
+   - LoginHandler (CQRS command handler) — no unit tests (only integration)
+   - AdminSessionController — untested
+   - CaptchaVerifier / AltchaCaptchaVerifier — untested
+   - IdempotencyFilter — untested
+   - MFA Recovery Code flow — untested
+   - LoginRateLimitFilter — untested
+   - Password expiry on login — untested
 
 ## Scope
 
-- **Gap 1: Trusted Device TTL enforcement** — Fix mapper bridge (CRITICAL), add TTL check to `User.requiresMfa()` with `ttlDays` parameter, set `trustedDeviceSetAt = Instant.now()` on MFA verify, clear device trust on password change. Leverage existing V10 migration and entity fields. ~7 files modified.
-- **Gap 2: TokenStorePersistenceAdapter fix** — Replace `return 0` with `refreshTokenRepository.revokeAllByUserId(userId)`. ~3 lines changed, 1 file.
-- **Gap 3: Trusted device TTL tests** — Extend `UserTest` with TTL expiry scenarios. Extend `MfaLoginFlowIntegrationTest` with TTL-aware trusted device test. Add adapter fix test.
+- **Gap 1: Legacy path TTL fix** — Align `AuthService.login()` to use `User.requiresMfa()` for trusted device TTL enforcement. Add `@Deprecated` annotation with migration note. ~1 file modified, ~10 lines changed.
+- **Gap 2: Documentation update** — Fix stale KDoc in `SecurityProperties.kt`. ~1 file, ~3 lines.
+- **Gap 3: Test coverage expansion** — Create ~10 new test files covering all untested areas. ~10 new files, ~2000+ lines of test code.
 
-**Total**: 8 files modified, 0 new files, ~4h effort.
+**Total**: 2 production files modified, ~10 new test files, 0 new production files. ~4-5 developer-days effort.
 
 ## Capabilities
 
 ### New Capabilities
-- `trusted-device-ttl-enforcement`: `User.requiresMfa()` checks `trustedDeviceSetAt + ttlDays` — devices expire after configured period (default 30 days). Activates existing `SecurityProperties.mfa.trustedDeviceTtlDays` config.
-- `trusted-device-mapper-fix`: `UserEntityMapper` maps `trustedDeviceSetAt` in both directions — fixes BROKEN mapper bridge that caused field to always be `null` in domain model.
-- `trusted-device-clear-on-password-change`: Password change clears `trustedDeviceHash` and `trustedDeviceSetAt` — security best practice (password change invalidates device trust).
-- `token-store-adapter-fix`: `TokenStorePersistenceAdapter.revokeAllForUser()` properly delegates to repository — hexagonal port/adapter consistency restored.
+- `legacy-login-ttl-alignment`: `AuthService.login()` aligns with CQRS `LoginHandler` for trusted device TTL enforcement — eliminates security bypass on legacy path
+- `comprehensive-test-suite`: 10+ new test files covering event sourcing, CQRS commands, admin endpoints, CAPTCHA, idempotency, MFA recovery codes, rate limiting, password expiry
+
+### Changed Capabilities
+- `security-properties-documentation`: Updated KDoc reflects current TTL enforcement reality (no longer "deferred")
 
 ### Unchanged Capabilities (REUSE — Fully Implemented)
 - `mfa-otp-sms-email` — OtpService + MfaService (FR-001) ✅
 - `mfa-totp-authenticator` — TotpService + AES-256-GCM (FR-002) ✅
 - `mfa-settings-management` — MfaService.updateSettings() (FR-003) ✅
 - `captcha-integration` — CaptchaVerifier + AltchaCaptchaVerifier (FR-004) ✅
-- `trusted-device-persistence` — MfaService saves trustedDeviceHash (FR-005) ✅ (TTL is the gap)
+- `trusted-device-ttl` — User.requiresMfa(hash, ttlDays) (FR-005) ✅ (CQRS path fully enforced)
 - `sso-oauth2-login` — SsoAdapter + OAuth2TokenExchanger config-driven (FR-006) ✅
-- `sso-jit-provisioning` — SsoAdapter.handleCallback() + KafkaEventPublisher (FR-007) ✅
+- `sso-jit-provisioning` — SsoAdapter.handleCallback() + KafkaEventPublisher + EventService (FR-007) ✅
 - `sso-identity-linking` — SsoAdapter.linkIdentity/unlinkIdentity (FR-008) ✅
 - `jwt-rs256-signing` — JwtService dual-key RS256+HMAC (FR-009) ✅
 - `jwks-endpoint` — TokenController.jwks() (FR-010) ✅
 - `token-introspection` — TokenController.introspect() RFC 7662 (FR-011) ✅
-- `force-logout` — AdminSessionController + RevokeSessionsHandler + AuthService.revokeAllSessions() (FR-012) ✅
+- `force-logout` — AdminSessionController + RevokeSessionsHandler (FR-012) ✅
 - `password-policy-passay` — PasswordPolicyService + Passay + cache (FR-013) ✅
 - `password-history` — PasswordPolicyService.checkPasswordHistory() (FR-014) ✅
 - `mfa-verify-idempotency` — OtpService Redis DEL + IdempotencyFilter (FR-015) ✅
@@ -77,25 +91,30 @@ Auth-service has reached ~95% implementation maturity across all 17 FRs. Code re
 
 ### Backend (auth-service)
 
-**MODIFY** (8 existing files):
-- `User.kt` — add TTL check in `requiresMfa()` with `ttlDays` parameter (~8 lines)
-- `UserEntityMapper.kt` — map `trustedDeviceSetAt` in both `toDomain()` and `toEntity()` (~2 lines)
-- `UserPersistenceAdapter.kt` — map `trustedDeviceSetAt` in domain model construction (~1 line)
-- `MfaService.kt` — set `trustedDeviceSetAt = Instant.now()` on device trust save (~1 line)
-- `LoginHandler.kt` — pass `securityProperties.mfa.trustedDeviceTtlDays` to `requiresMfa()` (~2 lines)
-- `PasswordPolicyService.kt` — clear `trustedDeviceHash` + `trustedDeviceSetAt` on password change (~4 lines)
-- `TokenStorePersistenceAdapter.kt` — fix `revokeAllForUser()` to delegate to repository (~2 lines)
-- Test files — extend UserTest + MfaLoginFlowIntegrationTest (~60 lines total)
+**MODIFY** (2 existing production files):
+- `AuthService.kt` — Align legacy login path to use `User.requiresMfa()` with TTL. Add `@Deprecated` annotation on `login()` method. (~10 lines)
+- `SecurityProperties.kt` — Update stale KDoc on trusted device TTL. (~3 lines)
 
-**NO NEW FILES** — V10 migration and entity column already exist in codebase.
+**NEW** (~10 test files):
+- `EventServiceTest.kt` — Event envelope creation, event store + outbox recording
+- `TokenEventRecorderTest.kt` — Token issuance and revocation event recording
+- `OutboxPollerTest.kt` — Batch processing, retry logic, Kafka publish, edge cases
+- `LoginHandlerTest.kt` — CQRS login command: MFA checkpoint, TTL, password expiry, session policy
+- `AdminSessionControllerTest.kt` — Admin force logout, list sessions, session stats
+- `CaptchaVerifierTest.kt` — CAPTCHA chain verification, noop provider, ALTCHA PoW
+- `IdempotencyFilterTest.kt` — Redis key management, TTL 24h, duplicate detection
+- `MfaRecoveryCodeFlowTest.kt` — Generate, verify, single-use, count endpoints
+- `LoginRateLimitFilterTest.kt` — IP/username/device rate limiting
+- `PasswordExpiryLoginTest.kt` — Login with expired password → force change
+
+**NO NEW PRODUCTION FILES** — all code exists, this change focuses on validation and hardening.
 
 ### Database
-- V10 migration already applied — `trusted_device_set_at` column exists on `users` table ✅
+- No changes — all migrations (V1-V15) already applied ✅
 
 ### External Systems
-- **No changes** — same Redis, OAuth2, PostgreSQL, Kafka integrations
+- **No changes** — same Redis, Kafka, OAuth2, PostgreSQL integrations
 
 ### Cross-Feature Coordination
-- `LoginHandler.kt` — MODIFY (pass ttlDays param). No conflict with other features.
-- `PasswordPolicyService.kt` — MODIFY (clear device trust). No overlap with archived features.
-- Prior features (`anonymous-login-optimization`, `erp-iam-system`, `api-response-i18n-standard`) — ✅ ALL ARCHIVED, no conflicts.
+- `AuthService.kt` — MODIFY (legacy path fix). No conflict with active features.
+- Prior features (`anonymous-login-optimization`, `api-response-i18n-standard`, `erp-iam-system`, `jwt_token_issuance`) — ALL ARCHIVED, no conflicts.

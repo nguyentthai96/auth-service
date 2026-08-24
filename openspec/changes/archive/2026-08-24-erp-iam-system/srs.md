@@ -1,16 +1,17 @@
 # SRS: erp-iam-system
 
-_Generated: 2026-08-24_
-_Profile: Non-Financial | N/A (no factory) | NEWBUILD_
+_Generated: 2025-07-15_
+_Profile: Non-Financial | N/A (no factory) | EXTEND_
+_Previous Version: 2026-08-24 (archived, NEWBUILD) — [CHANGED] reclassified to EXTEND_
 
 ---
 
 ## 1. System Context
 
-- **Feature Name**: ERP IAM System
+- **Feature Name**: ERP IAM System Enhancement
 - **Domain**: IAM (Identity & Access Management), System Administration, Account Management
 - **Flow**: Non-Financial
-- **Services**: auth-service (existing, EXTEND), account-service (NEWBUILD + EXTEND), system-admin-service (NEWBUILD + EXTEND)
+- **Services**: auth-service (EXTEND), account-service (EXTEND), system-admin-service (EXTEND)
 - **Source**: URD (`openspec/research/erp-iam-system/business_analysis.md`)
 
 ---
@@ -32,257 +33,328 @@ _Profile: Non-Financial | N/A (no factory) | NEWBUILD_
 
 ### 3.1 Authentication & Security (auth-service)
 
-#### FR-001: Quản lý Multi-Factor Authentication [URD]
+#### FR-001: Quản lý Multi-Factor Authentication [URD] [EXTEND]
 - **Actor**: End User
 - **Precondition**: User đã đăng nhập hoặc đang trong MFA setup flow.
 - **Action**: Hệ thống hỗ trợ enable/disable MFA per user với phương thức OTP (SMS, Email), TOTP (app-based), CAPTCHA.
 - **Validation Rules**:
   - OTP expires sau 5 phút, tối đa 3 lần sai → lock 30 phút.
   - TOTP window ±1 step (30s).
-  - Recovery codes single-use, 10 codes generated on MFA setup.
+  - Recovery codes: generate 10 single-use codes on MFA setup, regenerate endpoint.
 - **Error Codes**: `AUTH_011` (MFA code invalid), `AUTH_012` (MFA expired), `AUTH_013` (max attempts), `AUTH_019` (rate limited).
 - **Existing Code**: `MfaService.kt`, `TotpService.kt`, `OtpService.kt`, `MfaController.kt`, `MfaRateLimitService.kt`.
-- **Classification**: EXTEND — add recovery codes UI flow, MFA method management.
+- **Enhancement**: Add recovery codes management (generate, store hashed, verify, regenerate).
+- **API Endpoints**:
+  - `POST /api/auth/mfa/recovery-codes` — Generate recovery codes
+  - `POST /api/auth/mfa/recovery-codes/verify` — Verify recovery code
+  - `POST /api/auth/mfa/recovery-codes/regenerate` — Regenerate all codes
 
-#### FR-002: Progressive MFA Login Flow [URD]
+#### FR-002: Progressive MFA Login Flow [URD] [EXTEND]
 - **Actor**: End User
 - **Precondition**: MFA enabled for user.
-- **Action**: Progressive authentication: password verify → partial JWT (scope: `/verify-2fa` only) → MFA verify → full JWT.
+- **Action**: Progressive auth: password verify → partial JWT (scope: `/verify-2fa` only) → MFA verify → full JWT.
 - **Validation Rules**:
-  - Partial token TTL = 5 phút.
-  - Trusted device skip MFA (30 days TTL).
-  - Device fingerprint tracked per login.
-- **Error Codes**: `AUTH_001` (invalid credentials), `AUTH_002` (locked), `AUTH_003` (token expired).
-- **Existing Code**: `LoginHandler.kt`, `AuthService.kt`, `AuthController.kt`, `CqrsAuthController.kt`.
-- **Classification**: EXTEND — enhance trusted device flow.
+  - Partial token TTL = 5 minutes.
+  - Trusted device → skip MFA (integrate with account-service device management).
+- **Existing Code**: `LoginHandler.kt`, `AuthService.kt`, `SessionPromotionService.kt`.
+- **Enhancement**: Integrate trusted device check via REST call to account-service.
+- **API Endpoints**:
+  - `POST /api/auth/login` — Password verify, returns partial JWT if MFA enabled
+  - `POST /api/auth/verify-2fa` — MFA verify, returns full JWT
 
-#### FR-003: SSO Integration [URD]
+#### FR-003: SSO/OIDC Integration [URD] [EXTEND]
 - **Actor**: End User
-- **Precondition**: Domain has SSO provider configured.
-- **Action**: OAuth2/OIDC login via external IdP (Google, Microsoft, Keycloak) với auto-provision user nếu domain config cho phép.
+- **Precondition**: SSO provider configured for domain.
+- **Action**: Support OIDC authorization code flow, token exchange, identity linking/unlinking, auto-provision user profile on first SSO login.
 - **Validation Rules**:
-  - SSO callback verify token.
-  - Auto-link external account to existing user (email match).
-  - Keycloak optional downstream delegation.
+  - SSO token validated via provider's JWKS endpoint.
+  - Identity conflict detection (email already exists).
+  - Cannot unlink last identity.
 - **Error Codes**: `AUTH_014` (SSO token invalid), `AUTH_015` (not provisioned), `AUTH_016` (identity conflict).
 - **Existing Code**: `SsoAdapter.kt`, `SsoController.kt`, `OAuth2TokenExchanger.kt`, `HttpSsoGateway.kt`.
-- **Classification**: EXTEND — enhance auto-provision with Kafka event publishing.
+- **Enhancement**: Publish `SsoProvisionedEvent` to Kafka for account-service profile auto-creation.
+- **API Endpoints**:
+  - `GET /api/auth/sso/authorize/{provider}` — Initiate SSO flow
+  - `POST /api/auth/sso/callback` — SSO callback, token exchange
+  - `POST /api/auth/sso/link` — Link SSO identity
+  - `DELETE /api/auth/sso/unlink/{provider}` — Unlink SSO identity
 
-#### FR-004: Password Policy [URD]
-- **Actor**: System Administrator, Domain Admin
-- **Action**: Cấu hình password rules per domain: min length, uppercase, lowercase, digit, special char, max age (days), history count.
-- **Validation Rules**:
-  - Không reuse N passwords gần nhất (configurable per domain).
-  - Force change khi expired (grace login redirect to change-password).
-- **Error Codes**: `AUTH_017` (policy violation), `AUTH_018` (expired).
+#### FR-004: Password Policy [URD] [REUSE]
+- **Actor**: Domain Admin
+- **Action**: Configure password policy per domain (min length, complexity, history, expiry).
 - **Existing Code**: `PasswordPolicyService.kt`, `PasswordPolicyEntity.kt`, `PasswordHistoryEntity.kt`.
-- **Classification**: Existing — minor config enhancements only.
+- **Classification**: REUSE — no changes needed, already fully implemented.
+- **Error Codes**: `AUTH_017` (policy violation), `AUTH_018` (password expired).
+
+#### FR-008: Session Management Enhancement [URD] [EXTEND]
+- **Actor**: End User, System Administrator
+- **Precondition**: User authenticated.
+- **Action**: Track active sessions, configurable max concurrent sessions per user, terminate specific session.
+- **Validation Rules**:
+  - Auto-expire session on inactivity (configurable TTL).
+  - Max concurrent sessions from `SessionPolicyService` config.
+  - Oldest session terminated when exceeding max.
+- **Existing Code**: `LoginSessionService.kt`, `SessionPolicyService.kt`, `SessionController.kt`, `AdminSessionController.kt`, `LoginSessionEntity.kt`.
+- **Enhancement**: Enforce concurrent session limit, provide active session list with device info.
+- **API Endpoints**:
+  - `GET /api/auth/sessions` — List user's active sessions
+  - `DELETE /api/auth/sessions/{sessionId}` — Terminate specific session
+  - `GET /api/admin/sessions` — Admin list all sessions (paginated)
+  - `DELETE /api/admin/sessions/{userId}` — Admin terminate user sessions
+
+#### FR-009: Account Lifecycle (GDPR) [URD] [EXTEND]
+- **Actor**: End User
+- **Precondition**: User authenticated.
+- **Action**: Deactivate account, request deletion (GDPR), export personal data.
+- **Validation Rules**:
+  - Deletion request grace period (configurable, default 30 days).
+  - Export format: JSON.
+  - Immutable audit trail for all lifecycle actions.
+- **Existing Code**: `AccountLifecycleService.kt`, `AccountLifecycleController.kt`, `AccountDeletionRequestEntity.kt`, `AccountDataExportEntity.kt`.
+- **Enhancement**: Publish `AccountDeactivatedEvent` cross-service event, enhanced data export with auth data aggregation.
+- **API Endpoints**:
+  - `POST /api/auth/account/deactivate` — Deactivate account
+  - `POST /api/auth/account/deletion-request` — Request GDPR deletion
+  - `GET /api/auth/account/export` — Export personal data (JSON)
+
+#### FR-021: Inter-service Authentication [ENRICHED] [EXTEND]
+- **Actor**: System
+- **Action**: Authenticate inter-service communication via service-level JWT.
+- **Validation Rules**:
+  - Internal endpoints path prefix: `/api/internal/`.
+  - Service JWT contains `service_name`, `scope: INTERNAL`.
+  - Shared secret for JWT signing (Phase 1).
+- **Existing Code**: `ServiceTokenService.kt`.
+- **Enhancement**: Add `ServiceAuthFilter.kt`, error codes AUTH_050–AUTH_052, internal endpoint security config.
+- **Error Codes**: ⚠️ Originally planned AUTH_050–AUTH_052 but range consumed by Event Sourcing. Currently handled via Spring Security 401/403 without dedicated error codes. If dedicated codes needed, allocate AUTH_060+ range.
+- **API Endpoints**:
+  - `POST /api/internal/auth/service-token` — Generate service JWT
+  - Internal endpoints prefixed with `/api/internal/`
+
+#### FR-019: Timeout Handling [ENRICHED] [EXTEND]
+- **Actor**: System
+- **Action**: Configurable timeout for all external API calls with circuit breaker.
+- **Validation Rules**:
+  - Default timeout 10s.
+  - Circuit breaker: 5 failures → open for 30s → half-open (1 attempt) → close.
+- **Existing Code**: `HttpClientConfig.kt`, `HttpSsoGateway.kt`, `HttpCaptchaGateway.kt`.
+- **Enhancement**: Add Resilience4j circuit breaker annotations, configurable timeout properties.
+
+#### FR-020: Retry & Kafka Event Migration [ENRICHED] [EXTEND]
+- **Actor**: System
+- **Action**: Retry mechanism for Kafka event publishing and external API calls with exponential backoff.
+- **Validation Rules**:
+  - Max 3 retries, backoff multiplier = 2, initial delay = 1s.
+  - Dead-letter queue for Kafka (`.DLT` topic suffix).
+- **Existing Code**: `SpringEventPublisher.kt`, `PermissionChangedConsumer.kt`, `EventPublisher.kt` (port).
+- **Enhancement**: Create `KafkaEventPublisher.kt` implementing `EventPublisher` port, add retry with backoff, DLQ config.
+- **Kafka Topics**:
+  - `iam.user.registered` — auth → account-service
+  - `iam.user.sso_provisioned` — auth → account-service
+  - `iam.permission.changed` — auth → system-admin
+  - `acct.lifecycle.deactivated` — account → auth
+  - `system.audit.events` — system-admin → all
 
 ### 3.2 Account Management (account-service)
 
-#### FR-005: Quản lý User Profile [URD]
+#### FR-005: Profile Management [URD] [EXTEND]
 - **Actor**: End User
-- **Precondition**: User authenticated.
-- **Action**: CRUD thông tin cá nhân: display name, first/last name, DOB, address, timezone, locale, avatar URL.
+- **Precondition**: User registered.
+- **Action**: View/update profile (fullName, phone, avatar, contacts), email/phone verification flow.
 - **Validation Rules**:
-  - Đổi email/phone cần verification flow (OTP to new email/phone).
-  - Avatar upload via separate file service (URL reference only).
-  - Profile tách biệt khỏi auth data — separate DB.
-- **Error Codes**: `ACCT_001` (profile not found), `ACCT_002` (validation failed), `ACCT_003` (verification required).
-- **Existing Code**: `ProfileKafkaListener.kt` (listener only — no CRUD).
-- **Classification**: NEWBUILD — full CRUD service + controller.
+  - Email uniqueness per domain.
+  - Phone format validation (E.164).
+  - Avatar max 5MB, formats: jpg/png/webp.
+- **Existing Code**: `ProfileService.kt`, `ProfileController.kt`, `UserProfileEntity.kt`, `UserContactEntity.kt`, `ProfileDtos.kt`.
+- **Enhancement**: Add verification flow (OTP via auth-service), avatar upload, profile completeness score.
+- **Error Codes**: `ACCT_001` (profile not found), `ACCT_002` (duplicate email), `ACCT_003` (invalid format).
+- **API Endpoints**:
+  - `GET /api/account/profile` — Get current user profile
+  - `PUT /api/account/profile` — Update profile
+  - `POST /api/account/profile/avatar` — Upload avatar
+  - `POST /api/account/profile/verify-email` — Initiate email verification
+  - `POST /api/account/profile/verify-phone` — Initiate phone verification
 
-#### FR-006: Quản lý Preferences & Settings [URD]
+#### FR-006: User Preferences [URD] [EXTEND]
 - **Actor**: End User
-- **Action**: Lưu cài đặt UI, notification, privacy preferences dưới dạng key-value grouped by category.
+- **Action**: Manage key-value preferences grouped by category (notification, display, language).
 - **Validation Rules**:
-  - Category format: alphanumeric + underscore, max 50 chars.
-  - Key format: alphanumeric + dot notation, max 100 chars.
-  - Merge-update semantics (PATCH = partial update, không overwrite unmentioned keys).
-- **Error Codes**: `ACCT_004` (invalid category/key format).
-- **Existing Code**: NOT DETECTED.
-- **Classification**: NEWBUILD.
+  - Merge-update semantics (PATCH behavior).
+  - Category-based grouping.
+- **Existing Code**: `PreferenceService.kt`, `PreferenceController.kt`, `UserPreferenceEntity.kt`.
+- **Enhancement**: Add category-based query, bulk merge-update.
+- **Error Codes**: `ACCT_004` (invalid preference key).
+- **API Endpoints**:
+  - `GET /api/account/preferences` — Get all preferences
+  - `GET /api/account/preferences/{category}` — Get by category
+  - `PATCH /api/account/preferences` — Merge-update preferences
 
-#### FR-007: Quản lý Device [URD]
+#### FR-007: Device Management [URD] [EXTEND]
 - **Actor**: End User
-- **Action**: Track thiết bị đăng nhập, trust device (skip MFA 30 days), remote logout single device.
+- **Action**: Track registered devices, trust/untrust, remote logout, integrate with MFA skip.
 - **Validation Rules**:
   - Device fingerprint unique per user.
-  - Trusted device TTL = 30 days (configurable).
-  - Remote logout → terminate session + revoke refresh token.
-  - Max trusted devices per user = 5 (configurable).
-- **Error Codes**: `ACCT_005` (device not found), `ACCT_006` (max devices reached).
-- **Existing Code**: NOT DETECTED.
-- **Classification**: NEWBUILD.
+  - Max 5 trusted devices per user.
+  - Trusted device TTL = 30 days.
+- **Existing Code**: `DeviceService.kt`, `DeviceController.kt`, `UserDeviceEntity.kt`, `DeviceDtos.kt`.
+- **Enhancement**: Add trusted device management, TTL enforcement, integration API for auth-service MFA skip.
+- **Error Codes**: `ACCT_005` (device not found), `ACCT_006` (max devices), `ACCT_007` (device already trusted).
+- **API Endpoints**:
+  - `GET /api/account/devices` — List user devices
+  - `POST /api/account/devices/trust` — Trust device (with fingerprint)
+  - `DELETE /api/account/devices/{deviceId}/trust` — Untrust device
+  - `DELETE /api/account/devices/{deviceId}` — Remove device
+  - `GET /api/internal/devices/{userId}/trusted` — Internal: check if device is trusted
 
-#### FR-008: Quản lý Session Nâng Cao [URD]
-- **Actor**: End User, System Administrator
-- **Action**: Track active sessions, cấu hình max concurrent sessions per user, terminate specific session.
-- **Validation Rules**:
-  - Auto-expire session khi inactive (configurable TTL).
-  - Oldest session terminated khi vượt max concurrent.
-  - Admin có thể terminate any user session.
-- **Error Codes**: `AUTH_021` (session limit exceeded).
-- **Existing Code**: `LoginSessionService.kt`, `SessionPolicyService.kt`, `SessionController.kt`, `AdminSessionController.kt`.
-- **Classification**: Existing — auth-service foundation complete.
-
-#### FR-009: Account Lifecycle (GDPR) [URD]
-- **Actor**: End User
-- **Action**: Deactivate account, request deletion (GDPR right to be forgotten), export personal data.
-- **Validation Rules**:
-  - Deletion request grace period = 30 days (configurable).
-  - Export format = JSON.
-  - Immutable audit trail for lifecycle actions.
-  - Deactivation → terminate all sessions + revoke tokens.
-- **Error Codes**: `ACCT_007` (already deactivated), `ACCT_008` (deletion pending).
-- **Existing Code**: `AccountLifecycleService.kt`, `AccountLifecycleController.kt` (auth-service).
-- **Classification**: EXTEND — enhance GDPR data export, add cross-service event for account deactivation.
+#### FR-017: Idempotency (account-service) [ENRICHED] [REUSE]
+- **Actor**: System
+- **Action**: Replicate `IdempotencyFilter.kt` pattern from auth-service.
+- **Existing Code**: `IdempotencyFilter.kt` (auth-service) — pattern to replicate.
+- **Enhancement**: Copy filter, configure for account-service POST endpoints.
 
 ### 3.3 System Administration (system-admin-service)
 
-#### FR-010: Phân Quyền Menu Động [URD]
+#### FR-010: Dynamic Menu Permission [URD] [EXTEND]
 - **Actor**: System Administrator
-- **Action**: Dynamic menu tree (types: DIRECTORY, MENU, BUTTON, API) với role-based permission + user override. Frontend nhận filtered menu tree per user.
+- **Action**: Manage dynamic menu tree (DIRECTORY, MENU, BUTTON, API types) with role-based permission + user override.
 - **Validation Rules**:
-  - User override > role permission (user can be granted/denied specific menu items regardless of role).
-  - BUTTON type invisible in navigation (visible only as action within MENU).
-  - Cache Redis TTL = 5 phút.
-  - Circular reference detection (tree must be acyclic).
+  - User override > role permission.
+  - BUTTON type invisible in navigation, carries `permission_code`.
+  - Redis cache TTL 5 minutes.
+  - Circular reference detection (via `TreeBuilder.detectCycle()`).
   - Menu code unique per domain.
-  - Max tree depth = 10 levels.
-- **Error Codes**: `SYS_001` (menu not found), `SYS_002` (circular reference), `SYS_003` (duplicate code).
-- **Existing Code**: `MenuPermissionService.kt`, `MenuEntities.kt` (4 entities), `MenuPermissionCacheAdapter.kt`, `MenuController.kt` (brainstorm confirmed).
-- **Classification**: EXTEND — add circular ref detection, validation enhancements.
+  - Max depth = 10 levels.
+- **Existing Code**: `MenuPermissionService.kt`, `TreeEntity.kt`, `TreeBuilder.kt`.
+- **Enhancement**: Add button-level permission, role-menu assignment CRUD, user override table, Kafka-driven cache invalidation.
+- **Error Codes**: `SYS_001` (menu not found), `SYS_002` (circular reference), `SYS_003` (max depth exceeded).
+- **API Endpoints**:
+  - `GET /api/admin/menus/tree` — Get full menu tree
+  - `GET /api/admin/menus/user-tree` — Get user-filtered menu tree (cached)
+  - `POST /api/admin/menus` — Create menu item
+  - `PUT /api/admin/menus/{id}` — Update menu item
+  - `DELETE /api/admin/menus/{id}` — Delete menu item (cascade children)
+  - `POST /api/admin/menus/{id}/permissions` — Assign role permissions
+  - `POST /api/admin/menus/{id}/user-override` — Set user override
 
-#### FR-011: Quản lý Cơ Cấu Tổ Chức [URD]
+#### FR-011: Organization Management [URD] [EXTEND]
 - **Actor**: System Administrator
-- **Action**: Department tree (recursive hierarchy, max 10 levels) + position management. Assign users to positions.
+- **Action**: Manage department tree (recursive hierarchy, max 10 levels), positions, user assignments.
 - **Validation Rules**:
-  - Department tree acyclic (DFS/BFS cycle detection before save).
+  - Department tree acyclic (validated by `TreeBuilder.detectCycle()`).
   - Position unique per department.
-  - Transfer user between departments preserves history.
-  - Max depth = 10 levels (configurable).
-- **Error Codes**: `SYS_004` (department not found), `SYS_005` (circular hierarchy), `SYS_006` (position duplicate).
-- **Existing Code**: NOT DETECTED.
-- **Classification**: NEWBUILD.
+  - User transfer between departments with audit trail.
+- **Existing Code**: `OrganizationService.kt`, `PositionService.kt`, `DepartmentEntity.kt`, `PositionEntity.kt`, `UserPositionEntity.kt`, `DepartmentController.kt`, `PositionController.kt`.
+- **Enhancement**: Add user transfer API, org chart query (recursive CTE), department head assignment.
+- **Error Codes**: `SYS_004` (department not found), `SYS_005` (position not found), `SYS_006` (cyclic hierarchy).
+- **API Endpoints**:
+  - `GET /api/admin/departments/tree` — Get department tree
+  - `POST /api/admin/departments` — Create department
+  - `PUT /api/admin/departments/{id}` — Update department
+  - `DELETE /api/admin/departments/{id}` — Delete department
+  - `GET /api/admin/positions` — List positions (by department)
+  - `POST /api/admin/positions` — Create position
+  - `POST /api/admin/departments/{id}/transfer-user` — Transfer user between departments
+  - `GET /api/admin/org-chart` — Org chart (recursive CTE query)
 
-#### FR-012: Quản lý API Partner [URD]
+#### FR-012: API Partner Management [URD] [EXTEND]
 - **Actor**: System Administrator
 - **Action**: Partner onboarding, API key lifecycle (generate, rotate, revoke), rate limiting (Bucket4j + Redis), quota tracking.
 - **Validation Rules**:
-  - API key show-once (Stripe pattern): `ntt_pk_` (publishable) / `ntt_sk_` (secret) + SHA-256 hash.
-  - IP whitelist enforcement (optional per partner).
-  - Max keys per partner = 5 (configurable).
-  - Rate limit sync to Redis (Bucket4j ProxyManager).
-  - Key rotation: new key → old key grace period = 24h.
-- **Error Codes**: `SYS_007` (partner not found), `SYS_008` (key revoked), `SYS_009` (rate limit exceeded), `SYS_010` (IP not whitelisted).
-- **Existing Code**: `ApiKeyService.kt`, `ApiPartnerEntities.kt` (5 entities), `ApiPartnerController.kt`, `ApiUsageController.kt` (brainstorm confirmed).
-- **Classification**: EXTEND — add usage dashboard, IP whitelist enforcement.
+  - API key show-once (Stripe pattern): format `ntt_pk_`/`ntt_sk_` + SHA-256 hash.
+  - IP whitelist enforcement.
+  - Max keys per partner (configurable, default 5).
+  - Rate limit config persisted → pushed to Redis (Bucket4j ProxyManager).
+- **Existing Code**: `ApiPartnerService.kt`, `ApiUsageController.kt`.
+- **Enhancement**: Add Bucket4j rate limiting config CRUD, key lifecycle endpoints, IP whitelist, usage dashboard.
+- **Error Codes**: `SYS_007` (partner not found), `SYS_008` (key already revoked), `SYS_009` (rate limit config invalid), `SYS_010` (IP not whitelisted).
+- **API Endpoints**:
+  - `POST /api/admin/partners` — Onboard partner
+  - `POST /api/admin/partners/{id}/keys` — Generate API key (show-once)
+  - `POST /api/admin/partners/{id}/keys/{keyId}/rotate` — Rotate key
+  - `DELETE /api/admin/partners/{id}/keys/{keyId}` — Revoke key
+  - `PUT /api/admin/partners/{id}/rate-limit` — Configure rate limit
+  - `PUT /api/admin/partners/{id}/ip-whitelist` — Configure IP whitelist
+  - `GET /api/admin/partners/{id}/usage` — Usage dashboard
 
-#### FR-013: Dynamic Approval Workflow [URD]
+#### FR-013: Dynamic Approval Workflow [URD] [EXTEND]
 - **Actor**: System Administrator, Approver
-- **Action**: Define workflow (multi-step, conditional routing via JSONB DSL), submit entity for approval, approve/reject/delegate, auto-escalation on timeout.
+- **Action**: Define workflow (multi-step, conditional routing), submit for approval, approve/reject/delegate, auto-escalation.
 - **Validation Rules**:
-  - Workflow definition immutable after activation (versioned).
-  - State machine: PENDING → IN_PROGRESS → APPROVED | REJECTED | ESCALATED | CANCELLED.
+  - Workflow definition versioned + immutable.
+  - State machine: PENDING → IN_PROGRESS → APPROVED/REJECTED/ESCALATED/CANCELLED.
   - Guard conditions per transition: `canResubmit`, `canCancel`, `isEscalated`.
-  - Condition DSL reuses PBAC PolicyCondition pattern:
-    ```json
-    {"operator": "AND", "conditions": [{"field": "amount", "op": "GT", "value": 10000}]}
-    ```
-  - Auto-escalation timeout configurable per step (default 48h).
-  - Delegation: approver can delegate to another user (one level).
-- **Error Codes**: `SYS_011` (workflow not found), `SYS_012` (invalid transition), `SYS_013` (already processed), `SYS_014` (escalation timeout).
-- **Existing Code**: NOT DETECTED.
-- **Classification**: NEWBUILD.
+  - Condition DSL: PBAC PolicyCondition JSONB pattern (operators: AND, OR, GT, EQ, IN).
+  - Auto-escalation: configurable timeout per step, scheduler `WorkflowEscalationScheduler.kt`.
+- **Existing Code**: `WorkflowEngine.kt`, `WorkflowService.kt`, `WorkflowController.kt`, `WorkflowEntities.kt`, `WorkflowEscalationScheduler.kt`.
+- **Enhancement**: Add conditional routing with DSL, delegation support, explicit guard conditions.
+- **Error Codes**: `SYS_011` (workflow not found), `SYS_012` (invalid transition), `SYS_013` (step timeout), `SYS_014` (delegation failed).
+- **API Endpoints**:
+  - `POST /api/admin/workflows` — Create workflow definition
+  - `GET /api/admin/workflows/{id}` — Get workflow definition
+  - `POST /api/admin/workflows/submit` — Submit entity for approval
+  - `POST /api/admin/workflows/instances/{id}/approve` — Approve step
+  - `POST /api/admin/workflows/instances/{id}/reject` — Reject step
+  - `POST /api/admin/workflows/instances/{id}/delegate` — Delegate to another approver
+  - `GET /api/admin/workflows/instances` — List workflow instances (filterable)
 
-#### FR-014: Quản lý Cấu Hình Hệ Thống [URD]
+#### FR-014: System Configuration [URD] [EXTEND]
 - **Actor**: System Administrator
-- **Action**: System configs (STRING, JSON, NUMBER types) + feature flags per domain.
+- **Action**: Manage system configs (STRING, JSON, NUMBER types) and feature flags per domain.
 - **Validation Rules**:
-  - Config versioning (audit trail on changes).
-  - Feature flags: boolean, percentage rollout, user segment targeting.
-  - Config keys unique per domain.
-- **Error Codes**: `SYS_015` (config key not found), `SYS_016` (invalid config type).
-- **Existing Code**: `DomainConfigService.kt`, entities, history tracking (brainstorm confirmed).
-- **Classification**: EXTEND — add feature flags.
+  - Config versioning with history tracking.
+  - Config value type validation.
+  - Feature flags: boolean + percentage rollout + segment targeting.
+  - Audit trail on all config changes.
+- **Existing Code**: `DomainConfigService.kt`, `FeatureFlagService.kt`, `FeatureFlagEntity.kt`.
+- **Enhancement**: Add config versioning, type validation, enhanced feature flag targeting.
+- **Error Codes**: `SYS_015` (config not found), `SYS_016` (invalid config type).
+- **API Endpoints**:
+  - `GET /api/admin/config` — List configs (by domain)
+  - `PUT /api/admin/config/{key}` — Update config (versioned)
+  - `GET /api/admin/config/{key}/history` — Config change history
+  - `GET /api/admin/feature-flags` — List feature flags
+  - `PUT /api/admin/feature-flags/{id}` — Update feature flag
 
-#### FR-015: Audit Trail Toàn Diện [URD]
+#### FR-015: Audit Trail [URD] [EXTEND]
 - **Actor**: System
-- **Action**: Record all admin CRUD operations into immutable audit log with old_value/new_value JSONB diff.
+- **Action**: Record all admin operations (create/update/delete) to immutable audit log with old_value/new_value JSONB diff.
 - **Validation Rules**:
-  - No UPDATE/DELETE on audit_logs table (immutable — DB constraint).
-  - Sensitive data masking (password, API key, tokens).
-  - JSON diff format: `{"field": {"old": X, "new": Y}}`.
-  - Search by: action, entity_type, user_id, date range.
-  - Export: CSV, JSON formats.
-- **Error Codes**: `SYS_017` (audit log query failed).
-- **Existing Code**: `AuditLogService.kt` (auth-service — log only, no DB persist).
-- **Classification**: EXTEND (auth-service audit) + NEWBUILD (system-admin audit module).
+  - Database-level: NO UPDATE/DELETE on audit_logs table (DB rule/trigger).
+  - Sensitive data masking (password, API key → `***`).
+  - Search by actor, entity type, date range.
+  - Export: CSV/JSON format.
+- **Existing Code**: auth-service: `AuditLogService.kt`; system-admin-service: `AuditAspect.kt`, `AuditService.kt`, `AuditLogEntity.kt`, `AuditController.kt`.
+- **Enhancement**: Add immutability DB constraints, sensitive data masking, export endpoint.
+- **Error Codes**: `SYS_017` (audit log not found), `AUTH_053` (audit export failed).
+- **API Endpoints**:
+  - `GET /api/admin/audit-logs` — Search audit logs (paginated, filterable)
+  - `GET /api/admin/audit-logs/export` — Export audit logs (CSV/JSON)
 
-#### FR-016: Domain/Tenant Config [URD]
+#### FR-016: Domain/Tenant Configuration [URD] [EXTEND]
 - **Actor**: System Administrator
-- **Action**: Cấu hình nâng cao per domain: branding, login page config, session policy.
+- **Action**: Advanced per-domain config (branding, login page config, session policy).
 - **Validation Rules**:
-  - Tách biệt dữ liệu theo domain.
+  - Data isolation by domain.
   - Cache config with TTL.
-- **Error Codes**: Reuse `AUTH_005` (not found).
-- **Existing Code**: `DomainEntity.kt`, `DomainLookupService.kt`.
-- **Classification**: EXTEND.
+- **Existing Code**: `DomainEntity.kt` (rbac), `DomainLookupService.kt` (auth), `DomainConfigService.kt` (system-admin).
+- **Enhancement**: Add branding fields (logo_url, primary_color, login_page_config JSONB).
+- **API Endpoints**:
+  - `GET /api/admin/domains/{domainCode}/config` — Get domain config
+  - `PUT /api/admin/domains/{domainCode}/config` — Update domain config
+  - `PUT /api/admin/domains/{domainCode}/branding` — Update branding
 
-### 3.4 Infrastructure (Cross-service)
-
-#### FR-017: Idempotency cho Create/Update Operations [ENRICHED]
+#### FR-017: Idempotency (system-admin-service) [ENRICHED] [REUSE]
 - **Actor**: System
-- **Action**: Idempotency cho mọi API create/update via `X-Idempotency-Key` header.
-- **Validation Rules**:
-  - Duplicate request trả kết quả cached.
-  - Key TTL = 24h trong Redis.
-  - Key format: UUID v4.
-- **Error Codes**: None (transparent — returns cached response).
-- **Existing Code**: NOT DETECTED.
-- **Classification**: NEWBUILD — IdempotencyFilter + Redis store.
+- **Action**: Replicate `IdempotencyFilter.kt` pattern from auth-service.
+- **Enhancement**: Copy filter, configure for system-admin-service POST endpoints.
 
-#### FR-018: Transaction Logging Toàn Diện [ENRICHED]
-- **Actor**: System
-- **Action**: Log toàn bộ API request/response (structured JSON, correlation ID, sensitive field masking).
-- **Validation Rules**:
-  - Log rotation configured.
-  - Correlation ID via MDC (`X-Correlation-Id` header).
-  - Mask: password, token, API key, OTP.
-- **Existing Code**: `HttpLoggingFilter` (base-core `common-log`).
-- **Classification**: REUSE — configure + extend masking rules.
+### 3.4 Infrastructure (Cross-cutting)
 
-#### FR-019: Timeout Handling cho External API [ENRICHED]
+#### FR-018: Transaction Logging [ENRICHED] [REUSE]
 - **Actor**: System
-- **Action**: Configurable timeout cho external API calls (SSO, CAPTCHA) + circuit breaker.
-- **Validation Rules**:
-  - Default timeout = 10s (configurable per client).
-  - Circuit breaker: open after 5 consecutive failures, half-open after 30s.
-  - Fail-open pattern for non-critical calls (e.g., CAPTCHA degraded mode).
-- **Existing Code**: `HttpClientConfig.kt`, `MfaRateLimitService.kt` (fail-open pattern).
-- **Classification**: EXTEND.
-
-#### FR-020: Retry Mechanism cho Failed Calls [ENRICHED]
-- **Actor**: System
-- **Action**: Retry cho Kafka event publishing + external API calls (exponential backoff).
-- **Validation Rules**:
-  - Max retries = 3.
-  - Backoff multiplier = 2 (1s, 2s, 4s).
-  - Dead-letter queue cho Kafka (`.DLT` topic suffix).
-  - Idempotent consumers (dedup by event ID).
-- **Existing Code**: `SpringEventPublisher.kt` (stub), `PermissionChangedConsumer.kt`.
-- **Classification**: EXTEND.
-
-#### FR-021: Request Authentication & Encryption [ENRICHED]
-- **Actor**: System
-- **Action**: Inter-service communication security via service-level JWT.
-- **Validation Rules**:
-  - Internal endpoints: `/api/internal/**` require service JWT.
-  - Service JWT issued at startup from shared secret (Phase 1) or service account (Phase 4).
-  - E2EE already handled for client-facing by existing TinkCipherAlgorithmFactory.
-- **Existing Code**: `JwtService.kt` (can be extended for service tokens).
-- **Classification**: NEWBUILD — ServiceAuthFilter + service JWT generation.
+- **Action**: Log all API request/response with structured JSON, correlation ID tracing.
+- **Existing Code**: `HttpLoggingFilter` (base-core common-log) — already available via dependency.
+- **Classification**: REUSE — no changes needed.
 
 ---
 
@@ -296,202 +368,44 @@ _Profile: Non-Financial | N/A (no factory) | NEWBUILD_
 | Performance | Rate limit check | < 10ms |
 | Security | Password hashing | Argon2id |
 | Security | API key storage | SHA-256 hash |
-| Security | TOTP secret storage | AES-256 encrypted |
-| Security | Audit log | Immutable (no UPDATE/DELETE DB constraint) |
-| Caching | Strategy | Caffeine L1 (30s TTL) + Redis L2 (5-30min TTL) |
-| Caching | Hit ratio target | > 80% |
+| Security | TOTP secret | AES-256 encrypted |
+| Security | Audit log | Immutable (no UPDATE/DELETE) |
+| Caching | L1 (Caffeine) TTL | 30s |
+| Caching | L2 (Redis) TTL | 5-30 min |
+| Caching | Cache hit ratio | > 80% |
 | Architecture | Pattern | Clean Architecture (Hexagonal) |
-| Architecture | Services | 3 with separate PostgreSQL DB per service |
-| Messaging | Inter-service | Kafka async events |
-| Messaging | Fallback | Spring ApplicationEvent (Phase 1-2) |
+| Architecture | DB per service | Separate PostgreSQL |
+| Messaging | Event bus | Kafka (async state changes) |
+| Messaging | Fallback | Spring ApplicationEvent |
 | Data | ID generation | Snowflake 64-bit Long |
 | Data | Migrations | Flyway |
 | Scalability | Concurrent users per service | 1000+ |
-| Scalability | Horizontal scaling | Stateless services + Redis shared state |
 
 ---
 
-## 5. Data Entities
+## 5. External Dependencies
 
-### auth-service (Existing — EXTEND)
-- `UserEntity`, `UserIdentityEntity`, `DomainEntity`, `UserDomainEntity`
-- `GroupEntity`, `UserGroupEntity`, `DomainRoleEntity`, `GroupRoleEntity`
-- `DomainResourceEntity`, `RolePermissionEntity`, `PermissionEntity`, `ActionEntity`
-- `PolicyEntity`, `PolicyConditionEntity`
-- `LoginSessionEntity`, `PasswordPolicyEntity`, `PasswordHistoryEntity`
-- `AccountDeletionRequestEntity`, `AccountDataExportEntity`
-- `CipherKeySessionEntity`, `VaultAccessLogEntity`
-- `I18nMessageEntity`
-- [NEW] `ServiceTokenEntity` (inter-service JWT tracking)
-
-### account-service (NEWBUILD)
-- [NEW] `UserProfileEntity` — display name, first/last name, DOB, address, timezone, locale, avatar
-- [NEW] `UserContactEntity` — email, phone with verification status
-- [NEW] `UserPreferenceEntity` — category + key-value settings
-- [NEW] `UserDeviceEntity` — device fingerprint, trusted status, last used
-- [NEW] `ActiveSessionEntity` (Redis-backed) — session tracking
-- [EXISTING] `AccountDeletionRequestEntity`, `AccountDataExportEntity` (per brainstorm: lifecycle in account-service)
-
-### system-admin-service (NEWBUILD + EXTEND)
-- [EXISTING] `MenuItemEntity` — menu tree node (DIRECTORY, MENU, BUTTON, API types)
-- [EXISTING] `MenuPermissionEntity` — role → menu item permission
-- [EXISTING] `RoleMenuPermissionEntity` — role-based menu assignment
-- [EXISTING] `UserMenuOverrideEntity` — per-user menu override
-- [NEW] `DepartmentEntity` — organization tree node (parent_id, level, sort_order)
-- [NEW] `PositionEntity` — position within department
-- [NEW] `UserPositionEntity` — user ↔ position assignment
-- [EXISTING] `ApiPartnerEntity` — partner profile
-- [EXISTING] `ApiKeyEntity` — API key (SHA-256 hash, status, rate limit config)
-- [EXISTING] `SubscriptionPlanEntity` — partner subscription tier
-- [EXISTING] `ApiUsageLogEntity` — API usage tracking
-- [EXISTING] `ApiIpWhitelistEntity` — IP whitelist per partner
-- [NEW] `WorkflowDefinitionEntity` — workflow template (versioned, JSONB conditions)
-- [NEW] `WorkflowStepEntity` — step definition within workflow
-- [NEW] `WorkflowInstanceEntity` — active workflow instance (state machine)
-- [NEW] `WorkflowActionEntity` — approval/reject/delegate action log
-- [EXISTING] `DomainConfigEntity` — system config per domain
-- [EXISTING] `DomainConfigHistoryEntity` — config change history
-- [NEW] `FeatureFlagEntity` — feature flag per domain
-- [NEW] `AuditLogEntity` — immutable audit log (old_value_json, new_value_json)
+| System | Protocol | Purpose | Existing Code |
+|--------|----------|---------|---------------|
+| Redis | Spring Data Redis | Cache, state store, rate limiting | `RedisConfig.kt`, `AbstractTwoTierCache.kt` |
+| Kafka | Spring Kafka | Async inter-service events | `PermissionChangedConsumer.kt`, `EventPublisher.kt` |
+| PostgreSQL | JPA + Flyway | Persistence (separate DB/service) | `UserPersistenceAdapter.kt` |
+| Keycloak (optional) | OAuth2/OIDC | SSO delegation | `OAuth2TokenExchanger.kt`, `HttpSsoGateway.kt` |
+| CAPTCHA Provider | HTTP REST | Bot protection | `CaptchaClient.kt`, `HttpCaptchaGateway.kt` |
+| Google Tink + AWS KMS | Library | E2EE | `TinkCipherAlgorithmFactory.kt` |
 
 ---
 
-## 6. API Endpoints
+## 6. Glossary
 
-### auth-service (Existing + Extend)
-
-| Method | Path | Description | FR |
-|--------|------|------------|-----|
-| POST | `/api/auth/login` | Authenticate (partial JWT if MFA) | FR-002 |
-| POST | `/api/auth/verify-2fa` | Submit OTP/TOTP for full JWT | FR-001 |
-| POST | `/api/auth/register` | Register new user | FR-002 |
-| POST | `/api/auth/refresh` | Refresh token | FR-002 |
-| GET | `/api/auth/introspect` | Token introspection | FR-002 |
-| POST | `/api/auth/mfa/setup` | Setup MFA (TOTP/OTP) | FR-001 |
-| DELETE | `/api/auth/mfa/disable` | Disable MFA | FR-001 |
-| GET | `/api/auth/mfa/recovery-codes` | Generate/view recovery codes | FR-001 |
-| GET | `/api/auth/sso/authorize/{provider}` | Initiate SSO flow | FR-003 |
-| POST | `/api/auth/sso/callback` | SSO callback handler | FR-003 |
-| GET | `/api/auth/sessions` | List user sessions | FR-008 |
-| DELETE | `/api/auth/sessions/{id}` | Terminate specific session | FR-008 |
-| PUT | `/api/auth/password` | Change password | FR-004 |
-| POST | `/api/auth/lifecycle/deactivate` | Deactivate account | FR-009 |
-| POST | `/api/auth/lifecycle/delete` | Request account deletion | FR-009 |
-| GET | `/api/auth/lifecycle/export` | Export personal data | FR-009 |
-| GET | `/api/internal/users/{id}/roles` | [INTERNAL] User roles for system-admin | FR-021 |
-| POST | `/api/internal/service-token` | [INTERNAL] Issue service JWT | FR-021 |
-
-### account-service (NEWBUILD)
-
-| Method | Path | Description | FR |
-|--------|------|------------|-----|
-| GET | `/api/account/profile` | Get user profile | FR-005 |
-| PUT | `/api/account/profile` | Update profile | FR-005 |
-| POST | `/api/account/profile/verify-email` | Verify new email | FR-005 |
-| POST | `/api/account/profile/verify-phone` | Verify new phone | FR-005 |
-| GET | `/api/account/preferences` | Get all preferences | FR-006 |
-| GET | `/api/account/preferences/{category}` | Get preferences by category | FR-006 |
-| PATCH | `/api/account/preferences/{category}` | Update preferences (merge) | FR-006 |
-| GET | `/api/account/devices` | List devices | FR-007 |
-| POST | `/api/account/devices/{id}/trust` | Trust device | FR-007 |
-| DELETE | `/api/account/devices/{id}` | Remove device (remote logout) | FR-007 |
-| GET | `/api/account/sessions` | List active sessions | FR-008 |
-| DELETE | `/api/account/sessions/{id}` | Terminate session | FR-008 |
-
-### system-admin-service (NEWBUILD + EXTEND)
-
-| Method | Path | Description | FR |
-|--------|------|------------|-----|
-| GET | `/api/admin/menus/tree` | Full menu tree (admin) | FR-010 |
-| GET | `/api/admin/menus/user-tree` | User-filtered menu tree | FR-010 |
-| POST | `/api/admin/menus` | Create menu item | FR-010 |
-| PUT | `/api/admin/menus/{id}` | Update menu item | FR-010 |
-| DELETE | `/api/admin/menus/{id}` | Delete menu item | FR-010 |
-| POST | `/api/admin/menus/{id}/permissions` | Set menu permissions | FR-010 |
-| GET | `/api/admin/departments/tree` | Department tree | FR-011 |
-| POST | `/api/admin/departments` | Create department | FR-011 |
-| PUT | `/api/admin/departments/{id}` | Update department | FR-011 |
-| DELETE | `/api/admin/departments/{id}` | Delete department | FR-011 |
-| GET | `/api/admin/departments/{id}/positions` | List positions | FR-011 |
-| POST | `/api/admin/positions` | Create position | FR-011 |
-| PUT | `/api/admin/positions/{id}` | Update position | FR-011 |
-| POST | `/api/admin/positions/{id}/assign` | Assign user to position | FR-011 |
-| GET | `/api/admin/api-partners` | List partners | FR-012 |
-| POST | `/api/admin/api-partners` | Register partner | FR-012 |
-| PUT | `/api/admin/api-partners/{id}` | Update partner | FR-012 |
-| POST | `/api/admin/api-keys` | Generate API key | FR-012 |
-| DELETE | `/api/admin/api-keys/{id}` | Revoke API key | FR-012 |
-| POST | `/api/admin/api-keys/{id}/rotate` | Rotate API key | FR-012 |
-| GET | `/api/admin/api-usage` | API usage dashboard | FR-012 |
-| GET | `/api/admin/workflows` | List workflow definitions | FR-013 |
-| POST | `/api/admin/workflows` | Create workflow definition | FR-013 |
-| GET | `/api/admin/workflows/instances` | List workflow instances | FR-013 |
-| POST | `/api/admin/workflows/instances` | Submit for approval | FR-013 |
-| POST | `/api/admin/workflows/instances/{id}/approve` | Approve step | FR-013 |
-| POST | `/api/admin/workflows/instances/{id}/reject` | Reject step | FR-013 |
-| POST | `/api/admin/workflows/instances/{id}/delegate` | Delegate step | FR-013 |
-| GET | `/api/admin/configs` | List system configs | FR-014 |
-| PUT | `/api/admin/configs/{key}` | Update config | FR-014 |
-| GET | `/api/admin/feature-flags` | List feature flags | FR-014 |
-| PUT | `/api/admin/feature-flags/{key}` | Toggle feature flag | FR-014 |
-| GET | `/api/admin/audit-logs` | Search audit logs | FR-015 |
-| GET | `/api/admin/audit-logs/export` | Export audit logs | FR-015 |
-| GET | `/api/admin/domains/{id}/config` | Get domain config | FR-016 |
-| PUT | `/api/admin/domains/{id}/config` | Update domain config | FR-016 |
-
----
-
-## 7. Events (Kafka Topics)
-
-| Topic | Producer | Consumer | Payload |
-|-------|----------|----------|---------|
-| `iam.user.registered` | auth-service | account-service | `{userId, username, domainCode}` |
-| `iam.user.sso_provisioned` | auth-service | account-service | `{userId, provider, email, domainCode}` |
-| `iam.permission.changed` | system-admin-service | auth-service | `{userId?, domainId?}` |
-| `iam.audit.log` | all services | system-admin-service (optional) | `{action, userId, entityType, entityId, details}` |
-| `acct.lifecycle.deactivated` | account-service | auth-service | `{userId, reason}` |
-| `acct.lifecycle.deleted` | account-service | auth-service | `{userId}` |
-
----
-
-## 8. Dependencies
-
-| Dependency | Purpose | Status |
-|-----------|---------|--------|
-| Redis | Cache, state store, rate limiting, sessions, OTP | Active |
-| Kafka | Event streaming (inter-service) | compileOnly → implementation (Phase 4) |
-| PostgreSQL | Persistent storage (separate DB per service) | Active |
-| Keycloak | Optional SSO/OIDC delegation | Active (via SsoAdapter) |
-| CAPTCHA Provider | Bot protection | Active (via CaptchaClient) |
-| Google Tink + AWS KMS | E2EE | Active |
-| Bucket4j | Rate limiting (Gateway + Redis) | NEW dependency |
-
----
-
-## 9. FR Traceability
-
-| FR-ID | SRS Section | Status |
-|-------|------------|--------|
-| FR-001 | 3.1 | ✅ Covered |
-| FR-002 | 3.1 | ✅ Covered |
-| FR-003 | 3.1 | ✅ Covered |
-| FR-004 | 3.1 | ✅ Covered |
-| FR-005 | 3.2 | ✅ Covered |
-| FR-006 | 3.2 | ✅ Covered |
-| FR-007 | 3.2 | ✅ Covered |
-| FR-008 | 3.2 | ✅ Covered |
-| FR-009 | 3.2 | ✅ Covered |
-| FR-010 | 3.3 | ✅ Covered |
-| FR-011 | 3.3 | ✅ Covered |
-| FR-012 | 3.3 | ✅ Covered |
-| FR-013 | 3.3 | ✅ Covered |
-| FR-014 | 3.3 | ✅ Covered |
-| FR-015 | 3.3 | ✅ Covered |
-| FR-016 | 3.3 | ✅ Covered |
-| FR-017 | 3.4 | ✅ Covered |
-| FR-018 | 3.4 | ✅ Covered |
-| FR-019 | 3.4 | ✅ Covered |
-| FR-020 | 3.4 | ✅ Covered |
-| FR-021 | 3.4 | ✅ Covered |
-
-**Total: 21/21 FR covered.**
+| Term | Definition |
+|------|-----------|
+| Lean JWT | JWT containing only userId, tenantId, roleIds — permissions resolved at runtime |
+| Partial JWT | JWT issued after password verify but before MFA — limited scope |
+| Recovery Code | Single-use backup code for MFA when TOTP device unavailable |
+| Show-once | API key displayed only at creation — stored as SHA-256 hash |
+| Bucket4j | Token bucket rate limiting library for Java/Kotlin |
+| DLT | Dead Letter Topic — Kafka topic for failed events |
+| PolicyCondition DSL | JSONB-based condition expression format from PBAC module |
+| TreeEntity | Base entity for hierarchical data (menu, department) in system-admin-service |
+| AbstractTwoTierCache | Cache pattern: Caffeine L1 (in-process, 30s) + Redis L2 (distributed, 5-30min) |

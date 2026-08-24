@@ -1,12 +1,12 @@
 primary: erp-iam-system
-environment: java/kotlin
+environment: kotlin
 rules:
-  - base-core-plugin-architecture
-  - security-first
   - spring-boot
   - error-handling
   - testing
   - api-security
+  - base-core-plugin-architecture
+  - security-first
 skills:
   - wf_openspec
   - spring-boot

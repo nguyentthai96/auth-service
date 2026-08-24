@@ -1,9 +1,10 @@
 # Error Handling Pattern
 
-_Generated: 2026-08-05 (refreshed)_
+_Generated: 2025-07-15 (refreshed)_
 
-## Exception Handler
+## Exception Handlers (3 services)
 
+### auth-service
 - `AuthControllerAdvice` — `src/main/kotlin/com/ntt/authservice/shared/exception/GlobalExceptionHandler.kt`
   - extends: `BaseControllerAdvice` (from `com.ntt.basecore.domain.web.BaseControllerAdvice`)
   - Annotation: `@RestControllerAdvice`
@@ -11,16 +12,27 @@ _Generated: 2026-08-05 (refreshed)_
   - Priority chain: AuthException → BusinessException (base-core) → Throwable (fallback)
   - Bridge: AuthException → ProblemDetail with correct HTTP status (overrides base-core default 422)
 
+### account-service
+- `AccountControllerAdvice` — `account-service/src/main/kotlin/com/ntt/accountservice/shared/exception/AccountControllerAdvice.kt`
+  - extends: `BaseControllerAdvice` (from base-core)
+  - Pattern: Same RFC 7807 ProblemDetail pattern as auth-service
+
+### system-admin-service
+- `SysAdminControllerAdvice` — `system-admin-service/src/main/kotlin/com/ntt/sysadminservice/shared/exception/SysAdminControllerAdvice.kt`
+  - extends: `BaseControllerAdvice` (from base-core)
+  - Pattern: Same RFC 7807 ProblemDetail pattern as auth-service
+
 ## Error Code Format
 
-- Enum: `AuthErrorCode` — `src/main/kotlin/com/ntt/authservice/shared/exception/AuthErrorCode.kt`
-  - Implements: `ErrorCodeBase` from `com.ntt.basecore.exception.base.ErrorCodeBase`
-  - Pattern: `AUTH_XXX` (3-digit numeric, grouped by feature)
-  - Fields per enum: `errorCode`, `msgCode`, `description`, `httpStatus`
-  - Bridge: `toErrorCodeBase()` method for base-core compatibility
-  - I18n key format: `auth.<feature>_<detail>` (e.g., `auth.invalid_credentials`, `auth.mfa_code_invalid`)
+### auth-service — `AuthErrorCode`
+- File: `src/main/kotlin/com/ntt/authservice/shared/exception/AuthErrorCode.kt`
+- Implements: `ErrorCodeBase` from `com.ntt.basecore.exception.base.ErrorCodeBase` (via delegation)
+- Pattern: `AUTH_XXX` (3-digit numeric, grouped by feature)
+- Fields per enum: `errorCode`, `msgCode`, `description`, `httpStatus`
+- Bridge: `toErrorCodeBase()` method for base-core compatibility
+- I18n key format: `auth.<feature>_<detail>` (e.g., `auth.invalid_credentials`, `auth.mfa_code_invalid`)
 
-### Error Code Ranges
+#### Error Code Ranges (auth-service)
 
 | Range | Feature | Count |
 |-------|---------|-------|
@@ -29,7 +41,7 @@ _Generated: 2026-08-05 (refreshed)_
 | AUTH_030..039 | E2EE (cipher, replay, version, KMS) | 10 |
 | AUTH_040..044 | Anonymous Session | 5 |
 
-### Error Code Examples
+#### Key Error Codes (auth-service)
 
 | Code | Message Key | HTTP Status | Description |
 |------|------------|-------------|-------------|
@@ -39,22 +51,65 @@ _Generated: 2026-08-05 (refreshed)_
 | `AUTH_004` | `auth.permission_denied` | 403 FORBIDDEN | Insufficient permissions |
 | `AUTH_005` | `auth.resource_not_found` | 404 NOT_FOUND | Resource not found |
 | `AUTH_006` | `auth.duplicate_resource` | 409 CONFLICT | Resource already exists |
+| `AUTH_007` | `auth.captcha_required` | 428 PRECONDITION_REQUIRED | CAPTCHA verification required |
+| `AUTH_008` | `auth.captcha_failed` | 400 BAD_REQUEST | CAPTCHA verification failed |
 | `AUTH_011` | `auth.mfa_code_invalid` | 401 UNAUTHORIZED | Invalid MFA code |
 | `AUTH_012` | `auth.mfa_token_expired` | 401 UNAUTHORIZED | MFA session expired |
 | `AUTH_013` | `auth.mfa_max_attempts` | 403 FORBIDDEN | Max MFA attempts exceeded |
 | `AUTH_014` | `auth.sso_token_invalid` | 401 UNAUTHORIZED | SSO token exchange failed |
+| `AUTH_015` | `auth.sso_user_not_provisioned` | 403 FORBIDDEN | SSO user not provisioned |
 | `AUTH_017` | `auth.password_policy_violation` | 400 BAD_REQUEST | Password doesn't meet requirements |
 | `AUTH_019` | `auth.mfa_rate_limited` | 429 TOO_MANY_REQUESTS | MFA rate limit exceeded |
 | `AUTH_020` | `auth.rate_limited` | 429 TOO_MANY_REQUESTS | Login rate limit exceeded |
+| `AUTH_021` | `auth.session_limit_exceeded` | 409 CONFLICT | Session limit exceeded |
 | `AUTH_030` | `auth.e2ee_time_skew` | 400 BAD_REQUEST | Request timestamp out of tolerance |
 | `AUTH_040` | `auth.anonymous_session_expired` | 404 NOT_FOUND | Anonymous session expired |
 
-## Exception Class Hierarchy
+### account-service — `AccountErrorCode`
+- File: `account-service/src/main/kotlin/com/ntt/accountservice/shared/exception/AccountErrorCode.kt`
+- Implements: `ErrorCodeBase` from base-core (same delegation pattern)
+- Pattern: `ACCT_XXX` (3-digit numeric)
+
+| Code | Message Key | HTTP Status | Description |
+|------|------------|-------------|-------------|
+| `ACCT_001` | `account.profile_not_found` | 404 NOT_FOUND | User profile not found |
+| `ACCT_002` | `account.profile_already_exists` | 409 CONFLICT | User profile already exists |
+| `ACCT_003` | `account.contact_verification_required` | 428 PRECONDITION_REQUIRED | Contact change requires verification |
+| `ACCT_004` | `account.invalid_preference_format` | 400 BAD_REQUEST | Invalid preference format |
+| `ACCT_005` | `account.device_not_found` | 404 NOT_FOUND | Device not found |
+| `ACCT_006` | `account.max_devices_reached` | 429 TOO_MANY_REQUESTS | Maximum devices per user reached |
+| `ACCT_007` | `account.invalid_contact_type` | 400 BAD_REQUEST | Invalid contact type |
+| `ACCT_008` | `account.general_error` | 500 INTERNAL_SERVER_ERROR | General error |
+
+### system-admin-service — `SysAdminErrorCode`
+- File: `system-admin-service/src/main/kotlin/com/ntt/sysadminservice/shared/exception/SysAdminErrorCode.kt`
+- Implements: `ErrorCodeBase` from base-core (same delegation pattern)
+- Pattern: `SYS_XXX` (3-digit numeric)
+
+| Code | Message Key | HTTP Status | Description |
+|------|------------|-------------|-------------|
+| `SYS_001` | `sysadmin.general_error` | 500 INTERNAL_SERVER_ERROR | General system admin error |
+| `SYS_002` | `sysadmin.circular_reference` | 400 BAD_REQUEST | Circular reference in menu tree |
+| `SYS_003` | `sysadmin.permission_denied` | 403 FORBIDDEN | Insufficient permissions |
+| `SYS_004` | `sysadmin.not_found` | 404 NOT_FOUND | Resource not found |
+| `SYS_005` | `sysadmin.circular_hierarchy` | 400 BAD_REQUEST | Circular hierarchy in department tree |
+| `SYS_006` | `sysadmin.position_duplicate` | 409 CONFLICT | Position code already exists |
+| `SYS_007` | `sysadmin.partner_not_found` | 404 NOT_FOUND | API partner not found |
+| `SYS_008` | `sysadmin.api_key_expired` | 401 UNAUTHORIZED | API key expired |
+| `SYS_009` | `sysadmin.rate_limit_exceeded` | 429 TOO_MANY_REQUESTS | API rate limit exceeded |
+| `SYS_010` | `sysadmin.ip_not_whitelisted` | 403 FORBIDDEN | IP address not whitelisted |
+| `SYS_011` | `sysadmin.workflow_not_found` | 404 NOT_FOUND | Workflow not found |
+| `SYS_012` | `sysadmin.invalid_transition` | 400 BAD_REQUEST | Invalid workflow state transition |
+| `SYS_013` | `sysadmin.already_processed` | 409 CONFLICT | Workflow step already processed |
+| `SYS_014` | `sysadmin.escalation_timeout` | 408 REQUEST_TIMEOUT | Escalation timeout exceeded |
+| `SYS_015` | `sysadmin.config_not_found` | 404 NOT_FOUND | System config not found |
+
+## Exception Class Hierarchy (auth-service)
 
 ### Base Exception
 
 - `AuthException` — `src/main/kotlin/com/ntt/authservice/shared/exception/AuthExceptions.kt`
-  - Pattern: `open class AuthException(val errorCode: AuthErrorCode, message: String, cause: Throwable?)`
+  - Pattern: `open class AuthException(val authError: AuthErrorCode, message: String, cause: Throwable?)`
   - All auth exceptions extend this
 
 ### Core Auth Exceptions — `AuthExceptions.kt`
@@ -116,6 +171,24 @@ _Generated: 2026-08-05 (refreshed)_
 | `AnonymousPromotionConflictException` | AUTH_042 | 409 |
 | `AnonymousRateLimitedException` | AUTH_043 | 429 |
 | `AnonymousMaxRenewalsException` | AUTH_044 | 429 |
+
+## Exception Hierarchy (account-service)
+
+- `AccountException` — `account-service/src/main/kotlin/com/ntt/accountservice/shared/exception/AccountExceptions.kt`
+  - Base exception class for account-service
+
+## Exception Hierarchy (system-admin-service)
+
+- `SysAdminException` — `system-admin-service/src/main/kotlin/com/ntt/sysadminservice/shared/exception/SysAdminExceptions.kt`
+  - Base exception class for system-admin-service
+
+## Cross-Service Error Pattern Summary
+
+| Service | Error Code Prefix | Range | Exception Base | ControllerAdvice |
+|---------|-------------------|-------|---------------|-----------------|
+| auth-service | `AUTH_` | 001-044 | `AuthException` | `AuthControllerAdvice` (GlobalExceptionHandler.kt) |
+| account-service | `ACCT_` | 001-008 | `AccountException` | `AccountControllerAdvice` |
+| system-admin-service | `SYS_` | 001-015+ | `SysAdminException` | `SysAdminControllerAdvice` |
 
 ## NOT DETECTED
 
