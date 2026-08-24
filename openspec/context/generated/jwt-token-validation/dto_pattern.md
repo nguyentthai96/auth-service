@@ -1,100 +1,80 @@
 # DTO Pattern
 
-_Generated: 2026-08-26_
+_Generated: 2025-01-20_
 
 ## Request DTO
 
 - `IntrospectionRequest` — `src/main/kotlin/com/ntt/authservice/auth/adapter/in/web/dto/TokenDtos.kt`
   - annotations: `@field:NotBlank(message = "Token is required")`
   - fields: `token: String`
-
-- `LoginCommand` — `src/main/kotlin/com/ntt/authservice/auth/application/command/LoginCommand.kt`
-  - type: Command (CQRS pattern)
-  - fields: username, password, deviceInfo, ipAddress, etc.
-
-- `RegisterCommand` — `src/main/kotlin/com/ntt/authservice/auth/application/command/RegisterCommand.kt`
-  - type: Command
-
-- `RefreshTokenCommand` — `src/main/kotlin/com/ntt/authservice/auth/application/command/RefreshTokenCommand.kt`
-  - type: Command
-
-- `RevokeSessionsCommand` — `src/main/kotlin/com/ntt/authservice/auth/application/command/RevokeSessionsCommand.kt`
-  - type: Command
-
-- `SwitchDomainCommand` — `src/main/kotlin/com/ntt/authservice/auth/application/command/SwitchDomainCommand.kt`
-  - type: Command
-
-- `CreateAnonymousSessionCommand` — `src/main/kotlin/com/ntt/authservice/auth/application/command/CreateAnonymousSessionCommand.kt`
-  - type: Command
-
-- `RenewAnonymousTokenCommand` — `src/main/kotlin/com/ntt/authservice/auth/application/command/RenewAnonymousTokenCommand.kt`
-  - type: Command
-
-- `BuildAuthResponseQuery` — `src/main/kotlin/com/ntt/authservice/auth/application/query/BuildAuthResponseQuery.kt`
-  - type: Query (CQRS pattern)
+  - extends: N/A (plain data class)
+  - usage: `POST /api/auth/introspect` request body
 
 ## Response DTO
 
 - `IntrospectionResponse` — `src/main/kotlin/com/ntt/authservice/auth/adapter/in/web/dto/TokenDtos.kt`
-  - fields: active (Boolean), sub, username, roles (List<String>?), permissions (List<String>?), exp (Long?), iat (Long?), iss (String?), jti (String?)
-  - pattern: data class with nullable optional fields
+  - annotations: `@JsonProperty("token_type")`, `@JsonProperty("client_id")`
+  - fields: `active`, `sub`, `username`, `roles`, `permissions`, `exp`, `iat`, `iss`, `jti`, `tokenType`, `scope`, `clientId`
+  - extends: N/A (plain data class)
+  - usage: RFC 7662 introspection response
 
 - `RevokeSessionsResponse` — `src/main/kotlin/com/ntt/authservice/auth/adapter/in/web/dto/TokenDtos.kt`
-  - fields: revokedCount (Int), userId (Long)
+  - fields: `revokedCount: Int`, `userId: Long`
+  - usage: `POST /api/auth/sessions/{userId}/revoke-all` response
 
-- `LoginResult` — `src/main/kotlin/com/ntt/authservice/auth/application/LoginResult.kt`
-  - type: Application result (not web DTO)
+## Domain Events (as DTOs)
 
-- `RegisterResult` — `src/main/kotlin/com/ntt/authservice/auth/application/RegisterResult.kt`
-  - type: Application result
-
-- `AnonymousSessionResult` — `src/main/kotlin/com/ntt/authservice/auth/application/AnonymousSessionResult.kt`
-  - type: Application result
-
-- `PromotionResult` — `src/main/kotlin/com/ntt/authservice/auth/application/PromotionResult.kt`
-  - type: Application result
-
-## Domain Model (not DTO, but relevant)
-
-- `AuthToken` — `src/main/kotlin/com/ntt/authservice/auth/domain/model/AuthToken.kt`
-  - role: Domain model for auth token pair (access + refresh)
-
-- `User` — `src/main/kotlin/com/ntt/authservice/auth/domain/model/User.kt`
-  - role: Domain aggregate
-
-- `TokenIssuanceMetadata` — `src/main/kotlin/com/ntt/authservice/auth/domain/model/TokenIssuanceMetadata.kt`
-  - role: Metadata for token issuance context
-
-- `RefreshTokenInfo` — `src/main/kotlin/com/ntt/authservice/auth/application/port/out/TokenStore.kt`
-  - role: Port data class for refresh token info
-
-## Domain Events
+- `TokenValidationFailedEvent` — `src/main/kotlin/com/ntt/authservice/auth/domain/event/TokenValidationFailedEvent.kt`
+  - implements: `DomainEvent`
+  - fields: `reason: ValidationFailureReason`, `tokenJti: String?`, `ipAddress: String?`, `userAgent: String?`, `validatorName: String?`, `failedAt: Instant`
+  - eventType: `"iam.token.validation-failed"`
 
 - `TokenIssuedEvent` — `src/main/kotlin/com/ntt/authservice/auth/domain/event/TokenIssuedEvent.kt`
-  - fields: userId, username, domainCode, issuanceContext, accessTokenJti, refreshTokenHash, roles, permissions, etc.
+  - implements: `DomainEvent`
+  - usage: Token issuance audit trail
 
 - `TokenRevokedEvent` — `src/main/kotlin/com/ntt/authservice/auth/domain/event/TokenRevokedEvent.kt`
-  - fields: userId, revocationType, revokedTokenHash, revokedCount, reason, etc.
+  - implements: `DomainEvent`
+  - usage: Token revocation audit trail
 
-- `EventEnvelope` — `src/main/kotlin/com/ntt/authservice/auth/domain/event/EventEnvelope.kt`
-  - role: CloudEvents-inspired envelope wrapper
+## Validation Result (Internal)
 
-- `IssuanceContext` — `src/main/kotlin/com/ntt/authservice/auth/domain/event/IssuanceContext.kt`
-  - type: Enum (LOGIN, REGISTRATION, TOKEN_REFRESH, MFA_COMPLETION, SSO)
+- `ClaimValidationResult` — `src/main/kotlin/com/ntt/authservice/auth/application/ClaimValidationResult.kt`
+  - fields: `validatorName: String`, `status: ClaimValidationStatus`, `reason: String?`
+  - enum: `ClaimValidationStatus { PASS, FAIL }`
+  - usage: Internal DTO for ClaimValidator chain results
 
-- `RevocationType` — `src/main/kotlin/com/ntt/authservice/auth/domain/event/RevocationType.kt`
-  - type: Enum (ROTATION, LOGOUT, ADMIN_REVOKE, BULK_REVOKE)
+## Enum
 
-## DTO Pattern Summary
+- `ValidationFailureReason` — `src/main/kotlin/com/ntt/authservice/auth/domain/event/ValidationFailureReason.kt`
+  - values: `BLACKLISTED`, `SIGNATURE_INVALID`, `AUDIENCE_MISMATCH`, `TYPE_REJECTED`
+  - usage: Categorized reason for `TokenValidationFailedEvent`
 
-- **Convention**: Kotlin `data class` — immutable, no inheritance
-- **Annotations**: Jakarta Validation (`@NotBlank`, `@Valid`)
-- **Location**: `adapter.in.web.dto` for web DTOs; `application.command` for commands; `application` for results
-- **CQRS pattern**: Commands (mutation) in `command/` package, Queries in `query/` package
-- **No base DTO class** — each DTO standalone
+- `ClaimValidationStatus` — `src/main/kotlin/com/ntt/authservice/auth/application/ClaimValidationResult.kt`
+  - values: `PASS`, `FAIL`
+  - usage: Claim validator result status
+
+## Configuration Properties (as DTOs)
+
+- `SecurityProperties.JwtProperties` — `src/main/kotlin/com/ntt/authservice/shared/config/SecurityProperties.kt`
+  - fields: `secretKey`, `algorithm`, `privateKeyPath`, `publicKeyPath`, `keyId`, `accessTokenExpirationMs`, `refreshTokenExpirationMs`, `absoluteCeilingMs`, `issuer`, `clockSkewSeconds`, `audience`, `previousPublicKeyPath`, `previousKeyId`
+  - annotation: via parent `@ConfigurationProperties(prefix = "app.security")`
+
+- `SecurityProperties.BlacklistCacheProperties` — `src/main/kotlin/com/ntt/authservice/shared/config/SecurityProperties.kt`
+  - fields: `caffeineTtlSeconds`, `caffeineMaxSize`, `redisTimeoutMs`, `redisKeyPrefix`, `circuitBreakerThreshold`, `circuitBreakerResetSeconds`
+
+- `SecurityProperties.ValidationEventProperties` — `src/main/kotlin/com/ntt/authservice/shared/config/SecurityProperties.kt`
+  - fields: `recordExpiredEvents: Boolean`
+
+## Port Interface (Internal)
+
+- `TokenStore` — `src/main/kotlin/com/ntt/authservice/auth/application/port/out/TokenStore.kt`
+  - methods: `blacklistToken(jti, userId, reason, expiresAt)`, `saveRefreshToken()`, `findValidRefreshToken()`, `revokeToken()`, `revokeAllForUser()`
+
+- `RefreshTokenInfo` — `src/main/kotlin/com/ntt/authservice/auth/application/port/out/TokenStore.kt`
+  - fields: `userId: Long`, `tokenHash: String`, `expiresAt: Instant`, `revoked: Boolean`
 
 ## NOT DETECTED
 
-- DTO inheritance (extends Base*Request) — not used, Kotlin data classes are final
-- `@Getter`, `@Builder`, `@SuperBuilder` — Java Lombok not used (Kotlin data classes)
-- Filter DTOs (pagination/sorting) — not found in token-related DTOs
+- Filter DTO — N/A (no request filter DTOs specific to JWT validation)
+- Pagination DTO — N/A (not applicable to JWT validation endpoints)
