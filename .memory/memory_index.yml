@@ -11,6 +11,7 @@ features:
   jwt-token-validation: completed
   tps-performance-testing: completed
   user-login-event: completed
+  user-registration-event: completed
 lessons:
 - action: 'Mitigate ''PROXY_DOWN'' errors in wf_brainstorm_openspec. Common errors:
     Error code: 502 - {''type'': ''error'', ''error'': {''type'': ''api_error'', ''message'':
@@ -96,5 +97,5 @@ lessons:
   id: L007
   type: failure_pattern
 total_failures: 35
-total_records: 146
-total_successes: 111
+total_records: 147
+total_successes: 112
