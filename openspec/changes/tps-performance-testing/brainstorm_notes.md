@@ -123,17 +123,57 @@ Research recommendation: **Hybrid approach** compose 4 tools (K6 + datasource-pr
   - Focus on highest-impact items first
   - Reduce initial complexity
 - **Cons**:
-  - Loses WireMock tests emock.port}     │
-    │                                                          │
-    │  Verification points:                                    │
-    │  - readTimeout (10s) triggers after delay > 10s          │
-    │  - CircuitBreaker opens after 50% failure rate           │
-    │  - SSO fallback throws AuthException(SSO_TOKEN_INVALID)  │
-    │  - Captcha fallback auto-passes (graceful degradation)   │
-    └──────────────────────────────────────────────────────────┘
+  - Loses WireMock tests for circuit breaker verification — important for SSO resilience
+  - Cache encryption correctness tests deferred — security compliance gap
+  - JMH benchmarks deferred — cannot quantify encryption overhead
+  - Incomplete picture: K6 measures E2E TPS but without cache correctness tests cannot explain WHY TPS differs across modes
+  - Still need to come back and add deferred items later — total effort may be higher due to context switching
+
+---
+
+## Selected Direction
+
+**Chosen approach: Approach 2 — 4-Phase Incremental (pre_openspec recommended)**
+
+**Reasoning**:
+1. **Full coverage with managed risk** — All 10 FRs addressed across 4 phases, with each phase independently testable. This avoids the "big bang" risk of Approach 1 while delivering all features (unlike Approach 3 which defers 40% of scope).
+2. **Natural dependency ordering** — Phase 1 (datasource-proxy foundation) is a prerequisite for Phase 2 (integration tests using assertQueryCount). Phase 3 (K6 expansion) and Phase 4 (JMH + CI/CD) are independent of each other but benefit from Phase 2 insights.
+3. **Incremental value delivery** — Phase 1-2 alone give the highest-impact capabilities (N+1 detection, circuit breaker verification, cache correctness). Phase 3-4 are additive performance tooling.
+4. **Research-validated** — Comparison analysis scored the Hybrid approach at 8.65/10 weighted. All 4 tools are proven, actively maintained, and Spring Boot compatible. K6 already integrated (2 scripts, 2 Gradle tasks).
+5. **Effort estimate**: 5-8 dev-days total, same as Approach 1 but with 4 validation checkpoints reducing rework risk.
+
+**Trade-offs accepted**:
+- Multi-tool learning curve (4 tools) — mitigated by clear scope per tool (each tool owns 1 testing layer)
+- Maintenance of 4 tool dependencies — mitigated by all tools being actively maintained (K6 by Grafana, WireMock by WireMock Inc, JMH by OpenJDK, datasource-proxy stable/mature)
+- Phase 2 adds 2 new testImplementation dependencies — test-scoped only, no production impact
+
+**Visualizations**:
+
+WireMock integration test design:
+
+```
+    WireMockExternalServiceTest
+    @SpringBootTest
+    @AutoConfigureWireMock(port = 0)
+
+    Test Method                    WireMock Server (dynamic port)
+    1. Setup WireMock       --->   /oauth2/token  -> delay 2s
+                                   /userinfo      -> delay 2s
+    2. Call SSO Gateway     --->   (receives delayed response)
+    3. Assert timeout OR
+       circuit breaker fallback
+
+    HttpClientConfig injected with WireMock base URL via:
+      app.security.sso.provider-base-url=http://localhost:${wiremock.server.port}
+
+    Verification points:
+    - readTimeout (10s) triggers after delay > 10s
+    - CircuitBreaker opens after 50% failure rate (5 calls min)
+    - SSO fallback throws AuthException(SSO_TOKEN_INVALID)
+    - Captcha fallback auto-passes (graceful degradation)
 ```
 
-**K6 multi-scenario design**:
+K6 multi-scenario design:
 
 ```
     auth_flow.js (Enhanced)

@@ -229,9 +229,8 @@ features:
   tps-performance-testing:
     workflows:
       wf_brainstorm_openspec:
-        duration: 0
-        started_at: '2026-08-24T12:43:19.211601+00:00'
-        status: in_progress
+        duration: 545
+        status: success
         strike_count: 0
         tokens: 0
       wf_feature_research:
@@ -251,8 +250,8 @@ stats:
   partial_features: 1
   remaining_features: 0
   skipped_features: 0
-  total_duration: 17718
+  total_duration: 18263
   total_features: 7
   total_tokens: 0
 status: running
-updated_at: '2026-08-24T12:43:19.211589+00:00'
+updated_at: '2026-08-24T12:52:25.078459+00:00'
