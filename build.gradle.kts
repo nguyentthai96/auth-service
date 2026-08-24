@@ -1,6 +1,7 @@
 plugins {
     id("ntt.spring-app-conventions")
     alias(libs.plugins.kotlin.jpa)
+    id("me.champeau.jmh") version "0.7.2"
 }
 
 // group and version are inherited from gradle.properties (Single Source of Truth)
@@ -62,8 +63,15 @@ dependencies {
     testImplementation("org.jetbrains.kotlinx:kotlinx-coroutines-test")
     // BouncyCastle — required by Spring Security's Argon2PasswordEncoder
     testImplementation("org.bouncycastle:bcprov-jdk18on:1.80")
+    // WireMock — HTTP latency/fault simulation for SSO + Captcha circuit breaker tests (FR-002)
+    testImplementation("org.springframework.cloud:spring-cloud-contract-wiremock")
+    // datasource-proxy — explicit version alignment for SQL query counting (FR-009)
+    testImplementation("net.ttddyy:datasource-proxy:1.10")
     // H2 — in-memory database for unit/integration tests without external PostgreSQL
     testRuntimeOnly("com.h2database:h2")
+//  - JMH BENCHMARKING (FR-005)
+    jmh("org.openjdk.jmh:jmh-core:1.37")
+    jmh("org.openjdk.jmh:jmh-generator-annprocess:1.37")
 }
 
 dependencyManagement {
@@ -94,4 +102,21 @@ tasks.register<Exec>("k6ProfileRun") {
     description = "Run K6 Load Tests (Profile Flow)"
     workingDir = file("tests/load")
     commandLine("docker", "run", "--rm", "-i", "-v", "${workingDir}:/scripts", "--network", "host", "grafana/k6", "run", "/scripts/profile_flow.js")
+}
+
+tasks.register<Exec>("k6CacheBenchmark") {
+    group = "Verification"
+    description = "Run K6 Cache Encryption Benchmark (FR-010)"
+    workingDir = file("tests/load")
+    commandLine("docker", "run", "--rm", "-i", "-v", "${workingDir}:/scripts", "--network", "host", "grafana/k6", "run", "/scripts/cache_benchmark.js")
+}
+
+// JMH Benchmark Configuration (FR-005)
+jmh {
+    fork = 2
+    warmupIterations = 5
+    iterations = 5
+    benchmarkMode = listOf("thrpt")
+    resultFormat = "JSON"
+    resultsFile = project.file("build/results/jmh/results.json")
 }
