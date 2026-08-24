@@ -1,0 +1,15 @@
+{
+  "feature": "jwt-token-validation",
+  "workflow": "wf_brainstorm_openspec",
+  "outcome": "success",
+  "timestamp": "2026-08-24T12:02:31.408332+00:00",
+  "duration_seconds": 687,
+  "tokens_used": 0,
+  "prompt_layer_tokens": {},
+  "output_artifacts": [
+    "/home/nguyentthai96/Desktop/bigbang/boilerplate/services/auth-service/openspec/changes/jwt-token-validation/brainstorm_notes.md"
+  ],
+  "errors": [],
+  "lesson_extracted": null,
+  "recovery_pattern": null
+}
