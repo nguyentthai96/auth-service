@@ -4,6 +4,8 @@ import com.github.benmanes.caffeine.cache.Caffeine
 import com.github.benmanes.caffeine.cache.Cache
 import com.ntt.authservice.rbac.adapter.out.persistence.repository.TokenBlacklistRepository
 import com.ntt.authservice.shared.config.SecurityProperties
+import io.micrometer.core.instrument.Gauge
+import io.micrometer.core.instrument.MeterRegistry
 import org.slf4j.LoggerFactory
 import org.springframework.data.redis.core.StringRedisTemplate
 import org.springframework.stereotype.Service
@@ -22,12 +24,14 @@ import java.util.concurrent.atomic.AtomicLong
  * FR-001: Three-level blacklist lookup.
  * FR-015: Redis resilience with circuit breaker.
  * FR-016: Write-through on token revocation.
+ * OBS-001: Micrometer metrics for cache tier hit/miss, circuit breaker, Caffeine size.
  */
 @Service
 class TokenBlacklistCacheService(
     private val redisTemplate: StringRedisTemplate,
     private val tokenBlacklistRepository: TokenBlacklistRepository,
-    private val securityProperties: SecurityProperties
+    private val securityProperties: SecurityProperties,
+    private val meterRegistry: MeterRegistry
 ) {
 
     private val log = LoggerFactory.getLogger(TokenBlacklistCacheService::class.java)
@@ -44,6 +48,13 @@ class TokenBlacklistCacheService(
     private val consecutiveFailures = AtomicInteger(0)
     private val lastFailureTime = AtomicLong(0)
 
+    init {
+        // OBS-001: Gauge for L1 Caffeine cache size
+        Gauge.builder("auth.token.blacklist.caffeine.size") { caffeineCache.estimatedSize().toDouble() }
+            .description("Current number of entries in L1 Caffeine blacklist cache")
+            .register(meterRegistry)
+    }
+
     /**
      * Check if a token JTI is blacklisted.
      * Lookup order: L1 Caffeine → L2 Redis → DB fallback.
@@ -51,7 +62,11 @@ class TokenBlacklistCacheService(
      */
     fun isBlacklisted(jti: String): Boolean {
         // L1: Caffeine (in-process, ~nanoseconds)
-        caffeineCache.getIfPresent(jti)?.let { return it }
+        caffeineCache.getIfPresent(jti)?.let {
+            meterRegistry.counter("auth.token.blacklist.lookup", "tier", "l1_caffeine", "result", "hit").increment()
+            return it
+        }
+        meterRegistry.counter("auth.token.blacklist.lookup", "tier", "l1_caffeine", "result", "miss").increment()
 
         // L2: Redis (distributed, ~milliseconds)
         if (!isCircuitBreakerOpen()) {
@@ -61,9 +76,11 @@ class TokenBlacklistCacheService(
                 if (exists) {
                     consecutiveFailures.set(0)
                     caffeineCache.put(jti, true)
+                    meterRegistry.counter("auth.token.blacklist.lookup", "tier", "l2_redis", "result", "hit").increment()
                     return true
                 }
                 consecutiveFailures.set(0)
+                meterRegistry.counter("auth.token.blacklist.lookup", "tier", "l2_redis", "result", "miss").increment()
             } catch (e: Exception) {
                 recordRedisFailure(e, "isBlacklisted")
             }
@@ -72,9 +89,12 @@ class TokenBlacklistCacheService(
         // L3: DB fallback (source of truth)
         val existsInDb = tokenBlacklistRepository.existsByTokenJti(jti)
         if (existsInDb) {
+            meterRegistry.counter("auth.token.blacklist.lookup", "tier", "l3_db", "result", "hit").increment()
             caffeineCache.put(jti, true)
             // Back-fill Redis on DB hit (best effort)
             tryRedisSet(jti, props.caffeineTtlSeconds)
+        } else {
+            meterRegistry.counter("auth.token.blacklist.lookup", "tier", "l3_db", "result", "miss").increment()
         }
 
         return existsInDb
@@ -132,6 +152,7 @@ class TokenBlacklistCacheService(
         if (elapsed > props.circuitBreakerResetSeconds * 1000) {
             // Reset circuit breaker — allow retry
             consecutiveFailures.set(0)
+            meterRegistry.counter("auth.token.blacklist.circuit_breaker", "transition", "reset").increment()
             return false
         }
 
@@ -150,6 +171,7 @@ class TokenBlacklistCacheService(
                     "Skipping Redis for {}s. Last error: {}",
                 count, operation, props.circuitBreakerResetSeconds, e.message
             )
+            meterRegistry.counter("auth.token.blacklist.circuit_breaker", "transition", "opened").increment()
         } else {
             log.debug("Redis failure in {}: {} (consecutive={})", operation, e.message, count)
         }
