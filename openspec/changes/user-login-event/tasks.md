@@ -157,19 +157,19 @@ _Scope: 3 new files (domain events + recorder), 4 modified files (LoginHandler, 
 
 | FR-ID | Task | Status |
 |-------|------|--------|
-| FR-001 | T1 (UserLoggedInEvent) | Pending |
-| FR-002 | T2 (UserLoginFailedEvent) | Pending |
-| FR-003 | T3 (LoginFailureReason) | Pending |
-| FR-004 | T4 (LoginEventRecorder) | Pending |
-| FR-005 | T5 (LoginHandler — success path) | Pending |
-| FR-006 | T5 (LoginHandler — failure path) | Pending |
-| FR-007 | T4 (LoginEventRecorder — topics) | Pending |
-| FR-008 | T7 (AuthDomainEvents cleanup) | Pending |
-| FR-009 | T1, T2 (EventEnvelope wrapping — reuse) | Pending |
-| FR-010 | T4 (LoginEventRecorder — fire-and-forget) | Pending |
-| FR-011 | T1, T5 (complementary documentation — design) | Pending |
-| FR-012 | T4 (EventEnvelope.id UUID — reuse) | Pending |
-| FR-013 | T4 (LoginEventRecorder — structured logging) | Pending |
-| FR-014 | T4, T5, T6 (correlationId threading) | Pending |
+| FR-001 | T1 (UserLoggedInEvent) | ✅ Done |
+| FR-002 | T2 (UserLoginFailedEvent) | ✅ Done |
+| FR-003 | T3 (LoginFailureReason) | ✅ Done |
+| FR-004 | T4 (LoginEventRecorder) | ✅ Done |
+| FR-005 | T5 (LoginHandler — success path) | ✅ Done |
+| FR-006 | T5 (LoginHandler — failure path) | ✅ Done |
+| FR-007 | T4 (LoginEventRecorder — topics) | ✅ Done |
+| FR-008 | T7 (AuthDomainEvents cleanup) | ✅ Done |
+| FR-009 | T1, T2 (EventEnvelope wrapping — reuse) | ✅ Done |
+| FR-010 | T4 (LoginEventRecorder — fire-and-forget) | ✅ Done |
+| FR-011 | T1, T5 (complementary documentation — design) | ✅ Done |
+| FR-012 | T4 (EventEnvelope.id UUID — reuse) | ✅ Done |
+| FR-013 | T4 (LoginEventRecorder — structured logging) | ✅ Done |
+| FR-014 | T4, T5, T6 (correlationId threading) | ✅ Done |
 
 **Coverage**: 14/14 FRs mapped to tasks. No missing FRs.
