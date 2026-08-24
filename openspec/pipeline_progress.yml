@@ -1,5 +1,5 @@
-current_feature: jwt-token-validation
-current_workflow: wf_archive
+current_feature: tps-performance-testing
+current_workflow: wf_feature_research
 features:
   anonymous-login-optimization:
     workflows:
@@ -226,6 +226,14 @@ features:
         status: success
         strike_count: 0
         tokens: 0
+  tps-performance-testing:
+    workflows:
+      wf_feature_research:
+        duration: 0
+        started_at: '2026-08-24T12:24:42.000440+00:00'
+        status: in_progress
+        strike_count: 0
+        tokens: 0
 started_at: '2026-08-21T11:41:07.477168+00:00'
 stats:
   completed_features: 5
@@ -237,4 +245,4 @@ stats:
   total_features: 6
   total_tokens: 0
 status: running
-updated_at: '2026-08-24T12:24:39.983214+00:00'
+updated_at: '2026-08-24T12:24:42.000427+00:00'
