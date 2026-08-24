@@ -13,23 +13,23 @@ skills:
 artifacts:
   - id: proposal
     type: markdown
-    status: pending
+    status: done
     dependencies: []
   - id: srs
     type: markdown
-    status: pending
+    status: done
     dependencies: [proposal]
   - id: design
     type: markdown
-    status: pending
+    status: done
     dependencies: [srs]
   - id: impact_analysis
     type: markdown
-    status: pending
+    status: done
     dependencies: [design]
   - id: tasks
     type: markdown
-    status: pending
+    status: done
     dependencies: [design, srs, impact_analysis]
 applyRequires:
   - tasks
