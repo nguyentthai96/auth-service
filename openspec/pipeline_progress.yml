@@ -1,5 +1,5 @@
 current_feature: jwt-token-validation
-current_workflow: wf_openspec_apply
+current_workflow: wf_archive
 features:
   anonymous-login-optimization:
     workflows:
@@ -196,6 +196,12 @@ features:
         tokens: 0
   jwt-token-validation:
     workflows:
+      wf_archive:
+        duration: 0
+        started_at: '2026-08-24T12:23:21.293403+00:00'
+        status: in_progress
+        strike_count: 0
+        tokens: 0
       wf_brainstorm_openspec:
         duration: 687
         status: success
@@ -232,4 +238,4 @@ stats:
   total_features: 6
   total_tokens: 0
 status: running
-updated_at: '2026-08-24T12:23:19.265409+00:00'
+updated_at: '2026-08-24T12:23:21.293387+00:00'
