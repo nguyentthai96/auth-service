@@ -11,8 +11,12 @@ enum class ValidationFailureReason {
     BLACKLISTED,
     /** JWT signature verification failed (tampering or wrong key). WARN level. */
     SIGNATURE_INVALID,
+    /** Issuer claim does not match configured value. WARN level. */
+    ISSUER_MISMATCH,
     /** Audience claim does not match configured value. WARN level. */
     AUDIENCE_MISMATCH,
     /** Token type not allowed as access token (e.g., refresh, mfa). WARN level. */
-    TYPE_REJECTED
+    TYPE_REJECTED,
+    /** Generic fallback for claim validators without a specific reason mapping. WARN level. */
+    CLAIM_VALIDATION_FAILED
 }

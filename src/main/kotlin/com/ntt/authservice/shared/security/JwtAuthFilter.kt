@@ -182,9 +182,10 @@ class JwtAuthFilter(
      */
     private fun mapValidatorToReason(validatorName: String): ValidationFailureReason {
         return when (validatorName) {
+            "IssuerClaimValidator" -> ValidationFailureReason.ISSUER_MISMATCH
             "AudienceClaimValidator" -> ValidationFailureReason.AUDIENCE_MISMATCH
             "TokenTypeClaimValidator" -> ValidationFailureReason.TYPE_REJECTED
-            else -> ValidationFailureReason.SIGNATURE_INVALID
+            else -> ValidationFailureReason.CLAIM_VALIDATION_FAILED
         }
     }
 }
