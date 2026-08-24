@@ -1,5 +1,5 @@
 current_feature: user-login-event
-current_workflow: wf_pre_openspec
+current_workflow: wf_brainstorm_openspec
 features:
   anonymous-login-optimization:
     workflows:
@@ -260,6 +260,12 @@ features:
         tokens: 0
   user-login-event:
     workflows:
+      wf_brainstorm_openspec:
+        duration: 0
+        started_at: '2026-08-24T13:38:55.503210+00:00'
+        status: in_progress
+        strike_count: 0
+        tokens: 0
       wf_feature_research:
         duration: 856
         status: success
@@ -281,4 +287,4 @@ stats:
   total_features: 8
   total_tokens: 0
 status: running
-updated_at: '2026-08-24T13:38:53.302685+00:00'
+updated_at: '2026-08-24T13:38:55.503196+00:00'
