@@ -1,0 +1,32 @@
+primary: tps-performance-testing
+environment: kotlin
+rules:
+  - spring-boot
+  - testing
+  - clean-architecture
+skills:
+  - wf_openspec
+  - spring-boot
+  - architecture
+artifacts:
+  - id: proposal
+    type: markdown
+    status: pending
+  - id: srs
+    type: markdown
+    status: pending
+    dependencies: [proposal]
+  - id: design
+    type: markdown
+    status: pending
+    dependencies: [srs]
+  - id: impact_analysis
+    type: markdown
+    status: pending
+    dependencies: [design]
+  - id: tasks
+    type: markdown
+    status: pending
+    dependencies: [design, impact_analysis, srs]
+applyRequires:
+  - tasks
