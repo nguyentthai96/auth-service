@@ -92,6 +92,6 @@ lessons:
   frequency: 2
   id: L007
   type: failure_pattern
-total_failures: 33
-total_records: 126
+total_failures: 34
+total_records: 127
 total_successes: 93

@@ -1,0 +1,19 @@
+{
+  "feature": "cache-starter-migration-upgrade",
+  "workflow": "wf_openspec_apply",
+  "outcome": "failure",
+  "timestamp": "2026-08-24T11:05:04.051220+00:00",
+  "duration_seconds": 1114,
+  "tokens_used": 0,
+  "prompt_layer_tokens": {},
+  "output_artifacts": [],
+  "errors": [
+    "Error code: 502 - {'type': 'error', 'error': {'type': 'api_error', 'message': 'All upstream endpoints failed'}}",
+    "Error code: 502 - {'type': 'error', 'error': {'type': 'api_error', 'message': 'All upstream endpoints failed'}}",
+    "Error code: 502 - {'type': 'error', 'error': {'type': 'api_error', 'message': 'All upstream endpoints failed'}}",
+    "Error code: 502 - {'type': 'error', 'error': {'type': 'api_error', 'message': 'All upstream endpoints failed'}}",
+    "Error code: 502 - {'type': 'error', 'error': {'type': 'api_error', 'message': 'All upstream endpoints failed'}}"
+  ],
+  "lesson_extracted": null,
+  "recovery_pattern": null
+}
