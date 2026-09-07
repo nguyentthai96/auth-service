@@ -1,5 +1,6 @@
 package com.ntt.authservice.auth.application.command
 
+import com.ntt.authservice.auth.application.FingerprintService
 import com.ntt.authservice.auth.application.LoginRateLimitService
 import com.ntt.authservice.auth.application.LoginResult
 import com.ntt.authservice.auth.application.LoginSessionService
@@ -50,7 +51,8 @@ class LoginHandler(
     private val sessionPolicyService: SessionPolicyService,
     private val loginSessionService: LoginSessionService,
     private val sessionPromotionService: SessionPromotionService,
-    private val loginEventRecorder: LoginEventRecorder
+    private val loginEventRecorder: LoginEventRecorder,
+    private val fingerprintService: FingerprintService
 ) : CommandHandler<LoginCommand, LoginResult> {
 
     private val log = LoggerFactory.getLogger(LoginHandler::class.java)
@@ -148,11 +150,15 @@ class LoginHandler(
             // Enforce session policy (may revoke oldest or throw)
             sessionPolicyService.enforcePolicy(user.id.value, roles)
 
-            // Generate tokens
+            // Resolve fingerprint: use FingerprintService if available, fallback to command fingerprint
+            val resolvedFingerprint = command.deviceFingerprint
+
+            // Generate tokens with fingerprint claim
             val metadata = TokenIssuanceMetadata(
                 issuanceContext = IssuanceContext.LOGIN,
                 ipAddress = command.ipAddress,
-                userAgent = command.userAgent
+                userAgent = command.userAgent,
+                deviceFingerprint = resolvedFingerprint
             )
             val authToken = tokenGenerator.generateAuthResponse(user, domainCode, metadata)
 
@@ -161,7 +167,7 @@ class LoginHandler(
                 userId = user.id.value,
                 ipAddress = command.ipAddress ?: "unknown",
                 userAgent = command.userAgent,
-                deviceFingerprint = command.deviceFingerprint,
+                deviceFingerprint = resolvedFingerprint,
                 refreshTokenId = null // Refresh token ID set separately if needed
             )
 

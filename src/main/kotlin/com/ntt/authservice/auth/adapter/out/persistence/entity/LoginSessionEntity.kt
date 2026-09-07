@@ -58,4 +58,10 @@ class LoginSessionEntity : SnowflakePersistentAuditableEntity() {
 
     @Column(name = "revoke_reason", length = 50)
     var revokeReason: String? = null
+
+    @Column(name = "access_token_jti", length = 36)
+    var accessTokenJti: String? = null
+
+    @Column(name = "device_name", length = 100)
+    var deviceName: String? = null
 }

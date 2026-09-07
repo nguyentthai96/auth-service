@@ -117,7 +117,8 @@ class JwtService(
         roles: List<String>,
         permissions: List<String>,
         groups: List<String>,
-        jti: String? = null  // Pre-generated JTI for event correlation (FR-007)
+        jti: String? = null,  // Pre-generated JTI for event correlation (FR-007)
+        deviceFingerprint: String? = null  // Device fingerprint claim for binding
     ): String {
         val now = Date()
         val expiry = Date(now.time + securityProperties.jwt.accessTokenExpirationMs)
@@ -139,6 +140,11 @@ class JwtService(
         // FR-013: Audience claim (when configured)
         if (securityProperties.jwt.audience.isNotBlank()) {
             builder.claim("aud", securityProperties.jwt.audience)
+        }
+
+        // Device fingerprint claim for per-request validation
+        if (deviceFingerprint != null) {
+            builder.claim("device_fingerprint", deviceFingerprint)
         }
 
         return signToken(builder)

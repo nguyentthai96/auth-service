@@ -1,5 +1,7 @@
 package com.ntt.authservice.auth.application.command
 
+import com.ntt.authservice.auth.adapter.out.persistence.repository.LoginSessionRepository
+import com.ntt.authservice.auth.application.TokenBlacklistCacheService
 import com.ntt.authservice.auth.application.event.TokenEventRecorder
 import com.ntt.authservice.auth.application.port.out.TokenStore
 import com.ntt.authservice.auth.application.port.out.UserPort
@@ -9,9 +11,11 @@ import com.ntt.authservice.auth.domain.event.TokenRevokedEvent
 import com.ntt.authservice.auth.domain.model.AuthToken
 import com.ntt.authservice.auth.domain.model.TokenIssuanceMetadata
 import com.ntt.authservice.auth.domain.service.TokenHasher
+import com.ntt.authservice.shared.config.SecurityProperties
 import com.ntt.authservice.shared.exception.ResourceNotFoundException
 import com.ntt.authservice.shared.exception.TokenExpiredException
 import com.ntt.eventsourcingutils.lib.cqrs.command.CommandHandler
+import org.slf4j.LoggerFactory
 import org.springframework.stereotype.Component
 import org.springframework.transaction.annotation.Transactional
 import java.time.Instant
@@ -24,14 +28,20 @@ import java.util.UUID
  * FR-009: Records TokenRevokedEvent(ROTATION) after old token revocation,
  * then delegates to TokenGenerator which records TokenIssuedEvent(TOKEN_REFRESH).
  * Both events share a correlationId for rotation chain tracing.
+ * FR-011: Blacklists old access token JTI on refresh for eager invalidation.
  */
 @Component
 class RefreshTokenHandler(
     private val tokenStore: TokenStore,
     private val userPort: UserPort,
     private val tokenGenerator: TokenGenerator,
-    private val tokenEventRecorder: TokenEventRecorder
+    private val tokenEventRecorder: TokenEventRecorder,
+    private val tokenBlacklistCacheService: TokenBlacklistCacheService,
+    private val loginSessionRepository: LoginSessionRepository,
+    private val securityProperties: SecurityProperties
 ) : CommandHandler<RefreshTokenCommand, AuthToken> {
+
+    private val log = LoggerFactory.getLogger(RefreshTokenHandler::class.java)
 
     override fun commandType(): Class<RefreshTokenCommand> = RefreshTokenCommand::class.java
 
@@ -48,6 +58,17 @@ class RefreshTokenHandler(
 
         val user = userPort.findById(storedToken.userId)
             ?: throw ResourceNotFoundException("User", storedToken.userId)
+
+        // FR-011: Blacklist old access token JTI (if active session exists)
+        val activeSessions = loginSessionRepository.findByUserIdAndSessionActiveTrue(user.id.value)
+        activeSessions.forEach { session ->
+            val jti = session.accessTokenJti
+            if (jti != null) {
+                val remainingSeconds = securityProperties.jwt.accessTokenExpirationMs / 1000
+                tokenBlacklistCacheService.addToBlacklist(jti, remainingSeconds)
+                log.debug("Blacklisted old access JTI on refresh: jti={}", jti)
+            }
+        }
 
         // Revoke old refresh token (rotation)
         tokenStore.revokeToken(tokenHash)

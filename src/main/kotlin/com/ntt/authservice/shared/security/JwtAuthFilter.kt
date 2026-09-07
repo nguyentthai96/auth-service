@@ -2,6 +2,7 @@ package com.ntt.authservice.shared.security
 
 import com.ntt.authservice.auth.application.ClaimValidationException
 import com.ntt.authservice.auth.application.ClaimValidatorChain
+import com.ntt.authservice.auth.application.FingerprintService
 import com.ntt.authservice.auth.application.JwtService
 import com.ntt.authservice.auth.application.TokenBlacklistCacheService
 import com.ntt.authservice.auth.application.event.TokenEventRecorder
@@ -40,6 +41,7 @@ class JwtAuthFilter(
     private val tokenBlacklistCacheService: TokenBlacklistCacheService,
     private val claimValidatorChain: ClaimValidatorChain,
     private val tokenEventRecorder: TokenEventRecorder,
+    private val fingerprintService: FingerprintService,
     private val securityProperties: SecurityProperties,
     private val meterRegistry: MeterRegistry
 ) : OncePerRequestFilter() {
@@ -119,6 +121,32 @@ class JwtAuthFilter(
                 // Continue without authentication — secured endpoints will reject
                 filterChain.doFilter(request, response)
                 return
+            }
+
+            // Step 4: Validate device fingerprint (FR-003)
+            if (securityProperties.fingerprint.enabled && securityProperties.fingerprint.validationEnabled) {
+                val claimFingerprint = claims["device_fingerprint"] as? String
+                if (claimFingerprint != null) {
+                    val requestFingerprint = fingerprintService.resolveFingerprint(request)
+                    if (!fingerprintService.validateFingerprint(claimFingerprint, requestFingerprint)) {
+                        if (securityProperties.fingerprint.strictMode) {
+                            log.warn("Fingerprint mismatch (strict): jti={}, ip={}", jti, request.remoteAddr)
+                            recordValidationFailure(
+                                reason = ValidationFailureReason.FINGERPRINT_MISMATCH,
+                                tokenJti = jti,
+                                validatorName = "FingerprintValidator",
+                                request = request
+                            )
+                            meterRegistry.counter("auth.token.validation", "result", "failure", "reason", "fingerprint_mismatch").increment()
+                            sample.stop(Timer.builder("auth.token.validation.duration").tag("result", "failure").register(meterRegistry))
+                            response.status = HttpServletResponse.SC_UNAUTHORIZED
+                            return
+                        } else {
+                            log.warn("Fingerprint mismatch (lenient): jti={}, ip={}", jti, request.remoteAddr)
+                            meterRegistry.counter("auth.fingerprint.mismatch", "mode", "lenient").increment()
+                        }
+                    }
+                }
             }
 
             // Extract token type for anonymous vs authenticated branching (FR-011)

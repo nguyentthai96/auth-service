@@ -68,7 +68,8 @@ class TokenGenerator(
             roles = roles,
             permissions = permissions,
             groups = emptyList(),
-            jti = accessTokenJti
+            jti = accessTokenJti,
+            deviceFingerprint = metadata?.deviceFingerprint
         )
 
         val refreshToken = jwtService.generateRefreshToken(user.id.value)

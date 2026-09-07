@@ -63,7 +63,12 @@ enum class AuthErrorCode(
     // --- Inter-service Auth Error Codes — AUTH_060~062 (FR-021) ---
     INVALID_SERVICE_TOKEN("AUTH_060", "auth.invalid_service_token", "Invalid or expired service authentication token", HttpStatus.UNAUTHORIZED),
     INSUFFICIENT_SCOPE("AUTH_061", "auth.insufficient_scope", "Service does not have sufficient scope for this operation", HttpStatus.FORBIDDEN),
-    SERVICE_NOT_REGISTERED("AUTH_062", "auth.service_not_registered", "Service is not registered for inter-service communication", HttpStatus.FORBIDDEN);
+    SERVICE_NOT_REGISTERED("AUTH_062", "auth.service_not_registered", "Service is not registered for inter-service communication", HttpStatus.FORBIDDEN),
+
+    // --- Device Management Error Codes — AUTH_070~072 ---
+    FINGERPRINT_MISMATCH("AUTH_070", "auth.fingerprint_mismatch", "Device fingerprint does not match the JWT claim", HttpStatus.UNAUTHORIZED),
+    DEVICE_NOT_FOUND("AUTH_071", "auth.device_not_found", "Device session not found", HttpStatus.NOT_FOUND),
+    DEVICE_NOT_OWNED("AUTH_072", "auth.device_not_owned", "Device session does not belong to current user", HttpStatus.FORBIDDEN);
 
     /**
      * Bridge to base-core ErrorCodeBase via delegation.

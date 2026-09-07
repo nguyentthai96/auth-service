@@ -13,5 +13,6 @@ data class TokenIssuanceMetadata(
     val ipAddress: String? = null,
     val userAgent: String? = null,
     val correlationId: String? = null,
-    val previousRefreshTokenHash: String? = null
+    val previousRefreshTokenHash: String? = null,
+    val deviceFingerprint: String? = null
 )

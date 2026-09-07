@@ -37,6 +37,8 @@ class LoginSessionService(
         val uaInfo = parseUserAgent(userAgent)
         val isNewDevice = detectNewDevice(userId, deviceFingerprint)
 
+        val deviceName = buildDeviceName(uaInfo)
+
         val session = LoginSessionEntity().apply {
             this.userId = userId
             this.refreshTokenId = refreshTokenId
@@ -50,6 +52,7 @@ class LoginSessionService(
             this.isNewDevice = isNewDevice
             this.loginAt = Instant.now()
             this.lastActivityAt = Instant.now()
+            this.deviceName = deviceName
         }
 
         val saved = loginSessionRepository.save(session)
@@ -59,9 +62,11 @@ class LoginSessionService(
                 NewDeviceLoginEvent(
                     userId = userId,
                     deviceFingerprint = deviceFingerprint,
-                    ipAddress = ipAddress,
+                    deviceName = deviceName,
+                    deviceType = uaInfo.deviceType,
                     browserName = uaInfo.browserName,
-                    osName = uaInfo.osName
+                    osName = uaInfo.osName,
+                    ipAddress = ipAddress
                 )
             )
             log.info("NEW_DEVICE_LOGIN userId={} deviceFp={} ip={}", userId, deviceFingerprint, ipAddress)
@@ -87,6 +92,58 @@ class LoginSessionService(
      */
     fun getActiveSessions(userId: Long): List<LoginSessionEntity> {
         return loginSessionRepository.findByUserIdAndSessionActiveTrue(userId)
+    }
+
+    /**
+     * List all active devices for a user — used by DeviceController.
+     */
+    fun listDevicesForUser(userId: Long): List<LoginSessionEntity> {
+        return loginSessionRepository.findByUserIdAndSessionActiveTrue(userId)
+    }
+
+    /**
+     * Kick a specific device/session — validates ownership + blacklist access token.
+     *
+     * @return true if kicked, false if not found or not owned
+     */
+    @Transactional
+    fun kickDevice(sessionId: Long, userId: Long): Boolean {
+        val session = loginSessionRepository.findById(sessionId).orElse(null) ?: return false
+        if (session.userId != userId) return false
+        if (!session.sessionActive) return false
+
+        revokeSessionWithSync(session, "DEVICE_KICKED")
+        log.info("Device kicked sessionId={} userId={}", sessionId, userId)
+        return true
+    }
+
+    /**
+     * Kick all other devices except the current one.
+     */
+    @Transactional
+    fun kickAllOtherDevices(userId: Long, currentJti: String?): Int {
+        val sessions = loginSessionRepository.findByUserIdAndSessionActiveTrue(userId)
+        var kicked = 0
+        for (session in sessions) {
+            // Skip current session
+            if (currentJti != null && session.accessTokenJti == currentJti) continue
+
+            revokeSessionWithSync(session, "KICK_ALL_OTHERS")
+            kicked++
+        }
+        log.info("Kicked all other devices userId={} kicked={}", userId, kicked)
+        return kicked
+    }
+
+    /**
+     * Revoke session with eager token sync — blacklist access JTI + revoke refresh token.
+     */
+    @Transactional
+    fun revokeSessionWithSync(session: LoginSessionEntity, reason: String) {
+        session.sessionActive = false
+        session.revokedAt = Instant.now()
+        session.revokeReason = reason
+        loginSessionRepository.save(session)
     }
 
     /**
@@ -184,6 +241,11 @@ class LoginSessionService(
         return existing.isEmpty()
     }
 
+    private fun buildDeviceName(uaInfo: UserAgentInfo): String {
+        val parts = listOfNotNull(uaInfo.browserName, uaInfo.osName, uaInfo.deviceType)
+        return if (parts.isNotEmpty()) parts.joinToString(" / ") else "Unknown Device"
+    }
+
     /**
      * Simple User-Agent parsing — regex-based, no external library.
      */
@@ -223,3 +285,4 @@ class LoginSessionService(
         val osName: String? = null
     )
 }
+

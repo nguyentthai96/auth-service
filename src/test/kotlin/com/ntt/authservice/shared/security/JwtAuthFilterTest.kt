@@ -2,6 +2,7 @@ package com.ntt.authservice.shared.security
 
 import com.ntt.authservice.auth.application.ClaimValidationException
 import com.ntt.authservice.auth.application.ClaimValidatorChain
+import com.ntt.authservice.auth.application.FingerprintService
 import com.ntt.authservice.auth.application.JwtService
 import com.ntt.authservice.auth.application.TokenBlacklistCacheService
 import com.ntt.authservice.auth.application.event.TokenEventRecorder
@@ -46,6 +47,7 @@ class JwtAuthFilterTest {
     @Mock private lateinit var claimValidatorChain: ClaimValidatorChain
     @Mock private lateinit var tokenEventRecorder: TokenEventRecorder
     @Mock private lateinit var securityProperties: SecurityProperties
+    @Mock private lateinit var fingerprintService: FingerprintService
 
     private lateinit var meterRegistry: SimpleMeterRegistry
     private lateinit var filter: JwtAuthFilter
@@ -63,6 +65,7 @@ class JwtAuthFilterTest {
             tokenBlacklistCacheService,
             claimValidatorChain,
             tokenEventRecorder,
+            fingerprintService,
             securityProperties,
             meterRegistry
         )
@@ -97,7 +100,7 @@ class JwtAuthFilterTest {
     fun shouldContinueWithoutAuthWhenNoHeader() {
         // Given — no auth header
         // When
-        filter.doFilterInternal(request, response, filterChain)
+        filter.doFilter(request, response, filterChain)
 
         // Then
         verify(filterChain).doFilter(request, response)
@@ -114,7 +117,7 @@ class JwtAuthFilterTest {
         whenever(tokenBlacklistCacheService.isBlacklisted("jti-valid-123")).thenReturn(false)
 
         // When
-        filter.doFilterInternal(request, response, filterChain)
+        filter.doFilter(request, response, filterChain)
 
         // Then
         val auth = SecurityContextHolder.getContext().authentication
@@ -140,12 +143,12 @@ class JwtAuthFilterTest {
         whenever(tokenBlacklistCacheService.isBlacklisted("jti-blacklisted")).thenReturn(true)
 
         // When
-        filter.doFilterInternal(request, response, filterChain)
+        filter.doFilter(request, response, filterChain)
 
         // Then
         assertEquals(401, response.status)
         verify(tokenEventRecorder).recordValidationFailure(
-            argThat<TokenValidationFailedEvent> { it.reason == ValidationFailureReason.BLACKLISTED },
+            argThat<TokenValidationFailedEvent> { reason == ValidationFailureReason.BLACKLISTED },
             anyOrNull()
         )
         verify(filterChain, never()).doFilter(any(), any())
@@ -157,14 +160,14 @@ class JwtAuthFilterTest {
         // Given
         request.addHeader("Authorization", "Bearer bad-sig-jwt")
         whenever(jwtService.parseToken("bad-sig-jwt"))
-            .thenThrow(io.jsonwebtoken.security.SignatureException(null, "Invalid signature"))
+            .thenThrow(io.jsonwebtoken.security.SignatureException("Invalid signature"))
 
         // When
-        filter.doFilterInternal(request, response, filterChain)
+        filter.doFilter(request, response, filterChain)
 
         // Then
         verify(tokenEventRecorder).recordValidationFailure(
-            argThat<TokenValidationFailedEvent> { it.reason == ValidationFailureReason.SIGNATURE_INVALID },
+            argThat<TokenValidationFailedEvent> { reason == ValidationFailureReason.SIGNATURE_INVALID },
             anyOrNull()
         )
         verify(filterChain).doFilter(request, response)
@@ -182,11 +185,11 @@ class JwtAuthFilterTest {
             .thenThrow(ClaimValidationException("IssuerClaimValidator", "Issuer mismatch"))
 
         // When
-        filter.doFilterInternal(request, response, filterChain)
+        filter.doFilter(request, response, filterChain)
 
         // Then — BUG-001 FIX: should be ISSUER_MISMATCH, NOT SIGNATURE_INVALID
         verify(tokenEventRecorder).recordValidationFailure(
-            argThat<TokenValidationFailedEvent> { it.reason == ValidationFailureReason.ISSUER_MISMATCH },
+            argThat<TokenValidationFailedEvent> { reason == ValidationFailureReason.ISSUER_MISMATCH },
             anyOrNull()
         )
         verify(filterChain).doFilter(request, response)
@@ -204,11 +207,11 @@ class JwtAuthFilterTest {
             .thenThrow(ClaimValidationException("AudienceClaimValidator", "Audience mismatch"))
 
         // When
-        filter.doFilterInternal(request, response, filterChain)
+        filter.doFilter(request, response, filterChain)
 
         // Then
         verify(tokenEventRecorder).recordValidationFailure(
-            argThat<TokenValidationFailedEvent> { it.reason == ValidationFailureReason.AUDIENCE_MISMATCH },
+            argThat<TokenValidationFailedEvent> { reason == ValidationFailureReason.AUDIENCE_MISMATCH },
             anyOrNull()
         )
     }
@@ -225,11 +228,11 @@ class JwtAuthFilterTest {
             .thenThrow(ClaimValidationException("TokenTypeClaimValidator", "Type rejected"))
 
         // When
-        filter.doFilterInternal(request, response, filterChain)
+        filter.doFilter(request, response, filterChain)
 
         // Then
         verify(tokenEventRecorder).recordValidationFailure(
-            argThat<TokenValidationFailedEvent> { it.reason == ValidationFailureReason.TYPE_REJECTED },
+            argThat<TokenValidationFailedEvent> { reason == ValidationFailureReason.TYPE_REJECTED },
             anyOrNull()
         )
     }
@@ -244,7 +247,7 @@ class JwtAuthFilterTest {
         whenever(tokenBlacklistCacheService.isBlacklisted(any())).thenReturn(false)
 
         // When
-        filter.doFilterInternal(request, response, filterChain)
+        filter.doFilter(request, response, filterChain)
 
         // Then
         val auth = SecurityContextHolder.getContext().authentication
@@ -263,7 +266,7 @@ class JwtAuthFilterTest {
             .thenThrow(io.jsonwebtoken.ExpiredJwtException(null, null, "Token expired"))
 
         // When
-        filter.doFilterInternal(request, response, filterChain)
+        filter.doFilter(request, response, filterChain)
 
         // Then
         verify(filterChain).doFilter(request, response)
@@ -278,13 +281,13 @@ class JwtAuthFilterTest {
         // Given
         request.addHeader("Authorization", "Bearer bad-sig-jwt-2")
         whenever(jwtService.parseToken("bad-sig-jwt-2"))
-            .thenThrow(io.jsonwebtoken.security.SignatureException(null, "Invalid signature"))
+            .thenThrow(io.jsonwebtoken.security.SignatureException("Invalid signature"))
         whenever(tokenEventRecorder.recordValidationFailure(any(), anyOrNull()))
             .thenThrow(RuntimeException("Event store down"))
 
         // When — should NOT throw
         assertDoesNotThrow {
-            filter.doFilterInternal(request, response, filterChain)
+            filter.doFilter(request, response, filterChain)
         }
 
         // Then — filterChain still called
@@ -305,7 +308,7 @@ class JwtAuthFilterTest {
             whenever(tokenBlacklistCacheService.isBlacklisted(any())).thenReturn(false)
 
             // When
-            filter.doFilterInternal(request, response, filterChain)
+            filter.doFilter(request, response, filterChain)
 
             // Then — success counter
             val successCounter = meterRegistry.find("auth.token.validation")

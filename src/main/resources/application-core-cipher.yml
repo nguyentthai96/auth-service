@@ -5,9 +5,9 @@ base-core:
 
 app:
   cipher:
-    enabled: true
+    enabled: false
     http:
-      enabled: true
+      enabled: false
       order: 50
       exclude-paths:
         - /actuator/**

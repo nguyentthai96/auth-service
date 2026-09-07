@@ -18,5 +18,7 @@ enum class ValidationFailureReason {
     /** Token type not allowed as access token (e.g., refresh, mfa). WARN level. */
     TYPE_REJECTED,
     /** Generic fallback for claim validators without a specific reason mapping. WARN level. */
-    CLAIM_VALIDATION_FAILED
+    CLAIM_VALIDATION_FAILED,
+    /** Device fingerprint in JWT does not match current request. WARN level. */
+    FINGERPRINT_MISMATCH
 }

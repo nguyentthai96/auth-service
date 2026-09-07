@@ -31,7 +31,11 @@ data class SecurityProperties(
     /** Token blacklist cache configuration (L1 Caffeine + L2 Redis). */
     val blacklist: BlacklistCacheProperties = BlacklistCacheProperties(),
     /** Validation event recording configuration. */
-    val validationEvent: ValidationEventProperties = ValidationEventProperties()
+    val validationEvent: ValidationEventProperties = ValidationEventProperties(),
+    /** Device fingerprint configuration — hybrid client/server computation. */
+    val fingerprint: FingerprintProperties = FingerprintProperties(),
+    /** Mail queue configuration — transactional outbox for async email delivery. */
+    val mail: MailProperties = MailProperties()
 ) {
     /**
      * JWT signing and token lifetime configuration.
@@ -245,4 +249,45 @@ data class SecurityProperties(
         /** Whether to record events for expired tokens (routine). Default false — only suspicious patterns. */
         val recordExpiredEvents: Boolean = false
     )
+
+    /**
+     * Device fingerprint configuration — hybrid client-provided / server-computed.
+     * @property enabled Master switch for fingerprint feature.
+     * @property validationEnabled Whether to validate fingerprint per-request (requires enabled=true).
+     * @property strictMode true=reject on mismatch (401), false=warn only (metric).
+     * @property headerName HTTP header name for client-provided fingerprint.
+     * @property serverComputeFallback Whether to compute server fingerprint when header missing.
+     */
+    data class FingerprintProperties(
+        val enabled: Boolean = true,
+        val validationEnabled: Boolean = true,
+        val strictMode: Boolean = false,
+        val headerName: String = "X-Device-Fingerprint",
+        val serverComputeFallback: Boolean = true
+    )
+
+    /**
+     * Mail queue configuration — transactional outbox pattern for async email delivery.
+     */
+    data class MailProperties(
+        val queue: QueueProperties = QueueProperties(),
+        val templates: TemplateProperties = TemplateProperties()
+    ) {
+        data class QueueProperties(
+            /** Max mails to process per scheduler tick. */
+            val batchSize: Int = 10,
+            /** Polling interval in milliseconds. */
+            val pollIntervalMs: Long = 5000,
+            /** Max retry attempts before marking FAILED. */
+            val maxRetries: Int = 3,
+            /** Base delay in seconds for exponential backoff (delay = base * 2^retryCount). */
+            val baseRetryDelaySeconds: Long = 30,
+            /** Delete SENT mails older than this many days. */
+            val cleanupAfterDays: Long = 30
+        )
+
+        data class TemplateProperties(
+            val defaultLanguage: String = "vi"
+        )
+    }
 }

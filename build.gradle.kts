@@ -11,6 +11,7 @@ extra["springCloudVersion"] = libs.versions.spring.cloud.get()
 dependencies {
 //  - BASE-CORE STARTERS (provides base-core, base-model, common-log transitively)
     implementation(platform("com.ntt:platform:0.0.1-SNAPSHOT"))
+    implementation(platform("org.springframework.cloud:spring-cloud-dependencies:${property("springCloudVersion")}"))
     implementation("com.ntt:base-web-starter")
     implementation("com.ntt:base-data-starter")
     implementation("com.ntt:base-security-starter")
@@ -30,6 +31,7 @@ dependencies {
     implementation("org.flywaydb:flyway-core")
     implementation("org.flywaydb:flyway-database-postgresql")
     implementation("org.springframework.boot:spring-boot-starter-security")
+    implementation("org.springframework.boot:spring-boot-starter-mail")
     implementation("org.springframework.boot:spring-boot-starter-web")
     implementation("com.fasterxml.jackson.module:jackson-module-kotlin")
     implementation("com.fasterxml.jackson.datatype:jackson-datatype-jsr310")
@@ -74,11 +76,7 @@ dependencies {
     jmh("org.openjdk.jmh:jmh-generator-annprocess:1.37")
 }
 
-dependencyManagement {
-    imports {
-        mavenBom("org.springframework.cloud:spring-cloud-dependencies:${property("springCloudVersion")}")
-    }
-}
+
 
 tasks.withType<Test> {
     useJUnitPlatform()

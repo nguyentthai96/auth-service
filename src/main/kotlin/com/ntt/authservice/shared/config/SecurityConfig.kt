@@ -3,10 +3,13 @@ package com.ntt.authservice.shared.config
 import com.ntt.authservice.auth.adapter.`in`.web.filter.LoginRateLimitFilter
 import com.ntt.authservice.auth.adapter.`in`.web.filter.ServiceAuthFilter
 import com.ntt.authservice.shared.security.JwtAuthFilter
+import com.ntt.basecore.autoconfigure.openapi.OpenApiAutoConfiguration
 import org.springframework.beans.factory.annotation.Value
 import org.springframework.boot.context.properties.EnableConfigurationProperties
 import org.springframework.context.annotation.Bean
 import org.springframework.context.annotation.Configuration
+import org.springframework.core.env.Environment
+import org.springframework.core.env.Profiles
 import org.springframework.http.HttpMethod
 import org.springframework.security.config.annotation.web.builders.HttpSecurity
 import org.springframework.security.config.annotation.web.configuration.EnableWebSecurity
@@ -27,12 +30,17 @@ class SecurityConfig(
     private val loginRateLimitFilter: LoginRateLimitFilter,
     private val serviceAuthFilter: ServiceAuthFilter,
     private val securityProperties: SecurityProperties,
+    private val environment: Environment,
+    @Value("\${springdoc.swagger-ui.enabled:true}")
+    private val swaggerUiEnabled: Boolean,
     @Value("\${app.cors.allowed-origins:http://localhost:3000}")
     private val allowedOrigins: String
 ) {
 
     @Bean
     fun securityFilterChain(http: HttpSecurity): SecurityFilterChain {
+        val isSwaggerPermitted = swaggerUiEnabled && !environment.acceptsProfiles(Profiles.of("prod", "production"))
+
         http
             .csrf { it.disable() }
             .cors { it.configurationSource(corsConfigurationSource()) }
@@ -46,6 +54,10 @@ class SecurityConfig(
                     .frameOptions { it.deny() }
             }
             .authorizeHttpRequests { auth ->
+                if (isSwaggerPermitted) {
+                    auth.requestMatchers(*OpenApiAutoConfiguration.SWAGGER_WHITELIST_PATHS).permitAll()
+                }
+
                 auth
                     // Public endpoints
                     .requestMatchers("/api/auth/login", "/api/auth/register", "/api/auth/refresh").permitAll()
@@ -68,6 +80,7 @@ class SecurityConfig(
                     // Authenticated endpoints
                     .requestMatchers("/api/auth/logout").authenticated()
                     .requestMatchers("/api/auth/sessions/**").authenticated()
+                    .requestMatchers("/api/auth/devices/**").authenticated()
                     // Admin-only endpoints
                     .requestMatchers("/api/auth/sessions/*/revoke-all").hasRole("ADMIN")
                     // All other endpoints require authentication
