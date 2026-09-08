@@ -64,7 +64,7 @@ app:
         hash-length: 32               # Hash output length in bytes
         parallelism: 1                # Threads (OWASP 2024: 1)
         memory-cost: 65536            # KiB — 64 MB (OWASP 2024 recommended)
-        iterations: 1                 # Time cost (OWASP 2024: ≥ 1, tuned from 3 for perf)
+        iterations: 3                 # Time cost (OWASP 2024: 3)
       max-failed-attempts: 3
       lock-duration-minutes: 15
     mfa:
