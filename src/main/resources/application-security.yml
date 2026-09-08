@@ -56,7 +56,15 @@ app:
       absolute-ceiling-ms: 36000000          # 10 hours absolute session limit
       issuer: "auth-service"
     password:
-      bcrypt-strength: 12
+      algorithm: argon2id             # "argon2id" (default, OWASP 2024) or "bcrypt" (legacy)
+      bcrypt-strength: 12             # Legacy BCrypt fallback strength
+      max-concurrent-hashes: 20       # Semaphore limit — prevents OOM with Argon2id (64MB per op)
+      argon2:
+        salt-length: 16               # Salt length in bytes
+        hash-length: 32               # Hash output length in bytes
+        parallelism: 1                # Threads (OWASP 2024: 1)
+        memory-cost: 65536            # KiB — 64 MB (OWASP 2024 recommended)
+        iterations: 1                 # Time cost (OWASP 2024: ≥ 1, tuned from 3 for perf)
       max-failed-attempts: 3
       lock-duration-minutes: 15
     mfa:

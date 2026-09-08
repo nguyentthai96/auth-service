@@ -4,6 +4,17 @@ spring:
     username: auth_user
     password: auth_pass
     driver-class-name: org.postgresql.Driver
+    hikari:
+      maximum-pool-size: ${DB_POOL_MAX:10}
+      minimum-idle: ${DB_POOL_MIN:${DB_POOL_MAX:10}}
+      connection-timeout: ${DB_CONN_TIMEOUT:30000}
+      idle-timeout: ${DB_IDLE_TIMEOUT:600000}
+      max-lifetime: ${DB_MAX_LIFETIME:1800000}
+      pool-name: AuthServicePool
+      leak-detection-threshold: ${DB_LEAK_THRESHOLD:30000}
+      data-source-properties:
+        reWriteBatchedInserts: true
+        prepareThreshold: 5
 
   jpa:
     hibernate:

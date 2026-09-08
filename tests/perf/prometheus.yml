@@ -1,0 +1,17 @@
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+
+scrape_configs:
+  - job_name: 'auth-service'
+    metrics_path: '/actuator/prometheus'
+    scrape_interval: 15s
+    static_configs:
+      - targets: ['host.docker.internal:8081']
+        labels:
+          application: 'auth-service'
+          environment: 'perf-test'
+
+  - job_name: 'prometheus'
+    static_configs:
+      - targets: ['localhost:9090']

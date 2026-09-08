@@ -4,6 +4,7 @@ import com.ntt.authservice.auth.application.FingerprintService
 import com.ntt.authservice.auth.application.LoginRateLimitService
 import com.ntt.authservice.auth.application.LoginResult
 import com.ntt.authservice.auth.application.LoginSessionService
+import com.ntt.authservice.auth.application.PasswordUpgradeService
 import com.ntt.authservice.auth.application.PromotionResult
 import com.ntt.authservice.auth.application.SessionPolicyService
 import com.ntt.authservice.auth.application.SessionPromotionService
@@ -52,7 +53,8 @@ class LoginHandler(
     private val loginSessionService: LoginSessionService,
     private val sessionPromotionService: SessionPromotionService,
     private val loginEventRecorder: LoginEventRecorder,
-    private val fingerprintService: FingerprintService
+    private val fingerprintService: FingerprintService,
+    private val passwordUpgradeService: PasswordUpgradeService
 ) : CommandHandler<LoginCommand, LoginResult> {
 
     private val log = LoggerFactory.getLogger(LoginHandler::class.java)
@@ -115,6 +117,10 @@ class LoginHandler(
 
             // Reset failed login count on success
             user.resetFailedLogins()
+
+            // Upgrade password hash if using legacy algorithm (best-effort, transparent migration)
+            passwordUpgradeService.upgradeIfNeeded(user, command.password)
+
             userPort.save(user)
 
             // Reset rate limit counters on successful auth

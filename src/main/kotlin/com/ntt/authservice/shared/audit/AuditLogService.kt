@@ -198,5 +198,8 @@ enum class AuditAction {
     CONFIG_CHANGED,
     PERMISSION_CHANGED,
     SERVICE_TOKEN_ISSUED,
-    SERVICE_TOKEN_VALIDATED
+    SERVICE_TOKEN_VALIDATED,
+
+    // Password algorithm migration audit
+    PASSWORD_REHASHED
 }

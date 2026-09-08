@@ -1,0 +1,60 @@
+# Performance Tuning Configuration for auth-service
+# Profile: perf-test (NOT for production)
+#
+# Tuning Strategy: Bottom-up, additive-only
+# - Tomcat: Virtual Threads (already enabled in main config)
+# - HikariCP: (cores × 2) + 1 = 25 (12 cores)
+# - Server: Optimized Tomcat connector settings
+# - Rate Limits: Relaxed for load testing
+
+server:
+  # Tomcat Connector Tuning
+  tomcat:
+    # Max connections = concurrent clients Tomcat can accept
+    # Default 8192 is fine for most cases, but set explicitly
+    max-connections: ${TOMCAT_MAX_CONNECTIONS:8192}
+    # Accept count = OS-level TCP backlog queue when all connections busy
+    accept-count: ${TOMCAT_ACCEPT_COUNT:100}
+    # Connection timeout = time to wait for request after TCP connect
+    connection-timeout: ${TOMCAT_CONN_TIMEOUT:5000}
+    # Keep-alive settings for HTTP/1.1 persistent connections
+    keep-alive-timeout: ${TOMCAT_KEEP_ALIVE_TIMEOUT:15000}
+    max-keep-alive-requests: ${TOMCAT_MAX_KEEP_ALIVE:200}
+  # Compression to reduce network I/O
+  compression:
+    enabled: true
+    min-response-size: 2048
+    mime-types: application/json,application/xml,text/html,text/plain
+
+spring:
+  datasource:
+    hikari:
+      # Formula: (cores × 2) + spindle_count = (12 × 2) + 1 = 25
+      # But with Virtual Threads, pool can be limiting factor
+      # Virtual Threads can spawn unlimited threads, all waiting for DB
+      # Pool size should handle peak concurrent DB queries
+      maximum-pool-size: ${DB_POOL_MAX:25}
+      minimum-idle: ${DB_POOL_MIN:25}
+      # Aggressive connection timeout for fast-fail
+      connection-timeout: ${DB_CONN_TIMEOUT:5000}
+      # Leak detection — lower for perf testing to catch issues fast
+      leak-detection-threshold: ${DB_LEAK_THRESHOLD:10000}
+
+# Relaxed rate limits for performance testing
+# IMPORTANT: Do NOT use these values in production!
+app:
+  security:
+    login-rate-limit:
+      ip:
+        max-attempts: 10000          # Effectively unlimited
+        window-seconds: 60
+        lock-seconds: 0              # No IP lock during perf test
+      username:
+        max-attempts: 10000          # Effectively unlimited
+        window-seconds: 60
+        lock-seconds: 0              # No username lock during perf test
+      device:
+        max-attempts: 10000          # Effectively unlimited
+        window-seconds: 60
+        lock-seconds: 0
+      redis-timeout-ms: 200          # Faster timeout

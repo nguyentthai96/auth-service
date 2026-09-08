@@ -2,7 +2,28 @@ management:
   endpoints:
     web:
       exposure:
-        include: health,info,metrics
+        include: health,info,metrics,prometheus
   endpoint:
     health:
       show-details: when-authorized
+    prometheus:
+      enabled: true
+  metrics:
+    tags:
+      application: auth-service
+    distribution:
+      percentiles-histogram:
+        http.server.requests: true
+      percentiles:
+        http.server.requests: 0.5,0.95,0.99
+
+server:
+  tomcat:
+    accesslog:
+      enabled: ${ACCESS_LOG_ENABLED:false}
+      directory: logs
+      prefix: access
+      suffix: .log
+      pattern: "%h %t \"%r\" %s %b %D"
+      rotate: true
+      max-days: 7

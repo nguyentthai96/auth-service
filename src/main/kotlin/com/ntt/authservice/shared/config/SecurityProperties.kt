@@ -71,15 +71,37 @@ data class SecurityProperties(
 
     /**
      * Password security configuration.
+     * @property algorithm Active hashing algorithm — "argon2id" (default, OWASP 2024) or "bcrypt" (legacy).
      * @property bcryptStrength BCrypt hashing strength — default 12 (recommended 10-14).
+     * @property maxConcurrentHashes Maximum concurrent password hash operations — prevents OOM with Argon2id (64MB per op).
+     * @property argon2 Argon2id algorithm tuning parameters.
      * @property maxFailedAttempts Failed login attempts before account lock / CAPTCHA trigger — default 3.
      * @property lockDurationMinutes Account lock duration after max failed attempts — default 15 minutes.
      */
     data class PasswordProperties(
+        val algorithm: String = "argon2id",
         val bcryptStrength: Int = 12,
+        val maxConcurrentHashes: Int = 20,
+        val argon2: Argon2Properties = Argon2Properties(),
         val maxFailedAttempts: Int = 3,
         val lockDurationMinutes: Int = 15
-    )
+    ) {
+        /**
+         * Argon2id algorithm parameters (OWASP 2024 recommended defaults).
+         * @property saltLength Salt length in bytes — default 16.
+         * @property hashLength Hash output length in bytes — default 32.
+         * @property parallelism Degree of parallelism (threads) — default 1.
+         * @property memoryCost Memory cost in KiB — default 65536 (64 MB).
+         * @property iterations Time cost (iterations) — default 3.
+         */
+        data class Argon2Properties(
+            val saltLength: Int = 16,
+            val hashLength: Int = 32,
+            val parallelism: Int = 1,
+            val memoryCost: Int = 65536,
+            val iterations: Int = 3
+        )
+    }
 
     /**
      * Multi-Factor Authentication configuration.

@@ -1,6 +1,7 @@
 package com.ntt.authservice.auth.application.command
 
 import com.ntt.authservice.auth.application.*
+import com.ntt.authservice.auth.application.event.LoginEventRecorder
 import com.ntt.authservice.auth.application.port.out.*
 import com.ntt.authservice.auth.domain.model.AuthToken
 import com.ntt.authservice.auth.domain.model.User
@@ -50,6 +51,9 @@ class LoginHandlerTest {
     @Mock private lateinit var sessionPolicyService: SessionPolicyService
     @Mock private lateinit var loginSessionService: LoginSessionService
     @Mock private lateinit var sessionPromotionService: SessionPromotionService
+    @Mock private lateinit var loginEventRecorder: LoginEventRecorder
+    @Mock private lateinit var fingerprintService: FingerprintService
+    @Mock private lateinit var passwordUpgradeService: PasswordUpgradeService
 
     private lateinit var handler: LoginHandler
 
@@ -88,7 +92,10 @@ class LoginHandlerTest {
             loginRateLimitService = loginRateLimitService,
             sessionPolicyService = sessionPolicyService,
             loginSessionService = loginSessionService,
-            sessionPromotionService = sessionPromotionService
+            sessionPromotionService = sessionPromotionService,
+            loginEventRecorder = loginEventRecorder,
+            fingerprintService = fingerprintService,
+            passwordUpgradeService = passwordUpgradeService
         )
     }
 

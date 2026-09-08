@@ -1,0 +1,32 @@
+primary: performance-benchmark-testing
+environment: kotlin
+rules:
+  - spring-boot
+  - testing
+  - clean-architecture
+skills:
+  - wf_openspec
+  - spring-boot
+  - architecture
+artifacts:
+  - id: proposal
+    type: markdown
+    status: done
+  - id: srs
+    type: markdown
+    status: done
+    dependencies: [proposal]
+  - id: design
+    type: markdown
+    status: done
+    dependencies: [srs]
+  - id: impact_analysis
+    type: markdown
+    status: done
+    dependencies: [design]
+  - id: tasks
+    type: markdown
+    status: done
+    dependencies: [design, impact_analysis, srs]
+applyRequires:
+  - tasks
