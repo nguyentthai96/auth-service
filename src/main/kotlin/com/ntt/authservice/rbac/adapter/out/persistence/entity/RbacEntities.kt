@@ -2,6 +2,8 @@ package com.ntt.authservice.rbac.adapter.out.persistence.entity
 
 import com.ntt.basecore.model.id.SnowflakePersistentAuditableEntity
 import jakarta.persistence.*
+import org.hibernate.annotations.JdbcTypeCode
+import org.hibernate.type.SqlTypes
 
 /**
  * Business domain entity (e.g., booking, rental, loyalty).
@@ -20,6 +22,7 @@ class DomainEntity : SnowflakePersistentAuditableEntity() {
 
     var description: String? = null
 
+    @JdbcTypeCode(SqlTypes.JSON)
     @Column(columnDefinition = "jsonb")
     var config: String = "{}"
 
@@ -37,6 +40,7 @@ class DomainEntity : SnowflakePersistentAuditableEntity() {
     var primaryColor: String? = null
 
     /** Login page configuration JSON (background image, welcome text, etc.). */
+    @JdbcTypeCode(SqlTypes.JSON)
     @Column(name = "login_page_config", columnDefinition = "jsonb")
     var loginPageConfig: String? = null
 

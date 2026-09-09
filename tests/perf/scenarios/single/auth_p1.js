@@ -12,6 +12,7 @@ import { BASE_URL } from '../../config/env.js';
 import { loginAndGetToken, authHeaders, DEFAULT_HEADERS } from '../../helpers/auth.js';
 import { getUserForVU } from '../../helpers/data.js';
 import { endpointLatency } from '../../helpers/metrics.js';
+import { buildHandleSummary } from '../../helpers/report.js';
 
 export const options = {
   scenarios: {
@@ -48,27 +49,29 @@ export function testSessions() {
   const user = getUserForVU(__VU);
   const token = loginAndGetToken(user.username, user.password);
   if (!token) return;
-  const res = http.get(`${BASE_URL}/api/v1/auth/sessions`,
+  const res = http.get(`${BASE_URL}/auth/sessions`,
     { headers: authHeaders(token), tags: { endpoint: 'sessions' } });
   check(res, { 'sessions 200': (r) => r.status === 200 });
   endpointLatency.add(res.timings.duration, { endpoint: 'sessions' });
 }
 
 export function testMfaVerify() {
-  const res = http.post(`${BASE_URL}/api/v1/auth/mfa/verify`,
+  const res = http.post(`${BASE_URL}/auth/mfa/verify`,
     JSON.stringify({ code: '123456', method: 'totp' }),
     { headers: DEFAULT_HEADERS, tags: { endpoint: 'mfa_verify' } });
   endpointLatency.add(res.timings.duration, { endpoint: 'mfa_verify' });
 }
 
 export function testSsoLogin() {
-  const res = http.get(`${BASE_URL}/api/v1/auth/sso/login?provider=google`,
+  const res = http.get(`${BASE_URL}/auth/sso/login?provider=google`,
     { headers: DEFAULT_HEADERS, tags: { endpoint: 'sso_login' }, redirects: 0 });
   endpointLatency.add(res.timings.duration, { endpoint: 'sso_login' });
 }
 
 export function testCaptcha() {
-  const res = http.get(`${BASE_URL}/api/v1/auth/captcha/challenge`,
+  const res = http.get(`${BASE_URL}/captcha/challenge`,
     { headers: DEFAULT_HEADERS, tags: { endpoint: 'captcha' } });
   endpointLatency.add(res.timings.duration, { endpoint: 'captcha' });
 }
+
+export const handleSummary = buildHandleSummary('auth_p1');

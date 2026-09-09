@@ -8,6 +8,7 @@ import { BASE_URL } from '../../config/env.js';
 import { DEFAULT_HEADERS, authHeaders } from '../../helpers/auth.js';
 import { getUserForVU } from '../../helpers/data.js';
 import { chainDuration, chainSuccess, stepLatency } from '../../helpers/metrics.js';
+import { buildHandleSummary } from '../../helpers/report.js';
 
 export const options = {
   scenarios: { session_chain: { executor: 'per-vu-iterations', vus: 30, iterations: 10, maxDuration: '5m' } },
@@ -18,7 +19,7 @@ export default function () {
   const start = Date.now();
   const user = getUserForVU(__VU);
 
-  const loginRes = http.post(`${BASE_URL}/api/v1/auth/login`,
+  const loginRes = http.post(`${BASE_URL}/auth/login`,
     JSON.stringify({ username: user.username, password: user.password }),
     { headers: DEFAULT_HEADERS, tags: { step: 'login' } });
   stepLatency.add(loginRes.timings.duration, { step: 'login', chain: 'session_mgmt' });
@@ -26,14 +27,16 @@ export default function () {
 
   const token = JSON.parse(loginRes.body).accessToken || JSON.parse(loginRes.body).access_token;
 
-  const sessionsRes = http.get(`${BASE_URL}/api/v1/auth/sessions`,
+  const sessionsRes = http.get(`${BASE_URL}/auth/sessions`,
     { headers: authHeaders(token), tags: { step: 'list_sessions' } });
   stepLatency.add(sessionsRes.timings.duration, { step: 'list_sessions', chain: 'session_mgmt' });
 
-  const revokeRes = http.del(`${BASE_URL}/api/v1/auth/sessions/current`,
+  const revokeRes = http.del(`${BASE_URL}/auth/sessions/current`,
     null, { headers: authHeaders(token), tags: { step: 'revoke_session' } });
   stepLatency.add(revokeRes.timings.duration, { step: 'revoke_session', chain: 'session_mgmt' });
 
   chainDuration.add(Date.now() - start);
   chainSuccess.add(1);
 }
+
+export const handleSummary = buildHandleSummary('chain_session_mgmt');

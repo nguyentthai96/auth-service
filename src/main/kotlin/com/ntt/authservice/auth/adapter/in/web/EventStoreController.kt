@@ -12,7 +12,7 @@ import org.springframework.web.bind.annotation.*
  * Follows InternalApiController.kt pattern — internal endpoints under /api/internal.
  */
 @RestController
-@RequestMapping("/api/internal/events")
+@RequestMapping("/internal/events")
 class EventStoreController(
     private val eventStorePort: EventStorePort
 ) {

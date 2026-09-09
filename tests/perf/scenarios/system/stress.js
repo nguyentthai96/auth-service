@@ -12,6 +12,7 @@ import { BASE_URL } from '../../config/env.js';
 import { DEFAULT_HEADERS, loginAndGetToken } from '../../helpers/auth.js';
 import { getUserForVU } from '../../helpers/data.js';
 import { totalTransactions } from '../../helpers/metrics.js';
+import { buildHandleSummary } from '../../helpers/report.js';
 
 export const options = {
   scenarios: {
@@ -44,7 +45,7 @@ export const options = {
 export default function () {
   const user = getUserForVU(__VU);
 
-  const res = http.post(`${BASE_URL}/api/v1/auth/login`,
+  const res = http.post(`${BASE_URL}/auth/login`,
     JSON.stringify({ username: user.username, password: user.password }),
     { headers: DEFAULT_HEADERS, tags: { test_type: 'stress' } });
 
@@ -57,3 +58,5 @@ export default function () {
   totalTransactions.add(1);
   sleep(0.1);
 }
+
+export const handleSummary = buildHandleSummary('stress');

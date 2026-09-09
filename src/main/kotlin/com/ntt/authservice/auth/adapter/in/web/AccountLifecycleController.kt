@@ -23,7 +23,7 @@ import org.springframework.web.bind.annotation.*
  * FR-005: Success response i18n — messages resolved via MessageSource.
  */
 @RestController
-@RequestMapping("/api/account")
+@RequestMapping("/account")
 class AccountLifecycleController(
     private val accountLifecycleService: AccountLifecycleService,
     private val messageSource: MessageSource

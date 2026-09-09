@@ -11,6 +11,7 @@ import { BASE_URL } from '../../config/env.js';
 import { loginAndGetToken, authHeaders, DEFAULT_HEADERS } from '../../helpers/auth.js';
 import { getUserForVU } from '../../helpers/data.js';
 import { endpointLatency } from '../../helpers/metrics.js';
+import { buildHandleSummary } from '../../helpers/report.js';
 
 export const options = {
   scenarios: {
@@ -41,7 +42,7 @@ export function testInternalValidate() {
   const user = getUserForVU(__VU);
   const token = loginAndGetToken(user.username, user.password);
   if (!token) return;
-  const res = http.post(`${BASE_URL}/api/v1/internal/validate`,
+  const res = http.post(`${BASE_URL}/internal/validate`,
     JSON.stringify({ token }),
     { headers: DEFAULT_HEADERS, tags: { endpoint: 'internal_validate' } });
   check(res, { 'internal validate 200': (r) => r.status === 200 });
@@ -52,7 +53,7 @@ export function testEvents() {
   const user = getUserForVU(__VU);
   const token = loginAndGetToken(user.username, user.password);
   if (!token) return;
-  const res = http.get(`${BASE_URL}/api/v1/events?page=0&size=10`,
+  const res = http.get(`${BASE_URL}/internal/events?page=0&size=10`,
     { headers: authHeaders(token), tags: { endpoint: 'events' } });
   endpointLatency.add(res.timings.duration, { endpoint: 'events' });
 }
@@ -61,7 +62,9 @@ export function testRateLimits() {
   const user = getUserForVU(__VU);
   const token = loginAndGetToken(user.username, user.password);
   if (!token) return;
-  const res = http.get(`${BASE_URL}/api/v1/admin/rate-limits`,
+  const res = http.get(`${BASE_URL}/admin/rate-limits`,
     { headers: authHeaders(token), tags: { endpoint: 'rate_limits' } });
   endpointLatency.add(res.timings.duration, { endpoint: 'rate_limits' });
 }
+
+export const handleSummary = buildHandleSummary('internal');

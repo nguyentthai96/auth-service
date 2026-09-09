@@ -16,7 +16,7 @@ import org.springframework.web.bind.annotation.*
  * FR-005: Success response i18n — messages resolved via MessageSource.
  */
 @RestController
-@RequestMapping("/api/auth/sessions")
+@RequestMapping("/auth/sessions")
 class SessionController(
     private val loginSessionService: LoginSessionService,
     private val messageSource: MessageSource

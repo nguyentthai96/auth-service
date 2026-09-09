@@ -13,6 +13,7 @@ import { BASE_URL, SOAK_DURATION } from '../../config/env.js';
 import { DEFAULT_HEADERS, authHeaders, loginAndGetToken } from '../../helpers/auth.js';
 import { getUserForVU } from '../../helpers/data.js';
 import { totalTransactions } from '../../helpers/metrics.js';
+import { buildHandleSummary } from '../../helpers/report.js';
 
 export const options = {
   scenarios: {
@@ -36,7 +37,7 @@ export default function () {
 
   if (rand < 0.6) {
     // Auth flow (60%)
-    const res = http.post(`${BASE_URL}/api/v1/auth/login`,
+    const res = http.post(`${BASE_URL}/auth/login`,
       JSON.stringify({ username: user.username, password: user.password }),
       { headers: DEFAULT_HEADERS, tags: { flow: 'auth' } });
     check(res, { 'login ok': (r) => r.status === 200 });
@@ -44,14 +45,14 @@ export default function () {
     if (res.status === 200) {
       const token = JSON.parse(res.body).accessToken || JSON.parse(res.body).access_token;
       // Do a profile fetch
-      http.get(`${BASE_URL}/api/v1/profiles/me`,
+      http.get(`${BASE_URL}/account/profile`,
         { headers: authHeaders(token), tags: { flow: 'profile' } });
     }
   } else if (rand < 0.8) {
     // Validate flow (20%)
     const token = loginAndGetToken(user.username, user.password);
     if (token) {
-      http.post(`${BASE_URL}/api/v1/auth/validate`,
+      http.post(`${BASE_URL}/auth/introspect`,
         JSON.stringify({ token }),
         { headers: DEFAULT_HEADERS, tags: { flow: 'validate' } });
     }
@@ -64,3 +65,5 @@ export default function () {
   totalTransactions.add(1);
   sleep(1 + Math.random());
 }
+
+export const handleSummary = buildHandleSummary('soak');

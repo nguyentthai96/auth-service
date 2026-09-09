@@ -13,6 +13,8 @@ import com.ntt.authservice.auth.domain.model.UserStatus
 import com.ntt.authservice.auth.domain.model.vo.Email
 import com.ntt.authservice.auth.domain.model.vo.PasswordHash
 import com.ntt.authservice.auth.domain.model.vo.UserId
+import com.ntt.authservice.rbac.adapter.out.persistence.entity.UserDomainEntity
+import com.ntt.authservice.rbac.adapter.out.persistence.repository.UserDomainRepository
 import com.ntt.authservice.shared.exception.DuplicateResourceException
 import com.ntt.authservice.shared.exception.ResourceNotFoundException
 import com.ntt.eventsourcingutils.lib.cqrs.command.CommandHandler
@@ -39,7 +41,8 @@ class RegisterHandler(
     private val eventPublisher: EventPublisher,
     private val eventService: EventService,
     private val tokenGenerator: TokenGenerator,
-    private val sessionPromotionService: SessionPromotionService
+    private val sessionPromotionService: SessionPromotionService,
+    private val userDomainRepository: UserDomainRepository
 ) : CommandHandler<RegisterCommand, RegisterResult> {
 
     private val log = LoggerFactory.getLogger(RegisterHandler::class.java)
@@ -78,6 +81,16 @@ class RegisterHandler(
 
         val savedUser = userPort.save(user)
         log.debug("REGISTER_USER_PERSISTED userId={}, username={}", savedUser.id.value, savedUser.username)
+
+        // Create domain membership (required for login to resolve primary domain)
+        val membership = UserDomainEntity().apply {
+            userId = savedUser.id.value
+            domainId = domain.id
+            isPrimary = true
+            joinedAt = java.time.Instant.now()
+        }
+        userDomainRepository.save(membership)
+        log.debug("REGISTER_DOMAIN_MEMBERSHIP_CREATED userId={}, domainId={}", savedUser.id.value, domain.id)
 
         // Record enriched domain event via EventService (transactional: event_store + outbox)
         eventService.record(

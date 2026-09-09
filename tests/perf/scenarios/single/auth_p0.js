@@ -21,6 +21,7 @@ import { BASE_URL } from '../../config/env.js';
 import { DEFAULT_HEADERS, authHeaders } from '../../helpers/auth.js';
 import { getUserForVU, generateUsername, generateEmail } from '../../helpers/data.js';
 import { endpointLatency, endpointErrors } from '../../helpers/metrics.js';
+import { buildHandleSummary } from '../../helpers/report.js';
 
 export const options = {
   scenarios: {
@@ -79,7 +80,7 @@ export function setup() {
   // Pre-login a few users and cache their tokens
   const tokens = {};
   for (let i = 1; i <= 10; i++) {
-    const res = http.post(`${BASE_URL}/api/auth/login`,
+    const res = http.post(`${BASE_URL}/auth/login`,
       JSON.stringify({ username: `perfuser${i}`, password: `PerfTest${i}!` }),
       { headers: DEFAULT_HEADERS }
     );
@@ -95,7 +96,7 @@ export function setup() {
 
 export function testLogin() {
   const user = getUserForVU(__VU);
-  const res = http.post(`${BASE_URL}/api/auth/login`,
+  const res = http.post(`${BASE_URL}/auth/login`,
     JSON.stringify({ username: user.username, password: user.password }),
     { headers: DEFAULT_HEADERS, tags: { endpoint: 'login' } }
   );
@@ -114,7 +115,7 @@ export function testIntrospect(data) {
     return;
   }
 
-  const res = http.post(`${BASE_URL}/api/auth/introspect`,
+  const res = http.post(`${BASE_URL}/auth/introspect`,
     JSON.stringify({ token }),
     { headers: authHeaders(token), tags: { endpoint: 'validate' } }
   );
@@ -124,7 +125,7 @@ export function testIntrospect(data) {
 
 export function testRegister() {
   const username = generateUsername(__VU, __ITER);
-  const res = http.post(`${BASE_URL}/api/auth/register`,
+  const res = http.post(`${BASE_URL}/auth/register`,
     JSON.stringify({
       username,
       password: 'PerfTest123!',
@@ -137,3 +138,5 @@ export function testRegister() {
   check(res, { 'register 201 or 200': (r) => r.status === 201 || r.status === 200 });
   endpointLatency.add(res.timings.duration, { endpoint: 'register' });
 }
+
+export const handleSummary = buildHandleSummary('auth_p0');

@@ -596,6 +596,65 @@ http_reqs..............: 100000   ~833/s
 vus_max................: 500
 ```
 
+### 7.4 K6 HTML & JSON Reports
+
+Mỗi scenario tự động export **HTML report** và **JSON raw data** sau khi chạy xong.
+
+#### Output location
+
+```
+tests/perf/reports/
+├── report_template.md          # Template điền tay (existing)
+├── auth_p0_2026-09-09T10-30-00.html      # ← Generated HTML
+├── auth_p0_2026-09-09T10-30-00.json      # ← Generated JSON
+├── chain_registration_2026-09-09T10-35-00.html
+├── chain_registration_2026-09-09T10-35-00.json
+└── ...
+```
+
+#### Naming convention
+
+```
+<scenario_name>_<YYYY-MM-DDThh-mm-ss>.html
+<scenario_name>_<YYYY-MM-DDThh-mm-ss>.json
+```
+
+#### Cách sử dụng
+
+HTML report mở trực tiếp trên trình duyệt:
+
+```bash
+# Chạy test
+k6 run scenarios/single/auth_p0.js
+
+# Mở report
+open reports/auth_p0_*.html    # macOS
+xdg-open reports/auth_p0_*.html  # Linux
+```
+
+JSON data có thể parse bằng `jq`:
+
+```bash
+# Xem tổng quan metrics
+cat reports/auth_p0_*.json | jq '.metrics.http_req_duration.values'
+
+# So sánh p95 giữa các lần chạy
+for f in reports/auth_p0_*.json; do
+  echo "$(basename $f): $(cat $f | jq '.metrics.http_req_duration.values["p(95)"]')ms"
+done
+```
+
+#### Danh sách scenario names
+
+| Category | Scenario | Report prefix |
+|----------|----------|---------------|
+| **Single API** | auth_p0, auth_p1, internal, rbac | `auth_p0_*`, `auth_p1_*`, ... |
+| **Chain** | registration, auth_basic, auth_mfa, admin, anon_to_auth, key_exchange, session_mgmt, sso | `chain_registration_*`, ... |
+| **System** | full_load, stress, soak | `full_load_*`, `stress_*`, `soak_*` |
+| **Infra** | infra_baseline | `infra_baseline_*` |
+
+> **Note**: Generated reports (`.html`, `.json`) đã được thêm vào `.gitignore` — không commit vào repo.
+
 ---
 
 ## 8. Quy trình đánh giá & cải thiện

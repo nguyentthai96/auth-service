@@ -12,7 +12,7 @@ import org.springframework.web.bind.annotation.RestController
  * Public endpoint (no authentication required).
  */
 @RestController
-@RequestMapping("/api/captcha")
+@RequestMapping("/captcha")
 class CaptchaController(
     private val altchaCaptchaVerifier: AltchaCaptchaVerifier
 ) {

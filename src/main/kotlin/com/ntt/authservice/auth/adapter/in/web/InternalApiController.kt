@@ -13,7 +13,7 @@ import org.springframework.web.bind.annotation.*
  * Protected by ServiceAuthFilter — requires service JWT.
  */
 @RestController
-@RequestMapping("/api/internal")
+@RequestMapping("/internal")
 class InternalApiController(
     private val serviceTokenService: ServiceTokenService,
     private val userRepository: UserRepository,

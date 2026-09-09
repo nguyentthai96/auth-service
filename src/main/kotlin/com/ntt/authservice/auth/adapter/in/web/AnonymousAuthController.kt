@@ -28,7 +28,7 @@ import org.springframework.web.bind.annotation.*
  * DD-005: Separate controller at /api/v1/auth/anonymous (not extending CqrsAuthController).
  */
 @RestController
-@RequestMapping("/api/v1/auth/anonymous")
+@RequestMapping("/auth/anonymous")
 class AnonymousAuthController(
     private val anonymousSessionHandler: AnonymousSessionHandler,
     private val renewAnonymousTokenHandler: RenewAnonymousTokenHandler,

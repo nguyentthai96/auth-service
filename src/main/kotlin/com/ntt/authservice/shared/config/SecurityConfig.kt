@@ -2,6 +2,7 @@ package com.ntt.authservice.shared.config
 
 import com.ntt.authservice.auth.adapter.`in`.web.filter.LoginRateLimitFilter
 import com.ntt.authservice.auth.adapter.`in`.web.filter.ServiceAuthFilter
+import com.ntt.authservice.shared.security.DynamicAuthorizationManager
 import com.ntt.authservice.shared.security.JwtAuthFilter
 import com.ntt.basecore.autoconfigure.openapi.OpenApiAutoConfiguration
 import org.springframework.beans.factory.annotation.Value
@@ -28,6 +29,7 @@ class SecurityConfig(
     private val loginRateLimitFilter: LoginRateLimitFilter,
     private val serviceAuthFilter: ServiceAuthFilter,
     private val securityProperties: SecurityProperties,
+    private val dynamicAuthorizationManager: DynamicAuthorizationManager,
     private val environment: Environment,
     @Value("\${springdoc.swagger-ui.enabled:true}")
     private val swaggerUiEnabled: Boolean,
@@ -57,32 +59,24 @@ class SecurityConfig(
                 }
 
                 auth
-                    // Public endpoints
-                    .requestMatchers("/api/auth/login", "/api/auth/register", "/api/auth/refresh").permitAll()
-                    // Key exchange endpoint for E2EE
-                    .requestMatchers("/auth/key-exchange", "/api/auth/key-exchange").permitAll()
-                    // Auth Core Features — public endpoints
-                    .requestMatchers("/api/auth/mfa/verify", "/api/auth/mfa/resend").permitAll()
-                    .requestMatchers("/api/auth/sso/callback", "/api/auth/sso/providers").permitAll()
-                    .requestMatchers("/api/auth/forgot-password").permitAll()
-                    .requestMatchers("/api/captcha/challenge").permitAll()
+                    // Public endpoints — no authentication required
+                    .requestMatchers("/auth/login", "/auth/register", "/auth/refresh").permitAll()
+                    .requestMatchers("/auth/key-exchange").permitAll()
+                    .requestMatchers("/auth/mfa/verify", "/auth/mfa/resend").permitAll()
+                    .requestMatchers("/auth/sso/callback", "/auth/sso/providers").permitAll()
+                    .requestMatchers("/auth/forgot-password").permitAll()
+                    .requestMatchers("/captcha/challenge").permitAll()
                     .requestMatchers("/.well-known/jwks.json").permitAll()
-                    // Anonymous session — public endpoint (create session, no auth)
-                    .requestMatchers("/api/v1/auth/anonymous").permitAll()
-                    // Anonymous session — authenticated with ROLE_ANONYMOUS
-                    .requestMatchers("/api/v1/auth/anonymous/**").hasRole("ANONYMOUS")
-                    // Internal service endpoints — requires service JWT (FR-021)
-                    .requestMatchers("/api/internal/**").hasRole("SERVICE")
+                    // Anonymous session — public create, ROLE_ANONYMOUS for operations
+                    .requestMatchers("/auth/anonymous").permitAll()
+                    .requestMatchers("/auth/anonymous/**").hasRole("ANONYMOUS")
+                    // Internal service-to-service — requires service JWT (FR-021)
+                    .requestMatchers("/internal/**").hasRole("SERVICE")
+                    // Actuator & CORS preflight
                     .requestMatchers("/actuator/**").permitAll()
                     .requestMatchers(HttpMethod.OPTIONS, "/**").permitAll()
-                    // Authenticated endpoints
-                    .requestMatchers("/api/auth/logout").authenticated()
-                    .requestMatchers("/api/auth/sessions/**").authenticated()
-                    .requestMatchers("/api/auth/devices/**").authenticated()
-                    // Admin-only endpoints
-                    .requestMatchers("/api/auth/sessions/*/revoke-all").hasRole("ADMIN")
-                    // All other endpoints require authentication
-                    .anyRequest().authenticated()
+                    // All other endpoints — delegate to DynamicAuthorizationManager
+                    .anyRequest().access(dynamicAuthorizationManager)
             }
             .addFilterBefore(loginRateLimitFilter, UsernamePasswordAuthenticationFilter::class.java)
             .addFilterBefore(jwtAuthFilter, UsernamePasswordAuthenticationFilter::class.java)
@@ -107,7 +101,6 @@ class SecurityConfig(
 
     @Bean
     @org.springframework.context.annotation.Primary
-    @org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean
     fun twoLevelCacheManager(
         properties: com.ntt.basecore.autoconfigure.cache.CacheProperties,
         invalidationPublisher: org.springframework.beans.factory.ObjectProvider<com.ntt.basecore.autoconfigure.cache.CacheInvalidationPublisher>

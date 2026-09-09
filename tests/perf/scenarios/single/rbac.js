@@ -10,6 +10,7 @@ import { SLA } from '../../config/thresholds.js';
 import { BASE_URL } from '../../config/env.js';
 import { loginAdminUser, authHeaders } from '../../helpers/auth.js';
 import { endpointLatency } from '../../helpers/metrics.js';
+import { buildHandleSummary } from '../../helpers/report.js';
 
 export const options = {
   scenarios: {
@@ -45,7 +46,7 @@ export const options = {
 export function testRoles() {
   const token = loginAdminUser();
   if (!token) return;
-  const res = http.get(`${BASE_URL}/api/v1/roles`,
+  const res = http.get(`${BASE_URL}/admin/domains/1/roles`,
     { headers: authHeaders(token), tags: { endpoint: 'roles' } });
   check(res, { 'roles 200': (r) => r.status === 200 });
   endpointLatency.add(res.timings.duration, { endpoint: 'roles' });
@@ -54,7 +55,7 @@ export function testRoles() {
 export function testUsers() {
   const token = loginAdminUser();
   if (!token) return;
-  const res = http.get(`${BASE_URL}/api/v1/users?page=0&size=10`,
+  const res = http.get(`${BASE_URL}/admin/users?page=0&size=10`,
     { headers: authHeaders(token), tags: { endpoint: 'users' } });
   check(res, { 'users 200': (r) => r.status === 200 });
   endpointLatency.add(res.timings.duration, { endpoint: 'users' });
@@ -63,7 +64,7 @@ export function testUsers() {
 export function testPermissions() {
   const token = loginAdminUser();
   if (!token) return;
-  const res = http.get(`${BASE_URL}/api/v1/roles/1/permissions`,
+  const res = http.get(`${BASE_URL}/admin/domains/1/roles/1/permissions`,
     { headers: authHeaders(token), tags: { endpoint: 'permissions' } });
   endpointLatency.add(res.timings.duration, { endpoint: 'permissions' });
 }
@@ -71,7 +72,9 @@ export function testPermissions() {
 export function testPolicies() {
   const token = loginAdminUser();
   if (!token) return;
-  const res = http.get(`${BASE_URL}/api/v1/policies`,
+  const res = http.get(`${BASE_URL}/admin/domains/1/policies`,
     { headers: authHeaders(token), tags: { endpoint: 'policies' } });
   endpointLatency.add(res.timings.duration, { endpoint: 'policies' });
 }
+
+export const handleSummary = buildHandleSummary('rbac');

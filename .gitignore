@@ -50,3 +50,8 @@ openspec/changes/*/pipeline_progress.yml
 .logs_/
 openspec/pipeline.log
 logs/
+
+### K6 Performance Reports (generated) ###
+tests/perf/reports/*.html
+tests/perf/reports/*.json
+tests/perf/logs/

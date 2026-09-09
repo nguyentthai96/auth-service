@@ -13,7 +13,7 @@ import org.springframework.web.bind.annotation.*
  * Permission matrix management — assigns permissions (resource×action) to roles.
  */
 @RestController
-@RequestMapping("/api/domains/{domainId}/roles/{roleId}/permissions")
+@RequestMapping("/admin/domains/{domainId}/roles/{roleId}/permissions")
 class RolePermissionController(
     private val rolePermissionRepository: RolePermissionRepository,
     private val permissionRepository: PermissionRepository,

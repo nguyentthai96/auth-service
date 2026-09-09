@@ -18,7 +18,7 @@ import org.springframework.web.bind.annotation.*
  * FR-008: Kick all other devices
  */
 @RestController
-@RequestMapping("/api/auth/devices")
+@RequestMapping("/auth/devices")
 class DeviceController(
     private val loginSessionService: LoginSessionService
 ) {

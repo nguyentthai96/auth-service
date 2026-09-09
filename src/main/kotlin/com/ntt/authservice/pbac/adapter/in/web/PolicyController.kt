@@ -12,7 +12,7 @@ import org.springframework.transaction.annotation.Transactional
 import org.springframework.web.bind.annotation.*
 
 @RestController
-@RequestMapping("/api/domains/{domainId}/policies")
+@RequestMapping("/admin/domains/{domainId}/policies")
 class PolicyController(
     private val policyRepository: PolicyJpaRepository
 ) {

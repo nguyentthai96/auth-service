@@ -33,7 +33,7 @@ class TokenController(
     private val messageSource: MessageSource
 ) {
 
-    @PostMapping("/api/auth/introspect")
+    @PostMapping("/auth/introspect")
     fun introspect(@Valid @RequestBody request: IntrospectionRequest): ResponseEntity<IntrospectionResponse> {
         return try {
             val claims = jwtService.parseToken(request.token)
@@ -104,7 +104,7 @@ class TokenController(
             .body(jwks)
     }
 
-    @PostMapping("/api/auth/sessions/{userId}/revoke-all")
+    @DeleteMapping("/admin/sessions/users/{userId}")
     fun revokeAllSessions(@PathVariable userId: Long): ResponseEntity<Map<String, Any?>> {
         val count = revokeSessionsHandler.handle(RevokeSessionsCommand(userId))
         val locale = LocaleContextHolder.getLocale()

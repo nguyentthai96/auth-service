@@ -65,12 +65,20 @@ class AuditLogService(
         // Persist to audit_logs table (FR-015 — replaces TODO)
         auditLogRepository.ifAvailable?.let { repo ->
             try {
+                // Wrap plain-text details into valid JSON for JSONB column
+                val jsonDetails = maskedDetails?.let { detail ->
+                    if (detail.trimStart().startsWith("{") || detail.trimStart().startsWith("[")) {
+                        detail // Already valid JSON
+                    } else {
+                        """{"message":${com.fasterxml.jackson.core.io.JsonStringEncoder.getInstance().let { encoder -> "\"${String(encoder.quoteAsString(detail))}\"" }}}"""
+                    }
+                }
                 val entity = AuditLogEntity().apply {
                     this.userId = userId
                     this.action = action.name
                     this.entityType = entityType
                     this.entityId = entityId
-                    this.details = maskedDetails
+                    this.details = jsonDetails
                     this.ipAddress = ipAddress
                     this.userAgent = userAgent
                     this.eventTimestamp = Instant.now()

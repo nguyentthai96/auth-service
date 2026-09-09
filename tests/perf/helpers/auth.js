@@ -22,7 +22,7 @@ export const DEFAULT_HEADERS = {
  * @returns {string|null} Access token or null on failure
  */
 export function loginAndGetToken(username, password) {
-  const res = http.post(`${BASE_URL}/api/auth/login`,
+  const res = http.post(`${BASE_URL}/auth/login`,
     JSON.stringify({ username, password }),
     { headers: DEFAULT_HEADERS, tags: { endpoint: 'login' } }
   );

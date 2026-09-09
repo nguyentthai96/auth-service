@@ -15,7 +15,7 @@ import org.springframework.web.bind.annotation.*
  * Requires ADMIN role. All operations are audited (FR-008).
  */
 @RestController
-@RequestMapping("/api/admin/rate-limit")
+@RequestMapping("/admin/rate-limits")
 @PreAuthorize("hasRole('ADMIN')")
 class RateLimitAdminController(
     private val rateLimitService: MfaRateLimitService,

@@ -38,6 +38,7 @@ class AuditLogEntity : SnowflakePersistentAuditableEntity() {
 
     /** JSONB details — may contain masked sensitive data. */
     @Column(name = "details", columnDefinition = "jsonb")
+    @org.hibernate.annotations.JdbcTypeCode(org.hibernate.type.SqlTypes.JSON)
     var details: String? = null
 
     @Column(name = "ip_address", length = 45)

@@ -15,6 +15,7 @@ import http from 'k6/http';
 import { check, sleep } from 'k6';
 import { BASE_URL } from '../config/env.js';
 import { endpointLatency } from '../helpers/metrics.js';
+import { buildHandleSummary } from '../helpers/report.js';
 
 export const options = {
   scenarios: {
@@ -73,7 +74,7 @@ export default function () {
 
   if (scenario === 'db_pool_saturation') {
     // Hit an endpoint that queries DB (user lookup triggers JPA query)
-    const res = http.get(`${BASE_URL}/api/v1/users?page=0&size=1`, {
+    const res = http.get(`${BASE_URL}/admin/users?page=0&size=1`, {
       tags: { endpoint: 'db_pool' },
     });
     endpointLatency.add(res.timings.duration, { endpoint: 'db_pool' });
@@ -87,3 +88,5 @@ export default function () {
     endpointLatency.add(res.timings.duration, { endpoint: 'redis' });
   }
 }
+
+export const handleSummary = buildHandleSummary('infra_baseline');

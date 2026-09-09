@@ -8,6 +8,7 @@ import { BASE_URL } from '../../config/env.js';
 import { DEFAULT_HEADERS, authHeaders } from '../../helpers/auth.js';
 import { generateUsername, generateEmail } from '../../helpers/data.js';
 import { chainDuration, chainSuccess, stepLatency } from '../../helpers/metrics.js';
+import { buildHandleSummary } from '../../helpers/report.js';
 
 export const options = {
   scenarios: { registration_chain: { executor: 'per-vu-iterations', vus: 20, iterations: 5, maxDuration: '5m' } },
@@ -20,7 +21,7 @@ export default function () {
   const email = generateEmail(username);
   const password = 'PerfTest123!';
 
-  const regRes = http.post(`${BASE_URL}/api/v1/auth/register`,
+  const regRes = http.post(`${BASE_URL}/auth/register`,
     JSON.stringify({ username, password, email }),
     { headers: DEFAULT_HEADERS, tags: { step: 'register' } });
   stepLatency.add(regRes.timings.duration, { step: 'register', chain: 'registration' });
@@ -28,7 +29,7 @@ export default function () {
 
   sleep(0.5);
 
-  const loginRes = http.post(`${BASE_URL}/api/v1/auth/login`,
+  const loginRes = http.post(`${BASE_URL}/auth/login`,
     JSON.stringify({ username, password }),
     { headers: DEFAULT_HEADERS, tags: { step: 'login' } });
   stepLatency.add(loginRes.timings.duration, { step: 'login', chain: 'registration' });
@@ -36,10 +37,12 @@ export default function () {
 
   const token = JSON.parse(loginRes.body).accessToken || JSON.parse(loginRes.body).access_token;
 
-  const profileRes = http.get(`${BASE_URL}/api/v1/profiles/me`,
+  const profileRes = http.get(`${BASE_URL}/account/profile`,
     { headers: authHeaders(token), tags: { step: 'profile' } });
   stepLatency.add(profileRes.timings.duration, { step: 'profile', chain: 'registration' });
 
   chainDuration.add(Date.now() - start);
   chainSuccess.add(1);
 }
+
+export const handleSummary = buildHandleSummary('chain_registration');

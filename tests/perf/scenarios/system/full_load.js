@@ -14,6 +14,7 @@ import { BASE_URL, TRAFFIC_MIX } from '../../config/env.js';
 import { DEFAULT_HEADERS, authHeaders, loginAndGetToken, loginAdminUser } from '../../helpers/auth.js';
 import { getUserForVU, generateUsername, generateEmail } from '../../helpers/data.js';
 import { totalTransactions } from '../../helpers/metrics.js';
+import { buildHandleSummary } from '../../helpers/report.js';
 
 export const options = {
   scenarios: {
@@ -60,7 +61,7 @@ export function mixedWorkload() {
 
 function doAuthFlow() {
   const user = getUserForVU(__VU);
-  const res = http.post(`${BASE_URL}/api/v1/auth/login`,
+  const res = http.post(`${BASE_URL}/auth/login`,
     JSON.stringify({ username: user.username, password: user.password }),
     { headers: DEFAULT_HEADERS, tags: { flow: 'auth' } });
   check(res, { 'auth login ok': (r) => r.status === 200 });
@@ -70,7 +71,7 @@ function doAuthFlow() {
     const token = body.accessToken || body.access_token;
     // 50% chance to also refresh
     if (Math.random() < 0.5 && body.refreshToken) {
-      http.post(`${BASE_URL}/api/v1/auth/refresh`,
+      http.post(`${BASE_URL}/auth/refresh`,
         JSON.stringify({ refreshToken: body.refreshToken }),
         { headers: DEFAULT_HEADERS, tags: { flow: 'auth' } });
     }
@@ -81,13 +82,13 @@ function doProfileFlow() {
   const user = getUserForVU(__VU);
   const token = loginAndGetToken(user.username, user.password);
   if (!token) return;
-  http.get(`${BASE_URL}/api/v1/profiles/me`,
+  http.get(`${BASE_URL}/account/profile`,
     { headers: authHeaders(token), tags: { flow: 'profile' } });
 }
 
 function doRegisterFlow() {
   const username = generateUsername(__VU, __ITER);
-  http.post(`${BASE_URL}/api/v1/auth/register`,
+  http.post(`${BASE_URL}/auth/register`,
     JSON.stringify({ username, password: 'PerfTest123!', email: generateEmail(username) }),
     { headers: DEFAULT_HEADERS, tags: { flow: 'register' } });
 }
@@ -95,7 +96,7 @@ function doRegisterFlow() {
 function doAdminFlow() {
   const token = loginAdminUser();
   if (!token) return;
-  http.get(`${BASE_URL}/api/v1/users?page=0&size=10`,
+  http.get(`${BASE_URL}/admin/users?page=0&size=10`,
     { headers: authHeaders(token), tags: { flow: 'admin' } });
 }
 
@@ -103,7 +104,9 @@ function doMfaSsoFlow() {
   const user = getUserForVU(__VU);
   const token = loginAndGetToken(user.username, user.password);
   if (!token) return;
-  http.post(`${BASE_URL}/api/v1/auth/mfa/verify`,
+  http.post(`${BASE_URL}/auth/mfa/verify`,
     JSON.stringify({ code: '123456', method: 'totp' }),
     { headers: authHeaders(token), tags: { flow: 'mfa_sso' } });
 }
+
+export const handleSummary = buildHandleSummary('full_load');

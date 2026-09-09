@@ -16,7 +16,7 @@ import org.springframework.web.bind.annotation.*
  * MFA endpoints — verify, TOTP setup/confirm, resend OTP, settings.
  */
 @RestController
-@RequestMapping("/api/auth/mfa")
+@RequestMapping("/auth/mfa")
 class MfaController(
     private val mfaService: MfaService,
     private val buildAuthResponseHandler: BuildAuthResponseHandler,

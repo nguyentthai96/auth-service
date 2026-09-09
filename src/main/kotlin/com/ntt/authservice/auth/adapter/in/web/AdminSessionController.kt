@@ -20,7 +20,7 @@ import org.springframework.web.bind.annotation.*
  * Requires ADMIN/SUPER_ADMIN role (enforced by SecurityConfig).
  */
 @RestController
-@RequestMapping("/api/admin/sessions")
+@RequestMapping("/admin/sessions")
 class AdminSessionController(
     private val loginSessionService: LoginSessionService,
     private val loginSessionRepository: LoginSessionRepository,

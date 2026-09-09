@@ -15,7 +15,7 @@ import org.springframework.web.bind.annotation.*
  * SSO endpoints — OAuth2 callback, provider listing, identity link/unlink.
  */
 @RestController
-@RequestMapping("/api/auth/sso")
+@RequestMapping("/auth/sso")
 class SsoController(
     private val ssoAdapter: SsoAdapter,
     private val buildAuthResponseHandler: BuildAuthResponseHandler,

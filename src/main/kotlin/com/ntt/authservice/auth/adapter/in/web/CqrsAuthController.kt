@@ -37,7 +37,7 @@ import org.springframework.web.bind.annotation.*
  * FR-003, FR-013: Anonymous session promotion support in login/register.
  */
 @RestController
-@RequestMapping("/api/auth")
+@RequestMapping("/auth")
 @ConditionalOnProperty(name = ["app.security.cqrs.enabled"], havingValue = "true", matchIfMissing = true)
 class CqrsAuthController(
     private val loginHandler: LoginHandler,

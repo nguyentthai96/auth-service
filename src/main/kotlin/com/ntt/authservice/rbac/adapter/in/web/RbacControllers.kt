@@ -15,7 +15,7 @@ import org.springframework.web.bind.annotation.*
 // Domain Management Controller
 // ============================================================
 @RestController
-@RequestMapping("/api/domains")
+@RequestMapping("/admin/domains")
 class DomainController(
     private val domainRepository: DomainRepository,
     private val domainRoleRepository: DomainRoleRepository,
@@ -97,7 +97,7 @@ class DomainController(
 // Role Management Controller
 // ============================================================
 @RestController
-@RequestMapping("/api/domains/{domainId}/roles")
+@RequestMapping("/admin/domains/{domainId}/roles")
 class RoleController(
     private val domainRoleRepository: DomainRoleRepository,
     private val domainRepository: DomainRepository
@@ -138,7 +138,7 @@ class RoleController(
 // Group Management Controller
 // ============================================================
 @RestController
-@RequestMapping("/api/domains/{domainId}/groups")
+@RequestMapping("/admin/domains/{domainId}/groups")
 class GroupController(
     private val groupRepository: GroupRepository,
     private val groupRoleRepository: GroupRoleRepository,
@@ -204,7 +204,7 @@ class GroupController(
 // Resource & Permission Management Controller
 // ============================================================
 @RestController
-@RequestMapping("/api/domains/{domainId}/resources")
+@RequestMapping("/admin/domains/{domainId}/resources")
 class ResourceController(
     private val domainResourceRepository: DomainResourceRepository,
     private val domainRepository: DomainRepository
@@ -240,7 +240,7 @@ class ResourceController(
 // Permission Check Controller
 // ============================================================
 @RestController
-@RequestMapping("/api/permissions")
+@RequestMapping("/auth/permissions")
 class PermissionCheckController(
     private val rbacEngine: RbacEngine
 ) {
