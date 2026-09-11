@@ -21,17 +21,6 @@ spring:
             token-uri: https://login.microsoftonline.com/common/oauth2/v2.0/token
             user-info-uri: https://graph.microsoft.com/oidc/userinfo
             jwk-set-uri: https://login.microsoftonline.com/common/discovery/v2.0/keys
-  mail:
-    host: ${MAIL_HOST:localhost}
-    port: ${MAIL_PORT:1025}
-    username: ${MAIL_USERNAME:}
-    password: ${MAIL_PASSWORD:}
-    properties:
-      mail:
-        smtp:
-          auth: ${MAIL_SMTP_AUTH:false}
-          starttls:
-            enable: ${MAIL_SMTP_STARTTLS:false}
 
 app:
   cors:
@@ -149,12 +138,3 @@ app:
       strict-mode: ${FINGERPRINT_STRICT:false}
       header-name: X-Device-Fingerprint
       server-compute-fallback: true
-    mail:
-      queue:
-        batch-size: 10
-        poll-interval-ms: 5000
-        max-retries: 3
-        base-retry-delay-seconds: 30
-        cleanup-after-days: 30
-      templates:
-        default-language: vi

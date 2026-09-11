@@ -1,6 +1,8 @@
 package com.ntt.authservice.auth.application
 
 import com.ntt.authservice.auth.application.event.NewDeviceLoginEvent
+import com.ntt.notification.client.NotificationPort
+import com.ntt.notification.client.NotificationRequest
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
 import org.mockito.Mockito.*
@@ -9,16 +11,16 @@ import java.time.Instant
 class NewDeviceMailHandlerTest {
 
     private lateinit var handler: NewDeviceMailHandler
-    private lateinit var mailQueueService: MailQueueService
+    private lateinit var notificationPort: NotificationPort
 
     @BeforeEach
     fun setUp() {
-        mailQueueService = mock(MailQueueService::class.java)
-        handler = NewDeviceMailHandler(mailQueueService)
+        notificationPort = mock(NotificationPort::class.java)
+        handler = NewDeviceMailHandler(notificationPort)
     }
 
     @Test
-    fun `handleNewDeviceLogin enqueues mail with correct template data`() {
+    fun `handleNewDeviceLogin enqueues notification with correct template data`() {
         val event = NewDeviceLoginEvent(
             userId = 1L,
             username = "john",
@@ -34,15 +36,16 @@ class NewDeviceMailHandlerTest {
 
         handler.handleNewDeviceLogin(event)
 
-        verify(mailQueueService).enqueue(
-            eq("john@example.com"),
-            eq("NEW_DEVICE_LOGIN"),
-            argThat { map ->
-                map["userName"] == "john" &&
-                map["deviceName"] == "Chrome on Windows" &&
-                map["ipAddress"] == "192.168.1.1"
-            },
-            eq(1L)
+        verify(notificationPort).enqueue(
+            argThat { request: NotificationRequest ->
+                request.recipient == "john@example.com" &&
+                request.templateCode == "NEW_DEVICE_LOGIN" &&
+                request.channel == "EMAIL" &&
+                request.sourceService == "auth-service" &&
+                request.templateData["userName"] == "john" &&
+                request.templateData["deviceName"] == "Chrome on Windows" &&
+                request.templateData["ipAddress"] == "192.168.1.1"
+            }
         )
     }
 
@@ -60,6 +63,7 @@ class NewDeviceMailHandlerTest {
 
         handler.handleNewDeviceLogin(event)
 
-        verify(mailQueueService, never()).enqueue(any(), any(), any(), any())
+        verify(notificationPort, never()).enqueue(any())
     }
 }
+

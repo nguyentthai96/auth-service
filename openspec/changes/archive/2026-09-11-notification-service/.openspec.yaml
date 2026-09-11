@@ -1,0 +1,26 @@
+# OpenSpec Change Config — notification-service
+# Generated: 2026-09-11
+change: notification-service
+type: NEWBUILD
+flow: Command
+
+artifacts:
+  - id: proposal
+    status: pending
+    dependencies: []
+  - id: srs
+    status: pending
+    dependencies: [proposal]
+  - id: design
+    status: pending
+    dependencies: [proposal, srs]
+  - id: tasks
+    status: pending
+    dependencies: [proposal, srs, design]
+
+applyRequires: [tasks]
+
+context:
+  dynamic: openspec/context/generated/notification-service/
+  pre_openspec: openspec/changes/notification-service/pre_openspec.md
+  brainstorm: openspec/changes/notification-service/brainstorm_notes.md
