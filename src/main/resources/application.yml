@@ -21,6 +21,8 @@ spring:
       - classpath:application-db.yml
       - classpath:application-security.yml
       - classpath:application-cache.yml
+      - optional:classpath:application-notification.yml
+      - optional:classpath:application-elasticsearch.yml
 
 server:
   port: 8081

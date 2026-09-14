@@ -1,0 +1,20 @@
+# ═══════════════════════════════════════════════════════════════
+# Elasticsearch Plug-and-Play Configuration (Dynamic Cắm/Rút)
+# ═══════════════════════════════════════════════════════════════
+app:
+  elasticsearch:
+    # Set to true to plug in (enable) Elasticsearch, false to unplug (disable)
+    enabled: ${ELASTICSEARCH_ENABLED:false}
+
+spring:
+  elasticsearch:
+    uris: ${ELASTICSEARCH_URIS:http://localhost:9200}
+    connection-timeout: ${ELASTICSEARCH_CONNECT_TIMEOUT:5s}
+    socket-timeout: ${ELASTICSEARCH_SOCKET_TIMEOUT:30s}
+
+management:
+  health:
+    elasticsearch:
+      enabled: ${ELASTICSEARCH_ENABLED:false}
+    reactive-elasticsearch:
+      enabled: ${ELASTICSEARCH_ENABLED:false}

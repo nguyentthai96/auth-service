@@ -7,7 +7,6 @@ import com.ntt.authservice.auth.domain.model.vo.PasswordHash
 import com.ntt.authservice.auth.domain.model.vo.UserId
 import com.ntt.authservice.shared.audit.AuditAction
 import com.ntt.authservice.shared.audit.AuditLogService
-import io.micrometer.core.instrument.Counter
 import io.micrometer.core.instrument.MeterRegistry
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry
 import org.junit.jupiter.api.Assertions.*

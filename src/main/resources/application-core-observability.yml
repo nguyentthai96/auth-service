@@ -6,6 +6,11 @@ management:
   endpoint:
     health:
       show-details: when-authorized
+  health:
+    elasticsearch:
+      enabled: ${ELASTICSEARCH_HEALTH_ENABLED:false}
+    reactive-elasticsearch:
+      enabled: ${ELASTICSEARCH_HEALTH_ENABLED:false}
     prometheus:
       enabled: true
   metrics:

@@ -12,6 +12,7 @@ dependencies {
 //  - BASE-CORE STARTERS (provides base-core, base-model, common-log transitively)
     implementation(platform("com.ntt:platform:0.0.1-SNAPSHOT"))
     implementation(platform("org.springframework.cloud:spring-cloud-dependencies:${property("springCloudVersion")}"))
+    annotationProcessor(platform("com.ntt:platform:0.0.1-SNAPSHOT"))
     implementation("com.ntt:base-web-starter")
     implementation("com.ntt:base-data-starter")
     implementation("com.ntt:base-security-starter")
