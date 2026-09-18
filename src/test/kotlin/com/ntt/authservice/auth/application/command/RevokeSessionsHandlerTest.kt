@@ -3,7 +3,10 @@ package com.ntt.authservice.auth.application.command
 import com.ntt.authservice.auth.application.port.out.TokenStore
 import com.ntt.authservice.auth.application.port.out.UserPort
 import com.ntt.authservice.auth.domain.model.User
-import com.ntt.authservice.auth.domain.model.UserId
+import com.ntt.authservice.auth.domain.model.UserStatus
+import com.ntt.authservice.auth.domain.model.vo.UserId
+import com.ntt.authservice.auth.domain.model.vo.Email
+import com.ntt.authservice.auth.domain.model.vo.PasswordHash
 import com.ntt.authservice.shared.audit.AuditAction
 import com.ntt.authservice.shared.audit.AuditLogService
 import com.ntt.authservice.shared.exception.ResourceNotFoundException
@@ -38,7 +41,7 @@ class RevokeSessionsHandlerTest {
     @Test
     @DisplayName("should revoke all refresh tokens and return count")
     fun shouldRevokeAllRefreshTokensAndReturnCount() {
-        val user = User(id = UserId(testUserId), username = "testuser", email = "test@example.com", passwordHash = "hash", status = "ACTIVE")
+        val user = User(id = UserId(testUserId), username = "testuser", email = Email("test@example.com"), passwordHash = PasswordHash("hash"), fullName = "Test User", status = UserStatus.Active)
         whenever(userPort.findById(testUserId)).thenReturn(user)
         whenever(tokenStore.revokeAllForUser(testUserId)).thenReturn(5)
 
@@ -58,7 +61,7 @@ class RevokeSessionsHandlerTest {
     @Test
     @DisplayName("should return 0 when no active refresh tokens exist")
     fun shouldReturnZeroWhenNoActiveTokens() {
-        val user = User(id = UserId(testUserId), username = "testuser", email = "test@example.com", passwordHash = "hash", status = "ACTIVE")
+        val user = User(id = UserId(testUserId), username = "testuser", email = Email("test@example.com"), passwordHash = PasswordHash("hash"), fullName = "Test User", status = UserStatus.Active)
         whenever(userPort.findById(testUserId)).thenReturn(user)
         whenever(tokenStore.revokeAllForUser(testUserId)).thenReturn(0)
 

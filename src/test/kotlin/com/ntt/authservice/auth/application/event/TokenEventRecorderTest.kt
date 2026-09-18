@@ -78,7 +78,7 @@ class TokenEventRecorderTest {
 
         verify(eventService).record(
             any(), any(),
-            argThat<TokenIssuedEvent> { it.issuanceContext == IssuanceContext.LOGIN },
+            argThat<TokenIssuedEvent> { issuanceContext == IssuanceContext.LOGIN },
             any(), any(), anyOrNull()
         )
     }
@@ -91,7 +91,7 @@ class TokenEventRecorderTest {
 
         verify(eventService).record(
             any(), any(),
-            argThat<TokenIssuedEvent> { it.issuanceContext == IssuanceContext.TOKEN_REFRESH },
+            argThat<TokenIssuedEvent> { issuanceContext == IssuanceContext.TOKEN_REFRESH },
             any(), any(), anyOrNull()
         )
     }
@@ -104,7 +104,7 @@ class TokenEventRecorderTest {
 
         verify(eventService).record(
             any(), any(),
-            argThat<TokenIssuedEvent> { it.issuanceContext == IssuanceContext.SSO },
+            argThat<TokenIssuedEvent> { issuanceContext == IssuanceContext.SSO },
             any(), any(), anyOrNull()
         )
     }
@@ -140,7 +140,7 @@ class TokenEventRecorderTest {
 
         verify(eventService).record(
             any(), any(),
-            argThat<TokenRevokedEvent> { it.revocationType == RevocationType.LOGOUT },
+            argThat<TokenRevokedEvent> { revocationType == RevocationType.LOGOUT },
             any(), any(), anyOrNull()
         )
     }
@@ -157,7 +157,7 @@ class TokenEventRecorderTest {
         verify(eventService).record(
             any(), any(),
             argThat<TokenRevokedEvent> {
-                it.revocationType == RevocationType.BULK_REVOKE && it.revokedCount == 5
+                revocationType == RevocationType.BULK_REVOKE && revokedCount == 5
             },
             any(), any(), anyOrNull()
         )
@@ -171,7 +171,7 @@ class TokenEventRecorderTest {
 
         verify(eventService).record(
             any(), any(),
-            argThat<TokenRevokedEvent> { it.revocationType == RevocationType.ROTATION },
+            argThat<TokenRevokedEvent> { revocationType == RevocationType.ROTATION },
             any(), any(), anyOrNull()
         )
     }

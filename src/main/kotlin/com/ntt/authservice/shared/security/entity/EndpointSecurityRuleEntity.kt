@@ -1,6 +1,8 @@
 package com.ntt.authservice.shared.security.entity
 
 import jakarta.persistence.*
+import org.hibernate.annotations.JdbcTypeCode
+import org.hibernate.type.SqlTypes
 
 /**
  * JPA entity for endpoint_security_rules table.
@@ -27,10 +29,12 @@ class EndpointSecurityRuleEntity {
     @Column(name = "access_type", nullable = false, length = 20)
     var accessType: String = "AUTHENTICATED"
 
-    @Column(name = "required_roles", columnDefinition = "TEXT[]")
+    @JdbcTypeCode(SqlTypes.ARRAY)
+    @Column(name = "required_roles")
     var requiredRoles: Array<String>? = null
 
-    @Column(name = "required_perms", columnDefinition = "TEXT[]")
+    @JdbcTypeCode(SqlTypes.ARRAY)
+    @Column(name = "required_perms")
     var requiredPerms: Array<String>? = null
 
     @Column(name = "domain_scope", length = 50)

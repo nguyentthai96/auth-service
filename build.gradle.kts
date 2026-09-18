@@ -53,6 +53,8 @@ dependencies {
     implementation("org.springframework.boot:spring-boot-starter-oauth2-resource-server")
     implementation("dev.samstevens.totp:totp:1.7.1")
     implementation("org.passay:passay:1.6.4")
+    // Account Lockout Policy: SSR unlock pages (Thymeleaf)
+    implementation("org.springframework.boot:spring-boot-starter-thymeleaf")
 //  - DEVELOPMENT
     developmentOnly("org.springframework.boot:spring-boot-devtools")
     developmentOnly("org.springframework.boot:spring-boot-docker-compose")
@@ -67,12 +69,15 @@ dependencies {
     testImplementation("org.jetbrains.kotlinx:kotlinx-coroutines-test")
     // BouncyCastle — required by Spring Security's Argon2PasswordEncoder (runtime for Argon2id hashing)
     implementation("org.bouncycastle:bcprov-jdk18on:1.80")
-    // WireMock — HTTP latency/fault simulation for SSO + Captcha circuit breaker tests (FR-002)
-    testImplementation("org.springframework.cloud:spring-cloud-contract-wiremock")
+    // WireMock — TODO: configure proper WireMock dependency for integration tests (FR-002)
+    // testImplementation("org.wiremock:wiremock-spring-boot:3.x")
     // datasource-proxy — explicit version alignment for SQL query counting (FR-009)
     testImplementation("net.ttddyy:datasource-proxy:1.10")
     // H2 — in-memory database for unit/integration tests without external PostgreSQL
     testRuntimeOnly("com.h2database:h2")
+    // Testcontainers — integration tests with real Redis/PostgreSQL
+    testImplementation("org.testcontainers:junit-jupiter:1.20.4")
+    testImplementation("org.testcontainers:postgresql:1.20.4")
 //  - JMH BENCHMARKING (FR-005)
     jmh("org.openjdk.jmh:jmh-core:1.37")
     jmh("org.openjdk.jmh:jmh-generator-annprocess:1.37")

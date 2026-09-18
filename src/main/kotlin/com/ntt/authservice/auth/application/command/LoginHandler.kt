@@ -1,5 +1,7 @@
 package com.ntt.authservice.auth.application.command
 
+import com.ntt.authservice.auth.application.AccountLockoutService
+import com.ntt.authservice.auth.application.CaptchaStrategyRegistry
 import com.ntt.authservice.auth.application.FingerprintService
 import com.ntt.authservice.auth.application.LoginRateLimitService
 import com.ntt.authservice.auth.application.LoginResult
@@ -32,6 +34,8 @@ import java.time.Instant
  * Implements CQRS CommandHandler for clean separation of concerns.
  *
  * Integration points:
+ * - AccountLockoutService: lockout validation, failed attempt recording, lock escalation
+ * - CaptchaStrategyRegistry: dual CAPTCHA verification (Image + PoW)
  * - LoginRateLimitService: record failed/reset on success
  * - SessionPolicyService: enforce max sessions per role
  * - LoginSessionService: record login session + device info
@@ -54,7 +58,9 @@ class LoginHandler(
     private val sessionPromotionService: SessionPromotionService,
     private val loginEventRecorder: LoginEventRecorder,
     private val fingerprintService: FingerprintService,
-    private val passwordUpgradeService: PasswordUpgradeService
+    private val passwordUpgradeService: PasswordUpgradeService,
+    private val accountLockoutService: AccountLockoutService,
+    private val captchaStrategyRegistry: CaptchaStrategyRegistry
 ) : CommandHandler<LoginCommand, LoginResult> {
 
     private val log = LoggerFactory.getLogger(LoginHandler::class.java)
@@ -77,36 +83,28 @@ class LoginHandler(
                 }
             resolvedUser = user
 
-            // Check account lock status
-            when (val status = user.status) {
-                is UserStatus.Locked -> {
-                    if (user.isLockExpired()) {
-                        user.unlockIfExpired()
-                    } else {
-                        throw AccountLockedException(status.until, status.reason)
-                    }
-                }
-                else -> { /* continue */ }
-            }
+            // Check account lock status — delegates to AccountLockoutService (FR-010)
+            accountLockoutService.validateLockoutStatus(user)
 
-            // CAPTCHA check (when failed login threshold exceeded)
-            val maxAttempts = securityProperties.password.maxFailedAttempts
-            if (user.failedLoginCount >= maxAttempts - 1) {
+            // CAPTCHA check (when failed login threshold exceeded) — supports dual CAPTCHA (FR-014)
+            val lockoutFailedCount = accountLockoutService.getFailedAttemptCount(user.id.value)
+            val maxAttempts = securityProperties.lockout.maxFailedAttempts
+            if (lockoutFailedCount >= maxAttempts - 1) {
                 val captchaToken = command.captchaToken
                 if (captchaToken.isNullOrBlank()) {
                     throw CaptchaRequiredException()
                 }
-                if (!captchaGateway.verify(captchaToken)) {
+                if (!captchaStrategyRegistry.verify(captchaToken, command.captchaType)) {
                     throw CaptchaFailedException()
                 }
             }
 
             // Validate password
             if (!tokenGenerator.matchesPassword(command.password, user.passwordHash.value)) {
-                user.recordFailedLogin(maxAttempts, securityProperties.password.lockDurationMinutes * 60L)
-                userPort.save(user)
+                // Record failed attempt via AccountLockoutService (may trigger lock)
+                accountLockoutService.recordFailedAttempt(user, command.ipAddress)
 
-                // Record failed attempt for rate limiting
+                // Record failed attempt for IP/device rate limiting
                 loginRateLimitService.recordFailedAttempt(
                     ip = command.ipAddress ?: "unknown",
                     username = command.username,
@@ -115,8 +113,9 @@ class LoginHandler(
                 throw InvalidCredentialsException()
             }
 
-            // Reset failed login count on success
+            // Reset failed login count and lockout state on success
             user.resetFailedLogins()
+            accountLockoutService.resetOnSuccess(user.id.value)
 
             // Upgrade password hash if using legacy algorithm (best-effort, transparent migration)
             passwordUpgradeService.upgradeIfNeeded(user, command.password)
@@ -244,6 +243,7 @@ class LoginHandler(
     private fun mapToFailureReason(exception: AuthException): LoginFailureReason = when (exception) {
         is InvalidCredentialsException -> LoginFailureReason.INVALID_CREDENTIALS
         is AccountLockedException -> LoginFailureReason.ACCOUNT_LOCKED
+        is AccountLockedPermanentException -> LoginFailureReason.ACCOUNT_LOCKED
         is CaptchaRequiredException -> LoginFailureReason.CAPTCHA_REQUIRED
         is CaptchaFailedException -> LoginFailureReason.CAPTCHA_FAILED
         is PasswordExpiredException -> LoginFailureReason.PASSWORD_EXPIRED

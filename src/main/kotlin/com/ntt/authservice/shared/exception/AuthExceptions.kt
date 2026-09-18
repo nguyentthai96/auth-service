@@ -121,3 +121,31 @@ class ServiceNotRegisteredException(
     message = "Service '$serviceName' is not registered for inter-service communication",
     httpStatus = HttpStatus.FORBIDDEN
 )
+
+// --- Account Lockout Policy Exceptions (AUTH_080~083) ---
+
+class AccountLockedPermanentException(
+    val reason: String = "Account permanently locked"
+) : AuthException(
+    authError = AuthErrorCode.ACCOUNT_LOCKED_PERMANENT,
+    message = reason,
+    httpStatus = HttpStatus.LOCKED
+)
+
+class UnlockTokenExpiredException : AuthException(
+    authError = AuthErrorCode.UNLOCK_TOKEN_EXPIRED,
+    message = "Unlock link has expired. Please request a new one.",
+    httpStatus = HttpStatus.BAD_REQUEST
+)
+
+class UnlockTokenUsedException : AuthException(
+    authError = AuthErrorCode.UNLOCK_TOKEN_USED,
+    message = "Unlock link has already been used.",
+    httpStatus = HttpStatus.BAD_REQUEST
+)
+
+class UnlockNotAllowedException : AuthException(
+    authError = AuthErrorCode.UNLOCK_NOT_ALLOWED,
+    message = "Self-service unlock is not allowed for permanently locked accounts.",
+    httpStatus = HttpStatus.FORBIDDEN
+)

@@ -1,6 +1,7 @@
 package com.ntt.authservice.testing.assertion
 
 import net.ttddyy.dsproxy.support.ProxyDataSourceBuilder
+import org.springframework.beans.factory.annotation.Qualifier
 import org.springframework.boot.test.context.TestConfiguration
 import org.springframework.context.annotation.Bean
 import org.springframework.context.annotation.Primary
@@ -38,7 +39,7 @@ class DataSourceProxyConfig {
 
     @Bean
     @Primary
-    fun dataSourceProxy(originalDataSource: DataSource): DataSource {
+    fun dataSourceProxy(@Qualifier("dataSource") originalDataSource: DataSource): DataSource {
         return ProxyDataSourceBuilder.create(originalDataSource)
             .name("queryCountProxy")
             .countQuery()

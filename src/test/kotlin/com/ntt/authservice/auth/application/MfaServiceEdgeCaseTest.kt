@@ -13,6 +13,7 @@ import org.junit.jupiter.api.extension.ExtendWith
 import org.mockito.Mock
 import org.mockito.junit.jupiter.MockitoExtension
 import org.mockito.kotlin.*
+import com.ntt.authservice.auth.application.port.out.NotificationGateway
 import org.springframework.data.redis.core.StringRedisTemplate
 import org.springframework.data.redis.core.ValueOperations
 import java.util.*
@@ -36,6 +37,7 @@ class MfaServiceEdgeCaseTest {
     @Mock private lateinit var auditLogService: AuditLogService
     @Mock private lateinit var rateLimitService: MfaRateLimitService
     @Mock private lateinit var recoveryCodeRepository: com.ntt.authservice.auth.adapter.out.persistence.repository.MfaRecoveryCodeRepository
+    @Mock private lateinit var notificationGateway: NotificationGateway
     @Mock private lateinit var valueOps: ValueOperations<String, String>
     @Mock private lateinit var mockClaims: Claims
 
@@ -67,7 +69,7 @@ class MfaServiceEdgeCaseTest {
         mfaService = MfaService(
             otpService, totpService, jwtService, userRepository,
             securityProperties, redisTemplate, auditLogService, rateLimitService,
-            recoveryCodeRepository
+            recoveryCodeRepository, notificationGateway
         )
     }
 
@@ -83,6 +85,8 @@ class MfaServiceEdgeCaseTest {
         whenever(jwtService.parseMfaToken("mfa-token")).thenReturn(mockClaims)
         whenever(mockClaims.subject).thenReturn(userId.toString())
         whenever(mockClaims["method"]).thenReturn("SMS")
+        val testUser = UserEntity().apply { username = "testuser"; mfaEnabled = true; mfaMethod = "SMS" }
+        whenever(userRepository.findById(userId)).thenReturn(Optional.of(testUser))
 
         // First call succeeds, subsequent calls fail (OTP already consumed by Redis DEL)
         var callCount = 0
@@ -133,6 +137,8 @@ class MfaServiceEdgeCaseTest {
         whenever(jwtService.parseMfaToken("mfa-token-sms")).thenReturn(mockClaims)
         whenever(mockClaims.subject).thenReturn(userId.toString())
         whenever(mockClaims["method"]).thenReturn("SMS")
+        val testUser = UserEntity().apply { username = "testuser"; mfaEnabled = true; mfaMethod = "TOTP" }
+        whenever(userRepository.findById(userId)).thenReturn(Optional.of(testUser))
 
         // MfaService uses method from TOKEN (not from user entity)
         // This is correct behavior — the MFA challenge was initiated with a specific method
@@ -155,6 +161,8 @@ class MfaServiceEdgeCaseTest {
         whenever(jwtService.parseMfaToken("mfa-token-push")).thenReturn(mockClaims)
         whenever(mockClaims.subject).thenReturn("1")
         whenever(mockClaims["method"]).thenReturn("PUSH")
+        val testUser = UserEntity().apply { username = "testuser"; mfaEnabled = true; mfaMethod = "PUSH" }
+        whenever(userRepository.findById(1L)).thenReturn(Optional.of(testUser))
 
         assertThrows<MfaCodeInvalidException> {
             mfaService.verifyMfa(

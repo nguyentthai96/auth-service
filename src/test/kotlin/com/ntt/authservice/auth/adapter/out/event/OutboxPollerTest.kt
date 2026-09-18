@@ -55,7 +55,6 @@ class OutboxPollerTest {
         retryCount: Int = 0
     ): EventOutboxEntity {
         return EventOutboxEntity().apply {
-            this.id = id
             this.aggregateType = "User"
             this.aggregateId = 42L
             this.eventType = "iam.token.issued"
@@ -69,7 +68,8 @@ class OutboxPollerTest {
 
     private fun mockKafkaSuccess(): CompletableFuture<SendResult<String, String>> {
         val metadata = RecordMetadata(TopicPartition("test", 0), 0, 0, 0, 0, 0)
-        val sendResult = SendResult<String, String>(null, metadata)
+        val producerRecord = org.apache.kafka.clients.producer.ProducerRecord<String, String>("test", "key", "value")
+        val sendResult = SendResult<String, String>(producerRecord, metadata)
         return CompletableFuture.completedFuture(sendResult)
     }
 

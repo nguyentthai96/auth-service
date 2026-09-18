@@ -209,5 +209,11 @@ enum class AuditAction {
     SERVICE_TOKEN_VALIDATED,
 
     // Password algorithm migration audit
-    PASSWORD_REHASHED
+    PASSWORD_REHASHED,
+
+    // Account Lockout Policy audit actions (FR-010)
+    ACCOUNT_LOCKED_TEMPORARY,
+    ACCOUNT_LOCKED_PERMANENT,
+    ACCOUNT_UNLOCKED_ADMIN,
+    ACCOUNT_UNLOCKED_SELF_SERVICE
 }

@@ -127,9 +127,9 @@ data class AltchaChallenge(
  * ALTCHA solution payload from client (Base64-decoded JSON).
  */
 data class AltchaPayload(
-    val algorithm: String,
-    val challenge: String,
-    val number: Long,
-    val salt: String,
-    val signature: String
+    val algorithm: String = "",
+    val challenge: String = "",
+    val number: Long = 0,
+    val salt: String = "",
+    val signature: String = ""
 )

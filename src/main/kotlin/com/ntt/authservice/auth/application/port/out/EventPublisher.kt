@@ -74,3 +74,55 @@ data class AuditEvent(
 ) : DomainEvent {
     override val eventType: String = "iam.audit.event"
 }
+
+/**
+ * Event published when user profile data is updated (full-text-user-search).
+ * Consumed by account-service to update search index.
+ */
+data class UserUpdatedEvent(
+    val userId: Long,
+    val username: String,
+    val email: String,
+    val fullName: String,
+    val phone: String? = null,
+    val status: String,
+    val avatarUrl: String? = null,
+    val roles: List<String> = emptyList(),
+    val domainCode: String? = null
+) : DomainEvent {
+    override val eventType: String = "iam.user.updated"
+}
+
+/**
+ * Event published when a user is soft-deleted (full-text-user-search).
+ * Consumed by account-service to mark user as DELETED in search index.
+ */
+data class UserSoftDeletedEvent(
+    val userId: Long
+) : DomainEvent {
+    override val eventType: String = "iam.user.deleted"
+}
+
+/**
+ * Event published when user status changes (full-text-user-search).
+ * Consumed by account-service to update status in search index.
+ */
+data class UserStatusChangedEvent(
+    val userId: Long,
+    val oldStatus: String,
+    val newStatus: String
+) : DomainEvent {
+    override val eventType: String = "iam.user.status_changed"
+}
+
+/**
+ * Event published when user roles are changed (full-text-user-search).
+ * Consumed by account-service to update roles_text in search index.
+ */
+data class UserRoleChangedEvent(
+    val userId: Long,
+    val roles: List<String>
+) : DomainEvent {
+    override val eventType: String = "iam.user.role_changed"
+}
+

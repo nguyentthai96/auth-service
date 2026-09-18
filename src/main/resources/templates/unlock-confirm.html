@@ -1,0 +1,25 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org" lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Xác nhận mở khóa tài khoản</title>
+    <style>
+        body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #f5f5f5; margin: 0; padding: 40px 20px; }
+        .container { max-width: 480px; margin: 0 auto; background: #fff; border-radius: 12px; box-shadow: 0 2px 12px rgba(0,0,0,0.08); padding: 40px; text-align: center; }
+        h1 { color: #1a1a2e; font-size: 24px; margin-bottom: 16px; }
+        p { color: #555; line-height: 1.6; margin-bottom: 24px; }
+        .btn { display: inline-block; padding: 14px 40px; background: #4361ee; color: #fff; text-decoration: none; border-radius: 8px; font-size: 16px; font-weight: 600; transition: background 0.2s; }
+        .btn:hover { background: #3a56d4; }
+        .warning { font-size: 13px; color: #888; margin-top: 20px; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🔓 Xác nhận mở khóa tài khoản</h1>
+        <p>Bạn đã yêu cầu mở khóa tài khoản của mình. Nhấn nút bên dưới để xác nhận.</p>
+        <a th:href="@{/unlock/process(token=${token})}" class="btn">Xác nhận mở khóa</a>
+        <p class="warning">Nếu bạn không yêu cầu mở khóa, hãy bỏ qua email này.</p>
+    </div>
+</body>
+</html>

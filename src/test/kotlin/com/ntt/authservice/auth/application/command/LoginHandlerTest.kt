@@ -23,6 +23,8 @@ import org.junit.jupiter.api.assertThrows
 import org.junit.jupiter.api.extension.ExtendWith
 import org.mockito.Mock
 import org.mockito.junit.jupiter.MockitoExtension
+import org.mockito.junit.jupiter.MockitoSettings
+import org.mockito.quality.Strictness
 import org.mockito.kotlin.*
 import java.time.Instant
 import java.time.temporal.ChronoUnit
@@ -34,6 +36,7 @@ import java.time.temporal.ChronoUnit
  * FR-004 (CAPTCHA), FR-005 (Trusted Device), FR-013 (Password Policy)
  */
 @ExtendWith(MockitoExtension::class)
+@MockitoSettings(strictness = Strictness.LENIENT)
 @DisplayName("LoginHandler Tests")
 class LoginHandlerTest {
 
@@ -54,6 +57,8 @@ class LoginHandlerTest {
     @Mock private lateinit var loginEventRecorder: LoginEventRecorder
     @Mock private lateinit var fingerprintService: FingerprintService
     @Mock private lateinit var passwordUpgradeService: PasswordUpgradeService
+    @Mock private lateinit var accountLockoutService: AccountLockoutService
+    @Mock private lateinit var captchaStrategyRegistry: CaptchaStrategyRegistry
 
     private lateinit var handler: LoginHandler
 
@@ -95,7 +100,9 @@ class LoginHandlerTest {
             sessionPromotionService = sessionPromotionService,
             loginEventRecorder = loginEventRecorder,
             fingerprintService = fingerprintService,
-            passwordUpgradeService = passwordUpgradeService
+            passwordUpgradeService = passwordUpgradeService,
+            accountLockoutService = accountLockoutService,
+            captchaStrategyRegistry = captchaStrategyRegistry
         )
     }
 
@@ -111,6 +118,13 @@ class LoginHandlerTest {
         whenever(tokenGenerator.matchesPassword(any(), any())).thenReturn(true)
         whenever(tokenGenerator.getPrimaryDomain(any())).thenReturn("default")
         whenever(tokenGenerator.generateAuthResponse(any(), any(), any())).thenReturn(testAuthToken)
+        
+        val mockLoginSession = com.ntt.authservice.auth.adapter.out.persistence.entity.LoginSessionEntity().apply {
+            this.userId = user.id.value
+            this.ipAddress = "127.0.0.1"
+            this.isNewDevice = false
+        }
+        whenever(loginSessionService.recordLogin(any(), any(), anyOrNull(), anyOrNull(), anyOrNull())).thenReturn(mockLoginSession)
         whenever(domainPort.findByCodeAndActive("default")).thenReturn(
             object {
                 val id = 100L
@@ -391,6 +405,13 @@ class LoginHandlerTest {
             whenever(tokenGenerator.generateAuthResponse(any(), any(), any())).thenReturn(testAuthToken)
             whenever(getUserRolesHandler.handle(any())).thenReturn(emptyList())
 
+            val mockLoginSession = com.ntt.authservice.auth.adapter.out.persistence.entity.LoginSessionEntity().apply {
+                this.userId = captchaUser.id.value
+                this.ipAddress = "127.0.0.1"
+                this.isNewDevice = false
+            }
+            whenever(loginSessionService.recordLogin(any(), any(), anyOrNull(), anyOrNull(), anyOrNull())).thenReturn(mockLoginSession)
+
             val command = LoginCommand(
                 username = "captchaok", password = "password123",
                 captchaToken = "valid-captcha-token"
@@ -420,10 +441,7 @@ class LoginHandlerTest {
         whenever(tokenGenerator.getPrimaryDomain(any())).thenReturn("default")
 
         // Domain found + password expired
-        val domainInfo = object {
-            val id = 100L
-            val code = "default"
-        }
+        val domainInfo = DomainInfo(id = 100L, code = "default")
         whenever(domainPort.findByCodeAndActive("default")).thenReturn(domainInfo)
         whenever(passwordPolicyService.isPasswordExpired(eq(1L), eq(100L))).thenReturn(true)
 

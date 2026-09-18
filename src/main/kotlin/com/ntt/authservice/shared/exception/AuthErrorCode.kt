@@ -68,7 +68,13 @@ enum class AuthErrorCode(
     // --- Device Management Error Codes — AUTH_070~072 ---
     FINGERPRINT_MISMATCH("AUTH_070", "auth.fingerprint_mismatch", "Device fingerprint does not match the JWT claim", HttpStatus.UNAUTHORIZED),
     DEVICE_NOT_FOUND("AUTH_071", "auth.device_not_found", "Device session not found", HttpStatus.NOT_FOUND),
-    DEVICE_NOT_OWNED("AUTH_072", "auth.device_not_owned", "Device session does not belong to current user", HttpStatus.FORBIDDEN);
+    DEVICE_NOT_OWNED("AUTH_072", "auth.device_not_owned", "Device session does not belong to current user", HttpStatus.FORBIDDEN),
+
+    // --- Account Lockout Policy Error Codes — AUTH_080~083 ---
+    ACCOUNT_LOCKED_PERMANENT("AUTH_080", "auth.account_locked_permanent", "Account permanently locked due to repeated violations", HttpStatus.LOCKED),
+    UNLOCK_TOKEN_EXPIRED("AUTH_081", "auth.unlock_token_expired", "Unlock link has expired", HttpStatus.BAD_REQUEST),
+    UNLOCK_TOKEN_USED("AUTH_082", "auth.unlock_token_used", "Unlock link has already been used", HttpStatus.BAD_REQUEST),
+    UNLOCK_NOT_ALLOWED("AUTH_083", "auth.unlock_not_allowed", "Self-service unlock is not allowed for this account", HttpStatus.FORBIDDEN);
 
     /**
      * Bridge to base-core ErrorCodeBase via delegation.

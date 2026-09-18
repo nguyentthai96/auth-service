@@ -102,7 +102,7 @@ class I18nIntegrationTest {
         fun registerWithVietnameseLocaleReturnsVietnameseMessage() {
             val username = nextUsername()
             mockMvc.perform(
-                post("/api/auth/register")
+                post("/auth/register")
                     .header("Accept-Language", "vi")
                     .contentType(MediaType.APPLICATION_JSON)
                     .content(registerRequestJson(username))
@@ -117,7 +117,7 @@ class I18nIntegrationTest {
         fun registerWithEnglishLocaleReturnsEnglishMessage() {
             val username = nextUsername()
             mockMvc.perform(
-                post("/api/auth/register")
+                post("/auth/register")
                     .header("Accept-Language", "en")
                     .contentType(MediaType.APPLICATION_JSON)
                     .content(registerRequestJson(username))
@@ -141,7 +141,7 @@ class I18nIntegrationTest {
         fun registerWithoutAcceptLanguageDefaultsToEnglish() {
             val username = nextUsername()
             mockMvc.perform(
-                post("/api/auth/register")
+                post("/auth/register")
                     .contentType(MediaType.APPLICATION_JSON)
                     .content(registerRequestJson(username))
             )
@@ -155,7 +155,7 @@ class I18nIntegrationTest {
         fun registerWithUnsupportedLocaleJaFallsBackToEnglish() {
             val username = nextUsername()
             mockMvc.perform(
-                post("/api/auth/register")
+                post("/auth/register")
                     .header("Accept-Language", "ja")
                     .contentType(MediaType.APPLICATION_JSON)
                     .content(registerRequestJson(username))
@@ -178,7 +178,7 @@ class I18nIntegrationTest {
         @DisplayName("POST /api/auth/login invalid credentials with Accept-Language: vi returns Vietnamese error detail")
         fun invalidLoginWithVietnameseLocaleReturnsVietnameseError() {
             mockMvc.perform(
-                post("/api/auth/login")
+                post("/auth/login")
                     .header("Accept-Language", "vi")
                     .contentType(MediaType.APPLICATION_JSON)
                     .content(loginRequestJson())
@@ -193,7 +193,7 @@ class I18nIntegrationTest {
         @DisplayName("POST /api/auth/login invalid credentials without Accept-Language returns English error detail")
         fun invalidLoginWithoutAcceptLanguageReturnsEnglishError() {
             mockMvc.perform(
-                post("/api/auth/login")
+                post("/auth/login")
                     .contentType(MediaType.APPLICATION_JSON)
                     .content(loginRequestJson())
             )
@@ -207,7 +207,7 @@ class I18nIntegrationTest {
         @DisplayName("POST /api/auth/login with unsupported locale fr falls back to English error")
         fun loginErrorWithUnsupportedLocaleFrFallsBackToEnglish() {
             mockMvc.perform(
-                post("/api/auth/login")
+                post("/auth/login")
                     .header("Accept-Language", "fr")
                     .contentType(MediaType.APPLICATION_JSON)
                     .content(loginRequestJson())
@@ -231,7 +231,7 @@ class I18nIntegrationTest {
         fun contentLanguageHeaderPresentOnSuccess() {
             val username = nextUsername()
             mockMvc.perform(
-                post("/api/auth/register")
+                post("/auth/register")
                     .header("Accept-Language", "vi")
                     .contentType(MediaType.APPLICATION_JSON)
                     .content(registerRequestJson(username))
@@ -243,7 +243,7 @@ class I18nIntegrationTest {
         @DisplayName("Content-Language header is present on error response")
         fun contentLanguageHeaderPresentOnError() {
             mockMvc.perform(
-                post("/api/auth/login")
+                post("/auth/login")
                     .header("Accept-Language", "en")
                     .contentType(MediaType.APPLICATION_JSON)
                     .content(loginRequestJson())
@@ -267,7 +267,7 @@ class I18nIntegrationTest {
             // creating multiple users. Error responses also go through locale resolution.
             repeat(3) {
                 mockMvc.perform(
-                    post("/api/auth/login")
+                    post("/auth/login")
                         .header("Accept-Language", "vi")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(loginRequestJson())

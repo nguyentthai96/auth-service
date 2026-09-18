@@ -204,7 +204,7 @@ class EventServiceTest {
         // Then — correlationId present in payload (auto-generated UUID)
         verify(eventStorePort).append(
             any(), any(), any(), any(), any(),
-            argThat { it.contains("\"correlationId\":\"") },
+            argThat { contains("\"correlationId\":\"") },
             any()
         )
     }

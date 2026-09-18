@@ -41,7 +41,7 @@ class IdempotencyFilterTest {
         whenever(redisTemplate.opsForValue()).thenReturn(valueOps)
         whenever(valueOps.get("idempotency:auth-service:key-123")).thenReturn(null)
 
-        val request = MockHttpServletRequest("POST", "/api/auth/mfa/verify")
+        val request = MockHttpServletRequest("POST", "/auth/mfa/verify")
         request.addHeader("X-Idempotency-Key", "key-123")
 
         val response = MockHttpServletResponse()
@@ -62,7 +62,7 @@ class IdempotencyFilterTest {
         whenever(valueOps.get("idempotency:auth-service:dup-key"))
             .thenReturn("""{"status":"ok","token":"cached-jwt"}""")
 
-        val request = MockHttpServletRequest("POST", "/api/auth/mfa/verify")
+        val request = MockHttpServletRequest("POST", "/auth/mfa/verify")
         request.addHeader("X-Idempotency-Key", "dup-key")
 
         val response = MockHttpServletResponse()
@@ -86,12 +86,12 @@ class IdempotencyFilterTest {
         whenever(valueOps.get("idempotency:auth-service:key-A")).thenReturn(null)
         whenever(valueOps.get("idempotency:auth-service:key-B")).thenReturn(null)
 
-        val request1 = MockHttpServletRequest("POST", "/api/auth/mfa/verify")
+        val request1 = MockHttpServletRequest("POST", "/auth/mfa/verify")
         request1.addHeader("X-Idempotency-Key", "key-A")
         val response1 = MockHttpServletResponse()
         val chain1 = MockFilterChain()
 
-        val request2 = MockHttpServletRequest("POST", "/api/auth/mfa/verify")
+        val request2 = MockHttpServletRequest("POST", "/auth/mfa/verify")
         request2.addHeader("X-Idempotency-Key", "key-B")
         val response2 = MockHttpServletResponse()
         val chain2 = MockFilterChain()
@@ -109,7 +109,7 @@ class IdempotencyFilterTest {
     @DisplayName("TC4: GET requests → filter skipped (non-mutating)")
     fun shouldSkipGetRequests() {
         // Given — no Redis interaction expected
-        val request = MockHttpServletRequest("GET", "/api/auth/mfa/settings")
+        val request = MockHttpServletRequest("GET", "/auth/mfa/settings")
         request.addHeader("X-Idempotency-Key", "get-key")
 
         val response = MockHttpServletResponse()
@@ -127,7 +127,7 @@ class IdempotencyFilterTest {
     @DisplayName("TC6: POST without X-Idempotency-Key → normal passthrough")
     fun shouldPassthroughWithoutIdempotencyKey() {
         // Given — no idempotency key header
-        val request = MockHttpServletRequest("POST", "/api/auth/mfa/verify")
+        val request = MockHttpServletRequest("POST", "/auth/mfa/verify")
         // No X-Idempotency-Key header
 
         val response = MockHttpServletResponse()
@@ -144,7 +144,7 @@ class IdempotencyFilterTest {
     @Test
     @DisplayName("TC-extra: DELETE requests → filter skipped (only POST/PUT/PATCH)")
     fun shouldSkipDeleteRequests() {
-        val request = MockHttpServletRequest("DELETE", "/api/auth/sessions")
+        val request = MockHttpServletRequest("DELETE", "/auth/sessions")
         request.addHeader("X-Idempotency-Key", "del-key")
         val response = MockHttpServletResponse()
         val chain = MockFilterChain()
@@ -162,7 +162,7 @@ class IdempotencyFilterTest {
         whenever(redisTemplate.opsForValue()).thenReturn(valueOps)
         whenever(valueOps.get(any())).thenThrow(RuntimeException("Redis connection refused"))
 
-        val request = MockHttpServletRequest("POST", "/api/auth/mfa/verify")
+        val request = MockHttpServletRequest("POST", "/auth/mfa/verify")
         request.addHeader("X-Idempotency-Key", "redis-fail-key")
         val response = MockHttpServletResponse()
         val chain = MockFilterChain()

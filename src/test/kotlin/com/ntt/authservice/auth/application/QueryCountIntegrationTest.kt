@@ -54,7 +54,7 @@ class QueryCountIntegrationTest {
         // Adjust the expected count to match the actual baseline, then monitor for regressions.
         QueryCountAssertions.assertQueryCount(select = null, insert = null) {
             mockMvc.perform(
-                post("/api/v1/auth/login")
+                post("/auth/login")
                     .contentType(MediaType.APPLICATION_JSON)
                     .content(
                         """
@@ -86,7 +86,7 @@ class QueryCountIntegrationTest {
         //
         // Set select=2 once baseline is confirmed.
         mockMvc.perform(
-            post("/api/v1/auth/refresh")
+            post("/auth/refresh")
                 .contentType(MediaType.APPLICATION_JSON)
                 .content(
                     """

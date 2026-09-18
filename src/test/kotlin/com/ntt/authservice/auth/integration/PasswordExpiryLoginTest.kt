@@ -23,7 +23,10 @@ import org.junit.jupiter.api.assertThrows
 import org.junit.jupiter.api.extension.ExtendWith
 import org.mockito.Mock
 import org.mockito.junit.jupiter.MockitoExtension
+import org.mockito.junit.jupiter.MockitoSettings
+import org.mockito.quality.Strictness
 import org.mockito.kotlin.*
+import com.ntt.authservice.auth.application.command.TokenGenerator
 
 /**
  * Tests for password expiry enforcement during login flow.
@@ -32,6 +35,7 @@ import org.mockito.kotlin.*
  * FR-013: Password policy enforcement during login
  */
 @ExtendWith(MockitoExtension::class)
+@MockitoSettings(strictness = Strictness.LENIENT)
 @DisplayName("Password Expiry Login Tests")
 class PasswordExpiryLoginTest {
 
@@ -51,6 +55,9 @@ class PasswordExpiryLoginTest {
     @Mock private lateinit var sessionPromotionService: SessionPromotionService
     @Mock private lateinit var loginEventRecorder: LoginEventRecorder
     @Mock private lateinit var fingerprintService: FingerprintService
+    @Mock private lateinit var passwordUpgradeService: PasswordUpgradeService
+    @Mock private lateinit var accountLockoutService: AccountLockoutService
+    @Mock private lateinit var captchaStrategyRegistry: CaptchaStrategyRegistry
 
     private lateinit var handler: LoginHandler
 
@@ -91,7 +98,10 @@ class PasswordExpiryLoginTest {
             loginSessionService = loginSessionService,
             sessionPromotionService = sessionPromotionService,
             loginEventRecorder = loginEventRecorder,
-            fingerprintService = fingerprintService
+            fingerprintService = fingerprintService,
+            passwordUpgradeService = passwordUpgradeService,
+            accountLockoutService = accountLockoutService,
+            captchaStrategyRegistry = captchaStrategyRegistry
         )
     }
 
@@ -102,7 +112,14 @@ class PasswordExpiryLoginTest {
         whenever(mfaConfig.trustedDeviceTtlDays).thenReturn(30)
         whenever(passwordConfig.maxFailedAttempts).thenReturn(5)
         whenever(tokenGenerator.matchesPassword(any(), any())).thenReturn(true)
-        whenever(tokenGenerator.getPrimaryDomain(any())).thenReturn("default")
+        whenever(tokenGenerator.getPrimaryDomain(any<Long>())).thenReturn("default")
+        
+        val mockLoginSession = com.ntt.authservice.auth.adapter.out.persistence.entity.LoginSessionEntity().apply {
+            this.userId = testUser.id.value
+            this.ipAddress = "127.0.0.1"
+            this.isNewDevice = false
+        }
+        whenever(loginSessionService.recordLogin(any(), any(), anyOrNull(), anyOrNull(), anyOrNull())).thenReturn(mockLoginSession)
     }
 
     @Test
@@ -110,10 +127,7 @@ class PasswordExpiryLoginTest {
     fun shouldThrowPasswordExpiredOnExpiredPassword() {
         // Given
         setupBasicMocks()
-        val domainInfo = object {
-            val id = 100L
-            val code = "default"
-        }
+        val domainInfo = DomainInfo(id = 100L, code = "default")
         whenever(domainPort.findByCodeAndActive("default")).thenReturn(domainInfo)
         whenever(passwordPolicyService.isPasswordExpired(1L, 100L)).thenReturn(true)
 
@@ -131,13 +145,10 @@ class PasswordExpiryLoginTest {
     fun shouldSucceedWithNonExpiredPassword() {
         // Given
         setupBasicMocks()
-        val domainInfo = object {
-            val id = 100L
-            val code = "default"
-        }
+        val domainInfo = DomainInfo(id = 100L, code = "default")
         whenever(domainPort.findByCodeAndActive("default")).thenReturn(domainInfo)
         whenever(passwordPolicyService.isPasswordExpired(1L, 100L)).thenReturn(false)
-        whenever(tokenGenerator.generateAuthResponse(any(), any(), any())).thenReturn(testAuthToken)
+        whenever(tokenGenerator.generateAuthResponse(any<User>(), any<String>(), anyOrNull())).thenReturn(testAuthToken)
         whenever(getUserRolesHandler.handle(any())).thenReturn(listOf("USER"))
 
         val command = LoginCommand(username = "expiredpwd-user", password = "password123")
@@ -154,10 +165,7 @@ class PasswordExpiryLoginTest {
     fun shouldUseDomainFromRequest() {
         // Given
         setupBasicMocks()
-        val specificDomain = object {
-            val id = 200L
-            val code = "corp"
-        }
+        val specificDomain = DomainInfo(id = 200L, code = "corp")
         whenever(domainPort.findByCodeAndActive("corp")).thenReturn(specificDomain)
         whenever(passwordPolicyService.isPasswordExpired(1L, 200L)).thenReturn(true)
 

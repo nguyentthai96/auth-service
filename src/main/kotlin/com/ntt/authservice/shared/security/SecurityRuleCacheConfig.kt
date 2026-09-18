@@ -2,6 +2,7 @@ package com.ntt.authservice.shared.security
 
 import org.slf4j.LoggerFactory
 import org.springframework.boot.autoconfigure.condition.ConditionalOnBean
+import org.springframework.context.annotation.Profile
 import org.springframework.data.redis.connection.Message
 import org.springframework.data.redis.connection.MessageListener
 import org.springframework.data.redis.connection.RedisConnectionFactory
@@ -23,6 +24,7 @@ import org.springframework.context.annotation.Configuration
  */
 @Configuration
 @ConditionalOnBean(RedisConnectionFactory::class)
+@Profile("!test")
 class SecurityRuleCacheConfig {
 
     companion object {

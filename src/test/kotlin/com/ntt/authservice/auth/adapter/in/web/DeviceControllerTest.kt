@@ -8,7 +8,10 @@ import org.junit.jupiter.api.Test
 import org.mockito.Mockito.*
 import org.springframework.http.HttpStatus
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken
+import org.springframework.security.core.Authentication
+import org.springframework.security.core.context.SecurityContext
 import org.springframework.security.core.context.SecurityContextHolder
+import org.springframework.test.util.ReflectionTestUtils
 import java.time.Instant
 
 class DeviceControllerTest {
@@ -41,6 +44,7 @@ class DeviceControllerTest {
             this.sessionActive = true
             this.accessTokenJti = "current-jti"
         }
+        ReflectionTestUtils.setField(session, "id", 1L)
         `when`(loginSessionService.listDevicesForUser(123L)).thenReturn(listOf(session))
 
         val response = controller.listDevices()

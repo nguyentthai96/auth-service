@@ -34,6 +34,10 @@ data class SecurityProperties(
     val validationEvent: ValidationEventProperties = ValidationEventProperties(),
     /** Device fingerprint configuration — hybrid client/server computation. */
     val fingerprint: FingerprintProperties = FingerprintProperties(),
+    /** Account lockout policy configuration (FR-010). */
+    val lockout: LockoutProperties = LockoutProperties(),
+    /** Image CAPTCHA configuration (Kaptcha) — FR-014. */
+    val imageCaptcha: ImageCaptchaProperties = ImageCaptchaProperties(),
 ) {
     /**
      * JWT signing and token lifetime configuration.
@@ -285,5 +289,44 @@ data class SecurityProperties(
         val headerName: String = "X-Device-Fingerprint",
         val serverComputeFallback: Boolean = true
     )
+
+    /**
+     * Account lockout policy configuration (FR-010).
+     * @property enabled Master switch for lockout feature.
+     * @property maxFailedAttempts Failed attempts before temporary lock — default 5.
+     * @property lockDurationMinutes Temporary lock duration — default 30 minutes.
+     * @property persistentLockThreshold Temp locks within 24h before permanent lock — default 3.
+     * @property failedAttemptWindowMinutes Window for counting failed attempts — default 15 minutes.
+     * @property selfServiceUnlockEnabled Enable email self-service unlock — default true.
+     * @property unlockTokenTtlMinutes Unlock token validity — default 30 minutes.
+     * @property unlockEmailRateLimitMinutes Min interval between unlock emails — default 15 minutes.
+     */
+    data class LockoutProperties(
+        val enabled: Boolean = true,
+        val maxFailedAttempts: Int = 5,
+        val lockDurationMinutes: Int = 30,
+        val persistentLockThreshold: Int = 3,
+        val failedAttemptWindowMinutes: Int = 15,
+        val selfServiceUnlockEnabled: Boolean = true,
+        val unlockTokenTtlMinutes: Int = 30,
+        val unlockEmailRateLimitMinutes: Int = 15
+    )
+
+    /**
+     * Image CAPTCHA configuration (Kaptcha-based) — FR-014.
+     * @property defaultType Default CAPTCHA type when client doesn't specify — 'altcha' or 'image'.
+     * @property image Kaptcha image generation settings.
+     */
+    data class ImageCaptchaProperties(
+        val defaultType: String = "altcha",
+        val image: ImageSettings = ImageSettings()
+    ) {
+        data class ImageSettings(
+            val length: Int = 5,
+            val width: Int = 200,
+            val height: Int = 60,
+            val ttlSeconds: Long = 180
+        )
+    }
 
 }

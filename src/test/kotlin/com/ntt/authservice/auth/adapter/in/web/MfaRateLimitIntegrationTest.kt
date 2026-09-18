@@ -54,7 +54,7 @@ class MfaRateLimitIntegrationTest {
         // This test requires admin auth — will get 401/403 without token.
         // Verifies that the endpoint is registered and responds correctly.
         mockMvc.perform(
-            get("/api/admin/rate-limit/locks/1")
+            get("/admin/rate-limits/locks/1")
                 .contentType(MediaType.APPLICATION_JSON)
         )
             .andExpect(status().isForbidden.or(status().isUnauthorized))
@@ -64,7 +64,7 @@ class MfaRateLimitIntegrationTest {
     @DisplayName("DELETE /api/admin/rate-limit/locks/{userId} should require auth")
     fun shouldRequireAuthForAdminUnlock() {
         mockMvc.perform(
-            delete("/api/admin/rate-limit/locks/1")
+            delete("/admin/rate-limits/locks/1")
                 .contentType(MediaType.APPLICATION_JSON)
         )
             .andExpect(status().isForbidden.or(status().isUnauthorized))

@@ -15,6 +15,8 @@ data class LoginCommand(
     val password: String,
     val domainCode: String? = null,
     val captchaToken: String? = null,
+    /** CAPTCHA type: "image" or "altcha". Null = use configured default. */
+    val captchaType: String? = null,
     val trustedDeviceHash: String? = null,
     val ipAddress: String? = null,
     val userAgent: String? = null,

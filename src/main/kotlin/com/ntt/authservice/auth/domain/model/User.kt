@@ -69,6 +69,38 @@ class User(
     }
 
     /**
+     * Lock the account permanently — only Admin can unlock (FR-006).
+     */
+    fun lockPermanently(reason: String = "Repeated temporary locks exceeded threshold") {
+        status = UserStatus.LockedPermanent(reason)
+        lockedUntilAt = null
+        failedLoginCount = 0
+    }
+
+    /**
+     * Unlock the account by Admin (FR-009).
+     * Resets all lockout state.
+     */
+    fun unlockByAdmin() {
+        status = UserStatus.Active
+        failedLoginCount = 0
+        lockedUntilAt = null
+    }
+
+    /**
+     * Unlock the account via self-service email link (FR-013).
+     * Only allowed for temporary locks, NOT permanent locks.
+     */
+    fun unlockBySelfService() {
+        require(status is UserStatus.Locked) {
+            "Self-service unlock is only allowed for temporary locks"
+        }
+        status = UserStatus.Active
+        failedLoginCount = 0
+        lockedUntilAt = null
+    }
+
+    /**
      * Check if MFA is required considering device trust and TTL.
      * @param deviceHash SHA-256 hash of the client device fingerprint
      * @param ttlDays Number of days a trusted device remains valid (default: 30)

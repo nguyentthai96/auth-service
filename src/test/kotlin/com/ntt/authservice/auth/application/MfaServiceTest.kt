@@ -17,6 +17,7 @@ import org.junit.jupiter.api.extension.ExtendWith
 import org.mockito.Mock
 import org.mockito.junit.jupiter.MockitoExtension
 import org.mockito.kotlin.*
+import com.ntt.authservice.auth.application.port.out.NotificationGateway
 import org.springframework.data.redis.core.StringRedisTemplate
 import org.springframework.data.redis.core.ValueOperations
 import java.time.Duration
@@ -38,6 +39,7 @@ class MfaServiceTest {
     @Mock private lateinit var auditLogService: AuditLogService
     @Mock private lateinit var rateLimitService: MfaRateLimitService
     @Mock private lateinit var recoveryCodeRepository: MfaRecoveryCodeRepository
+    @Mock private lateinit var notificationGateway: NotificationGateway
     @Mock private lateinit var mfaProperties: SecurityProperties.MfaProperties
     @Mock private lateinit var jwtProperties: SecurityProperties.JwtProperties
     @Mock private lateinit var valueOps: ValueOperations<String, String>
@@ -62,7 +64,7 @@ class MfaServiceTest {
         mfaService = MfaService(
             otpService, totpService, jwtService, userRepository,
             securityProperties, redisTemplate, auditLogService, rateLimitService,
-            recoveryCodeRepository
+            recoveryCodeRepository, notificationGateway
         )
     }
 
@@ -109,6 +111,8 @@ class MfaServiceTest {
         whenever(mockClaims.subject).thenReturn("1")
         whenever(mockClaims.get("method")).thenReturn("SMS")
         whenever(jwtService.parseMfaToken("mfa-token")).thenReturn(mockClaims)
+        val testUser = UserEntity().apply { username = "testuser"; mfaEnabled = true; mfaMethod = "SMS" }
+        whenever(userRepository.findById(1L)).thenReturn(Optional.of(testUser))
 
         val result = mfaService.verifyMfa("mfa-token", "123456") { mockAuthResponse }
 

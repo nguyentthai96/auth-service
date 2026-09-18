@@ -5,7 +5,7 @@ import com.ntt.notification.client.NotificationPort
 import com.ntt.notification.client.NotificationRequest
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
-import org.mockito.Mockito.*
+import org.mockito.kotlin.*
 import java.time.Instant
 
 class NewDeviceMailHandlerTest {
@@ -15,7 +15,7 @@ class NewDeviceMailHandlerTest {
 
     @BeforeEach
     fun setUp() {
-        notificationPort = mock(NotificationPort::class.java)
+        notificationPort = mock<NotificationPort>()
         handler = NewDeviceMailHandler(notificationPort)
     }
 

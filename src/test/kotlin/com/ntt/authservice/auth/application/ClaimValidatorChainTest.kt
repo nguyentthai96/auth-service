@@ -57,7 +57,7 @@ class ClaimValidatorChainTest {
     fun shouldThrowOnFirstFailAndStopProcessing() {
         // Given
         val v1 = failValidator("FailingValidator", "some reason")
-        val v2 = passValidator("NeverReached")
+        val v2 = mock<ClaimValidator>() // Not stubbed — we verify it's never called
         val chain = ClaimValidatorChain(listOf(v1, v2))
 
         // When / Then

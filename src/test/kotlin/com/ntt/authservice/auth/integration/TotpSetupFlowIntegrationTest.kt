@@ -14,6 +14,7 @@ import org.junit.jupiter.api.extension.ExtendWith
 import org.mockito.Mock
 import org.mockito.junit.jupiter.MockitoExtension
 import org.mockito.kotlin.*
+import com.ntt.authservice.auth.application.port.out.NotificationGateway
 import org.springframework.data.redis.core.StringRedisTemplate
 import org.springframework.data.redis.core.ValueOperations
 import java.util.*
@@ -34,6 +35,7 @@ class TotpSetupFlowIntegrationTest {
     @Mock private lateinit var auditLogService: AuditLogService
     @Mock private lateinit var rateLimitService: MfaRateLimitService
     @Mock private lateinit var recoveryCodeRepository: com.ntt.authservice.auth.adapter.out.persistence.repository.MfaRecoveryCodeRepository
+    @Mock private lateinit var notificationGateway: NotificationGateway
     @Mock private lateinit var valueOps: ValueOperations<String, String>
     @Mock private lateinit var mockClaims: Claims
 
@@ -69,7 +71,7 @@ class TotpSetupFlowIntegrationTest {
         mfaService = MfaService(
             otpService, totpService, jwtService, userRepository,
             securityProperties, redisTemplate, auditLogService, rateLimitService,
-            recoveryCodeRepository
+            recoveryCodeRepository, notificationGateway
         )
     }
 

@@ -67,6 +67,8 @@ class SecurityConfig(
                     .requestMatchers("/auth/forgot-password").permitAll()
                     .requestMatchers("/captcha/challenge").permitAll()
                     .requestMatchers("/.well-known/jwks.json").permitAll()
+                    // Self-service unlock — public (user is locked out, no auth possible)
+                    .requestMatchers("/unlock/**").permitAll()
                     // Anonymous session — public create, ROLE_ANONYMOUS for operations
                     .requestMatchers("/auth/anonymous").permitAll()
                     .requestMatchers("/auth/anonymous/**").hasRole("ANONYMOUS")

@@ -18,6 +18,7 @@ import org.mockito.junit.jupiter.MockitoExtension
 import org.mockito.junit.jupiter.MockitoSettings
 import org.mockito.quality.Strictness
 import org.mockito.kotlin.*
+import com.ntt.authservice.auth.application.port.out.NotificationGateway
 import org.springframework.data.redis.core.StringRedisTemplate
 import org.springframework.data.redis.core.ValueOperations
 import java.time.Instant
@@ -41,6 +42,7 @@ class MfaLoginFlowIntegrationTest {
     @Mock private lateinit var auditLogService: com.ntt.authservice.shared.audit.AuditLogService
     @Mock private lateinit var rateLimitService: MfaRateLimitService
     @Mock private lateinit var recoveryCodeRepository: com.ntt.authservice.auth.adapter.out.persistence.repository.MfaRecoveryCodeRepository
+    @Mock private lateinit var notificationGateway: NotificationGateway
     @Mock private lateinit var valueOps: ValueOperations<String, String>
     @Mock private lateinit var mockClaims: Claims
 
@@ -75,7 +77,7 @@ class MfaLoginFlowIntegrationTest {
         mfaService = MfaService(
             otpService, totpService, jwtService, userRepository,
             securityProperties, redisTemplate, auditLogService, rateLimitService,
-            recoveryCodeRepository
+            recoveryCodeRepository, notificationGateway
         )
     }
 
@@ -97,6 +99,8 @@ class MfaLoginFlowIntegrationTest {
         whenever(jwtService.parseMfaToken("mfa-jwt-token")).thenReturn(mockClaims)
         whenever(mockClaims.subject).thenReturn(testUserId.toString())
         whenever(mockClaims["method"]).thenReturn("SMS")
+        val testUser = UserEntity().apply { username = "testuser"; mfaEnabled = true; mfaMethod = "SMS" }
+        whenever(userRepository.findById(testUserId)).thenReturn(Optional.of(testUser))
 
         val response = mfaService.verifyMfa(
             mfaToken = "mfa-jwt-token",
@@ -204,6 +208,8 @@ class MfaLoginFlowIntegrationTest {
         whenever(jwtService.parseMfaToken("mfa-jwt-token")).thenReturn(mockClaims)
         whenever(mockClaims.subject).thenReturn(testUserId.toString())
         whenever(mockClaims["method"]).thenReturn("SMS")
+        val testUser = UserEntity().apply { username = "testuser"; mfaEnabled = true; mfaMethod = "SMS" }
+        whenever(userRepository.findById(testUserId)).thenReturn(Optional.of(testUser))
 
         // First verify succeeds
         mfaService.verifyMfa(
@@ -233,6 +239,8 @@ class MfaLoginFlowIntegrationTest {
         whenever(jwtService.parseMfaToken("mfa-jwt-token")).thenReturn(mockClaims)
         whenever(mockClaims.subject).thenReturn(testUserId.toString())
         whenever(mockClaims["method"]).thenReturn("SMS")
+        val testUser = UserEntity().apply { username = "testuser"; mfaEnabled = true; mfaMethod = "SMS" }
+        whenever(userRepository.findById(testUserId)).thenReturn(Optional.of(testUser))
 
         mfaService.verifyMfa(
             mfaToken = "mfa-jwt-token",
@@ -242,8 +250,8 @@ class MfaLoginFlowIntegrationTest {
             authResponseBuilder = { mockAuthResponse }
         )
 
-        // User should NOT be fetched for trusted device save when hash is blank
-        verify(userRepository, never()).findById(testUserId)
+        // User is fetched (pre-loaded), but save should NOT happen when hash is blank
+        verify(userRepository, never()).save(any<UserEntity>())
     }
 
     // ── FR-005 TTL Tests — Trusted Device Timestamp ──

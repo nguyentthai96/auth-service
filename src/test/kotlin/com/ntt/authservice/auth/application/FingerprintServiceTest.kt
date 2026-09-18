@@ -29,11 +29,12 @@ class FingerprintServiceTest {
     @Test
     fun `resolveFingerprint returns client header when present`() {
         val request = mock(HttpServletRequest::class.java)
-        `when`(request.getHeader("X-Device-Fingerprint")).thenReturn("client-fp-abc123")
+        val validHexFp = "a".repeat(64) // Valid 64-char hex string
+        `when`(request.getHeader("X-Device-Fingerprint")).thenReturn(validHexFp)
 
         val result = fingerprintService.resolveFingerprint(request)
 
-        assertEquals("client-fp-abc123", result)
+        assertEquals(validHexFp, result)
     }
 
     @Test

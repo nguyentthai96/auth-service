@@ -75,24 +75,35 @@ class OutboxPoller(
                 entry.id, entry.topic, result?.recordMetadata?.offset())
 
         } catch (e: java.util.concurrent.TimeoutException) {
-            // Kafka timeout — entry remains PENDING, will be retried next cycle (FR-021)
+            // Kafka timeout (future.get timed out) — entry remains PENDING, will be retried next cycle (FR-021)
             // Do NOT increment retry_count for timeouts
             log.warn("OUTBOX_TIMEOUT id={}, topic={}, timeoutMs={} — will retry next cycle",
                 entry.id, entry.topic, kafkaTimeoutMs)
 
-        } catch (e: Exception) {
-            // Confirmed failure — increment retry count (FR-022)
-            entry.retryCount += 1
-            if (entry.retryCount >= maxRetries) {
-                entry.status = "FAILED"
-                outboxRepository.save(entry)
-                log.error("OUTBOX_MAX_RETRIES_EXCEEDED id={}, topic={}, retryCount={} — marked FAILED",
-                    entry.id, entry.topic, entry.retryCount, e)
+        } catch (e: java.util.concurrent.ExecutionException) {
+            if (e.cause is java.util.concurrent.TimeoutException || e.cause is org.apache.kafka.common.errors.TimeoutException) {
+                log.warn("OUTBOX_TIMEOUT id={}, topic={}, timeoutMs={} — will retry next cycle",
+                    entry.id, entry.topic, kafkaTimeoutMs)
             } else {
-                outboxRepository.save(entry)
-                log.warn("OUTBOX_SEND_FAILED id={}, topic={}, retryCount={}/{} — will retry",
-                    entry.id, entry.topic, entry.retryCount, maxRetries, e)
+                handleConfirmedFailure(entry, e)
             }
+        } catch (e: Exception) {
+            handleConfirmedFailure(entry, e)
+        }
+    }
+
+    private fun handleConfirmedFailure(entry: EventOutboxEntity, e: Exception) {
+        // Confirmed failure — increment retry count (FR-022)
+        entry.retryCount += 1
+        if (entry.retryCount >= maxRetries) {
+            entry.status = "FAILED"
+            outboxRepository.save(entry)
+            log.error("OUTBOX_MAX_RETRIES_EXCEEDED id={}, topic={}, retryCount={} — marked FAILED",
+                entry.id, entry.topic, entry.retryCount, e)
+        } else {
+            outboxRepository.save(entry)
+            log.warn("OUTBOX_SEND_FAILED id={}, topic={}, retryCount={}/{} — will retry",
+                entry.id, entry.topic, entry.retryCount, maxRetries, e)
         }
     }
 }

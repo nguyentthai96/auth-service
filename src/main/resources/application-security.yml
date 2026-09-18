@@ -138,3 +138,22 @@ app:
       strict-mode: ${FINGERPRINT_STRICT:false}
       header-name: X-Device-Fingerprint
       server-compute-fallback: true
+    # Account Lockout Policy — FR-010
+    lockout:
+      enabled: ${LOCKOUT_ENABLED:true}
+      max-failed-attempts: ${LOCKOUT_MAX_ATTEMPTS:5}
+      lock-duration-minutes: ${LOCKOUT_DURATION:30}
+      persistent-lock-threshold: ${LOCKOUT_PERMANENT_THRESHOLD:3}
+      failed-attempt-window-minutes: ${LOCKOUT_WINDOW:15}
+      self-service-unlock-enabled: ${LOCKOUT_SELF_UNLOCK:true}
+      unlock-token-ttl-minutes: ${UNLOCK_TOKEN_TTL:30}
+      unlock-email-rate-limit-minutes: ${UNLOCK_EMAIL_RATE:15}
+    # Image CAPTCHA (Kaptcha) — FR-014
+    image-captcha:
+      default-type: ${CAPTCHA_DEFAULT_TYPE:altcha}
+      image:
+        length: 5
+        width: 200
+        height: 60
+        ttl-seconds: 180
+

@@ -66,8 +66,8 @@ class TokenIntrospectionIntegrationTest {
         assertEquals(listOf("READ", "WRITE"), response.permissions)
         assertEquals("auth-service", response.iss)
         assertEquals("jti-valid-123", response.jti)
-        assertNotNull(response.exp)
-        assertNotNull(response.iat)
+        Assertions.assertNotNull(response.exp)
+        Assertions.assertNotNull(response.iat)
     }
 
     // ── TC2: Expired token → 200 { active: false } ──
@@ -81,7 +81,7 @@ class TokenIntrospectionIntegrationTest {
         val response = introspect("expired-jwt-token")
 
         assertFalse(response.active)
-        assertNull(response.sub)
+        Assertions.assertNull(response.sub)
     }
 
     // ── TC3: Blacklisted jti → 200 { active: false } ──
@@ -120,7 +120,7 @@ class TokenIntrospectionIntegrationTest {
         val response = introspect("not.a.valid.jwt")
 
         assertFalse(response.active)
-        assertNull(response.sub)
+        Assertions.assertNull(response.sub)
     }
 
     // ── TC5: Wrong issuer → 200 { active: false } via ClaimValidatorChain ──

@@ -37,8 +37,8 @@ class LoginRateLimitFilter(
     private val log = LoggerFactory.getLogger(LoginRateLimitFilter::class.java)
 
     override fun shouldNotFilter(request: HttpServletRequest): Boolean {
-        // Only intercept POST /api/auth/login
-        return !(request.method == "POST" && request.requestURI == "/api/auth/login")
+        // Only intercept POST /auth/login
+        return !(request.method == "POST" && request.requestURI == "/auth/login")
     }
 
     override fun doFilterInternal(

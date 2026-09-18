@@ -10,6 +10,8 @@ import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.extension.ExtendWith
 import org.mockito.Mock
 import org.mockito.junit.jupiter.MockitoExtension
+import org.mockito.junit.jupiter.MockitoSettings
+import org.mockito.quality.Strictness
 import org.mockito.kotlin.*
 import org.springframework.context.MessageSource
 import org.springframework.mock.web.MockFilterChain
@@ -45,7 +47,7 @@ class LoginRateLimitFilterTest {
         // Given — rate limit check passes
         doNothing().whenever(loginRateLimitService).checkMultiDimensional(any(), any(), anyOrNull())
 
-        val request = MockHttpServletRequest("POST", "/api/auth/login")
+        val request = MockHttpServletRequest("POST", "/auth/login")
         request.remoteAddr = "192.168.1.1"
         val response = MockHttpServletResponse()
         val chain = MockFilterChain()
@@ -66,7 +68,7 @@ class LoginRateLimitFilterTest {
         whenever(messageSource.getMessage(any<String>(), any(), any<String>(), any<Locale>()))
             .thenReturn("Too many login attempts")
 
-        val request = MockHttpServletRequest("POST", "/api/auth/login")
+        val request = MockHttpServletRequest("POST", "/auth/login")
         request.remoteAddr = "192.168.1.1"
         val response = MockHttpServletResponse()
         val chain = MockFilterChain()
@@ -90,7 +92,7 @@ class LoginRateLimitFilterTest {
         whenever(messageSource.getMessage(any<String>(), any(), any<String>(), any<Locale>()))
             .thenReturn("Too many login attempts for this username")
 
-        val request = MockHttpServletRequest("POST", "/api/auth/login")
+        val request = MockHttpServletRequest("POST", "/auth/login")
         request.remoteAddr = "10.0.0.1"
         request.addHeader("X-Login-Username", "testuser")
         val response = MockHttpServletResponse()
@@ -108,7 +110,7 @@ class LoginRateLimitFilterTest {
     @DisplayName("TC4: Non-login endpoints → filter skipped")
     fun shouldSkipNonLoginEndpoints() {
         // Given — should not even call the rate limit service
-        val request = MockHttpServletRequest("POST", "/api/auth/register")
+        val request = MockHttpServletRequest("POST", "/auth/register")
         val response = MockHttpServletResponse()
         val chain = MockFilterChain()
 
@@ -123,7 +125,7 @@ class LoginRateLimitFilterTest {
     @Test
     @DisplayName("TC5: GET /api/auth/login → filter skipped (only POST)")
     fun shouldSkipGetRequests() {
-        val request = MockHttpServletRequest("GET", "/api/auth/login")
+        val request = MockHttpServletRequest("GET", "/auth/login")
         val response = MockHttpServletResponse()
         val chain = MockFilterChain()
 
@@ -139,7 +141,7 @@ class LoginRateLimitFilterTest {
         // Given
         doNothing().whenever(loginRateLimitService).checkMultiDimensional(any(), any(), anyOrNull())
 
-        val request = MockHttpServletRequest("POST", "/api/auth/login")
+        val request = MockHttpServletRequest("POST", "/auth/login")
         request.remoteAddr = "127.0.0.1" // Proxy
         request.addHeader("X-Forwarded-For", "203.0.113.50, 70.41.3.18")
         val response = MockHttpServletResponse()
@@ -163,7 +165,7 @@ class LoginRateLimitFilterTest {
         whenever(messageSource.getMessage(any<String>(), any(), any<String>(), eq(Locale.forLanguageTag("vi"))))
             .thenReturn("Quá nhiều lần đăng nhập thất bại")
 
-        val request = MockHttpServletRequest("POST", "/api/auth/login")
+        val request = MockHttpServletRequest("POST", "/auth/login")
         request.addHeader("Accept-Language", "vi")
         val response = MockHttpServletResponse()
         val chain = MockFilterChain()

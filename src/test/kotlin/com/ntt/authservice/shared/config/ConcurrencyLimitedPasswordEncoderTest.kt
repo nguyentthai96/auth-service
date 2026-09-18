@@ -106,7 +106,8 @@ class ConcurrencyLimitedPasswordEncoderTest {
         }
 
         // Should be able to encode again (semaphore released)
-        `when`(delegate.encode(anyString())).thenReturn("{argon2id}\$hash")
+        // Use doReturn to avoid re-triggering the thenThrow stub
+        doReturn("{argon2id}\$hash").`when`(delegate).encode(anyString())
         val result = encoder.encode("password")
         assertEquals("{argon2id}\$hash", result)
     }
@@ -121,7 +122,8 @@ class ConcurrencyLimitedPasswordEncoderTest {
         }
 
         // Should be able to match again (semaphore released)
-        `when`(delegate.matches(anyString(), anyString())).thenReturn(true)
+        // Use doReturn to avoid re-triggering the thenThrow stub
+        doReturn(true).`when`(delegate).matches(anyString(), anyString())
         assertTrue(encoder.matches("password", "{argon2id}\$hash"))
     }
 }
