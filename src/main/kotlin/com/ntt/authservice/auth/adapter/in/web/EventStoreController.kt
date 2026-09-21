@@ -2,6 +2,7 @@ package com.ntt.authservice.auth.adapter.`in`.web
 
 import com.ntt.authservice.auth.application.port.out.EventStorePort
 import com.ntt.authservice.shared.exception.EventNotFoundException
+import com.ntt.authservice.shared.web.BaseController
 import org.springframework.http.ResponseEntity
 import org.springframework.web.bind.annotation.*
 
@@ -15,7 +16,7 @@ import org.springframework.web.bind.annotation.*
 @RequestMapping("/internal/events")
 class EventStoreController(
     private val eventStorePort: EventStorePort
-) {
+) : BaseController() {
 
     /**
      * Query events for a specific aggregate, ordered by sequence number ascending.

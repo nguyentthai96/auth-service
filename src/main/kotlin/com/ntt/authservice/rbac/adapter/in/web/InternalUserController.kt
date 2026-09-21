@@ -1,6 +1,7 @@
 package com.ntt.authservice.rbac.adapter.`in`.web
 
 import com.ntt.authservice.rbac.adapter.out.persistence.repository.UserRepository
+import com.ntt.authservice.shared.web.BaseController
 import jakarta.persistence.EntityManager
 import jakarta.persistence.PersistenceContext
 import org.springframework.data.domain.PageRequest
@@ -20,7 +21,7 @@ class InternalUserController(
     private val userRepository: UserRepository,
     @PersistenceContext
     private val entityManager: EntityManager
-) {
+) : BaseController() {
 
     /**
      * Get paginated list of all active users with their roles.

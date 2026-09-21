@@ -4,6 +4,7 @@ import com.ntt.authservice.auth.application.AltchaChallenge
 import com.ntt.authservice.auth.application.AltchaCaptchaVerifier
 import com.ntt.authservice.auth.application.ImageCaptchaChallenge
 import com.ntt.authservice.auth.application.ImageCaptchaStrategy
+import com.ntt.authservice.shared.web.BaseController
 import org.springframework.http.ResponseEntity
 import org.springframework.web.bind.annotation.GetMapping
 import org.springframework.web.bind.annotation.RequestMapping
@@ -25,7 +26,7 @@ import org.springframework.web.bind.annotation.RestController
 class CaptchaController(
     private val altchaCaptchaVerifier: AltchaCaptchaVerifier,
     private val imageCaptchaStrategy: ImageCaptchaStrategy
-) {
+) : BaseController() {
 
     @GetMapping("/challenge")
     fun getChallenge(

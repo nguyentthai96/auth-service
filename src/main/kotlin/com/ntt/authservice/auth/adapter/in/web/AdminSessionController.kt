@@ -2,8 +2,7 @@ package com.ntt.authservice.auth.adapter.`in`.web
 
 import com.ntt.authservice.auth.adapter.out.persistence.repository.LoginSessionRepository
 import com.ntt.authservice.auth.application.LoginSessionService
-import org.springframework.context.MessageSource
-import org.springframework.context.i18n.LocaleContextHolder
+import com.ntt.authservice.shared.web.AdminController
 import org.springframework.data.domain.PageRequest
 import org.springframework.data.domain.Sort
 import org.springframework.http.ResponseEntity
@@ -23,9 +22,8 @@ import org.springframework.web.bind.annotation.*
 @RequestMapping("/admin/sessions")
 class AdminSessionController(
     private val loginSessionService: LoginSessionService,
-    private val loginSessionRepository: LoginSessionRepository,
-    private val messageSource: MessageSource
-) {
+    private val loginSessionRepository: LoginSessionRepository
+) : AdminController() {
 
     /**
      * List all active sessions (paginated).
@@ -83,10 +81,8 @@ class AdminSessionController(
     fun forceRevokeUserSessions(@PathVariable userId: Long): ResponseEntity<Map<String, Any?>> {
         val sessions = loginSessionService.getActiveSessions(userId)
         loginSessionService.revokeAllSessions(userId, "ADMIN_FORCE_REVOKE")
-        val locale = LocaleContextHolder.getLocale()
-        val message = messageSource.getMessage("auth.admin_sessions_revoked", arrayOf(userId), "All sessions revoked for user $userId", locale)
         return ResponseEntity.ok(mapOf(
-            "message" to message,
+            "message" to message("auth.admin_sessions_revoked", userId),
             "revokedCount" to sessions.size
         ))
     }

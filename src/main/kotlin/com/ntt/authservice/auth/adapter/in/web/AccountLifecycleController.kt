@@ -1,13 +1,10 @@
 package com.ntt.authservice.auth.adapter.`in`.web
 
 import com.ntt.authservice.auth.application.AccountLifecycleService
-import com.ntt.authservice.shared.exception.InvalidCredentialsException
+import com.ntt.authservice.shared.web.AuthenticatedController
 import jakarta.validation.Valid
 import jakarta.validation.constraints.Size
-import org.springframework.context.MessageSource
-import org.springframework.context.i18n.LocaleContextHolder
 import org.springframework.http.ResponseEntity
-import org.springframework.security.core.context.SecurityContextHolder
 import org.springframework.web.bind.annotation.*
 
 /**
@@ -25,22 +22,17 @@ import org.springframework.web.bind.annotation.*
 @RestController
 @RequestMapping("/account")
 class AccountLifecycleController(
-    private val accountLifecycleService: AccountLifecycleService,
-    private val messageSource: MessageSource
-) {
+    private val accountLifecycleService: AccountLifecycleService
+) : AuthenticatedController() {
 
     /**
      * Deactivate own account — user-initiated.
      */
     @PostMapping("/deactivate")
     fun deactivateAccount(): ResponseEntity<Map<String, String?>> {
-        val userId = getCurrentUserId()
-        accountLifecycleService.deactivateAccount(userId)
-        val locale = LocaleContextHolder.getLocale()
-        val message = messageSource.getMessage("auth.account_deactivated", null,
-            "Account deactivated. Contact admin to reactivate.", locale)
+        accountLifecycleService.deactivateAccount(currentUserId())
         return ResponseEntity.ok(mapOf(
-            "message" to message
+            "message" to message("auth.account_deactivated")
         ))
     }
 
@@ -52,13 +44,9 @@ class AccountLifecycleController(
     fun requestDeletion(
         @Valid @RequestBody request: DeletionRequest?
     ): ResponseEntity<Map<String, Any?>> {
-        val userId = getCurrentUserId()
-        val result = accountLifecycleService.requestDeletion(userId, request?.reason)
-        val locale = LocaleContextHolder.getLocale()
-        val message = messageSource.getMessage("auth.deletion_requested", null,
-            "Deletion request created. Account will be permanently deleted after grace period.", locale)
+        val result = accountLifecycleService.requestDeletion(currentUserId(), request?.reason)
         return ResponseEntity.ok(mapOf(
-            "message" to message,
+            "message" to message("auth.deletion_requested"),
             "requestId" to (result.id ?: 0),
             "scheduledDeleteAt" to result.scheduledDeleteAt.toString(),
             "gracePeriodDays" to AccountLifecycleService.DELETION_GRACE_PERIOD_DAYS
@@ -70,13 +58,9 @@ class AccountLifecycleController(
      */
     @DeleteMapping("/deletion-request")
     fun cancelDeletion(): ResponseEntity<Map<String, String?>> {
-        val userId = getCurrentUserId()
-        accountLifecycleService.cancelDeletion(userId)
-        val locale = LocaleContextHolder.getLocale()
-        val message = messageSource.getMessage("auth.deletion_cancelled", null,
-            "Deletion request cancelled. Account restored to active.", locale)
+        accountLifecycleService.cancelDeletion(currentUserId())
         return ResponseEntity.ok(mapOf(
-            "message" to message
+            "message" to message("auth.deletion_cancelled")
         ))
     }
 
@@ -85,8 +69,7 @@ class AccountLifecycleController(
      */
     @PostMapping("/export")
     fun requestDataExport(): ResponseEntity<Map<String, Any?>> {
-        val userId = getCurrentUserId()
-        val export = accountLifecycleService.requestDataExport(userId)
+        val export = accountLifecycleService.requestDataExport(currentUserId())
         return ResponseEntity.ok(mapOf(
             "exportId" to export.id,
             "status" to export.status,
@@ -108,11 +91,6 @@ class AccountLifecycleController(
             "completedAt" to export.completedAt?.toString(),
             "expiresAt" to export.expiresAt?.toString()
         ))
-    }
-
-    private fun getCurrentUserId(): Long {
-        return (SecurityContextHolder.getContext().authentication?.principal as? String)?.toLong()
-            ?: throw InvalidCredentialsException()
     }
 }
 

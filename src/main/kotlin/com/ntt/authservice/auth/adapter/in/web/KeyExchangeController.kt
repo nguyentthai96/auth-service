@@ -3,6 +3,7 @@ package com.ntt.authservice.auth.adapter.`in`.web
 import com.ntt.basecore.autoconfigure.security.cipher.key.KeyExchangeRequest
 import com.ntt.basecore.autoconfigure.security.cipher.key.KeyExchangeResponse
 import com.ntt.basecore.autoconfigure.security.cipher.key.KeyExchangeService
+import com.ntt.authservice.shared.web.BaseController
 import jakarta.validation.Valid
 import org.springframework.http.ResponseEntity
 import org.springframework.web.bind.annotation.PostMapping
@@ -20,7 +21,7 @@ import org.springframework.web.bind.annotation.RestController
 @RequestMapping("/auth/key-exchange")
 class KeyExchangeController(
     private val keyExchangeService: KeyExchangeService
-) {
+) : BaseController() {
 
     /**
      * Perform X25519 ECDH key exchange.

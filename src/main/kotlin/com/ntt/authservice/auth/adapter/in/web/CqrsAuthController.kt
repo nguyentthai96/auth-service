@@ -18,13 +18,12 @@ import com.ntt.authservice.auth.application.query.BuildAuthResponseHandler
 import com.ntt.authservice.rbac.adapter.out.persistence.repository.UserRepository
 import com.ntt.authservice.shared.config.SecurityProperties
 import com.ntt.authservice.shared.exception.InvalidCredentialsException
+import com.ntt.authservice.shared.web.BaseController
 import jakarta.servlet.http.Cookie
 import jakarta.servlet.http.HttpServletRequest
 import jakarta.servlet.http.HttpServletResponse
 import jakarta.validation.Valid
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty
-import org.springframework.context.MessageSource
-import org.springframework.context.i18n.LocaleContextHolder
 import org.springframework.http.HttpStatus
 import org.springframework.http.ResponseEntity
 import org.springframework.web.bind.annotation.*
@@ -50,11 +49,10 @@ class CqrsAuthController(
     private val loginSessionService: LoginSessionService,
     private val domainLookupService: DomainLookupService,
     private val securityProperties: SecurityProperties,
-    private val messageSource: MessageSource,
     private val jwtService: JwtService,
     private val notificationGateway: NotificationGateway,
     private val userRepository: UserRepository
-) {
+) : BaseController() {
 
     private val log = org.slf4j.LoggerFactory.getLogger(CqrsAuthController::class.java)
 
@@ -74,8 +72,7 @@ class CqrsAuthController(
 
     @PostMapping("/register")
     fun register(
-        @Valid @RequestBody request: com.ntt.authservice.auth.adapter.`in`.web.dto.RegisterRequestDto,
-        httpRequest: HttpServletRequest
+        @Valid @RequestBody request: com.ntt.authservice.auth.adapter.`in`.web.dto.RegisterRequestDto
     ): ResponseEntity<AuthResponse> {
         val anonymousTokenJti = extractAnonymousTokenJti(request.anonymousToken)
 
@@ -88,15 +85,14 @@ class CqrsAuthController(
             domainCode = request.domainCode,
             anonymousSessionId = request.anonymousSessionId,
             anonymousTokenJti = anonymousTokenJti,
-            ipAddress = extractClientIp(httpRequest),
-            userAgent = httpRequest.getHeader("User-Agent"),
-            correlationId = httpRequest.getHeader("X-Correlation-ID")
+            ipAddress = requestContext.clientIp,
+            userAgent = requestContext.userAgent,
+            correlationId = requestContext.correlationId
         )
         val result = registerHandler.handle(command)
 
         // Build response with promotion metadata from RegisterResult (DD-013)
-        val locale = LocaleContextHolder.getLocale()
-        val successMessage = messageSource.getMessage("auth.register_success", null, "Registration successful", locale)
+        val successMessage = message("auth.register_success")
         val response = when (result) {
             is RegisterResult.Success -> {
                 val promotionResult = result.promotionResult
@@ -131,11 +127,9 @@ class CqrsAuthController(
     @PostMapping("/login")
     fun login(
         @Valid @RequestBody request: com.ntt.authservice.auth.adapter.`in`.web.dto.LoginRequestDto,
-        httpRequest: HttpServletRequest,
         httpResponse: HttpServletResponse
     ): ResponseEntity<Any> {
         val anonymousTokenJti = extractAnonymousTokenJti(request.anonymousToken)
-        val correlationId = httpRequest.getHeader("X-Correlation-ID") ?: httpRequest.getHeader("X-Request-ID")
 
         val command = LoginCommand(
             username = request.username,
@@ -143,12 +137,12 @@ class CqrsAuthController(
             domainCode = request.domainCode,
             captchaToken = request.captchaToken,
             trustedDeviceHash = request.trustedDeviceHash,
-            ipAddress = extractClientIp(httpRequest),
-            userAgent = httpRequest.getHeader("User-Agent"),
-            deviceFingerprint = httpRequest.getHeader("X-Device-Fingerprint"),
+            ipAddress = requestContext.clientIp,
+            userAgent = requestContext.userAgent,
+            deviceFingerprint = requestContext.deviceFingerprint,
             anonymousSessionId = request.anonymousSessionId,
             anonymousTokenJti = anonymousTokenJti,
-            correlationId = correlationId
+            correlationId = requestContext.correlationId
         )
         val result = loginHandler.handle(command)
         return when (result) {
@@ -187,10 +181,9 @@ class CqrsAuthController(
 
     @PostMapping("/logout")
     fun logout(
-        httpRequest: HttpServletRequest,
         httpResponse: HttpServletResponse
     ): ResponseEntity<Map<String, String>> {
-        val userId = getCurrentUserId()
+        val userId = requestContext.requireUserId()
 
         // Revoke all active sessions for this user
         loginSessionService.revokeAllSessions(userId, "LOGOUT")
@@ -198,8 +191,7 @@ class CqrsAuthController(
         // Clear refresh token cookie
         clearRefreshTokenCookie(httpResponse)
 
-        val message = messageSource.getMessage("auth.logout_success", null, LocaleContextHolder.getLocale())
-        return ResponseEntity.ok(mapOf("message" to message))
+        return ResponseEntity.ok(mapOf("message" to message("auth.logout_success")))
     }
 
     @PostMapping("/change-password")
@@ -207,11 +199,10 @@ class CqrsAuthController(
         @Valid @RequestBody request: ChangePasswordRequestDto,
         @RequestHeader("Authorization") authHeader: String
     ): ResponseEntity<Map<String, String>> {
-        val userId = getCurrentUserId()
+        val userId = requestContext.requireUserId()
         val domainId = domainLookupService.getPrimaryDomainId(userId)
         passwordPolicyService.changePassword(userId, request.oldPassword, request.newPassword, domainId)
-        val message = messageSource.getMessage("auth.password_changed", null, LocaleContextHolder.getLocale())
-        return ResponseEntity.ok(mapOf("message" to message))
+        return ResponseEntity.ok(mapOf("message" to message("auth.password_changed")))
     }
 
     @PostMapping("/forgot-password")
@@ -222,9 +213,7 @@ class CqrsAuthController(
             val resetToken = java.util.UUID.randomUUID().toString()
             notificationGateway.sendPasswordResetLink(user.id!!, user.email, resetToken)
         }
-        val message = messageSource.getMessage("auth.password_reset_sent", null, "If the email exists, a reset link has been sent", LocaleContextHolder.getLocale())
-            ?: "If the email exists, a reset link has been sent"
-        return ResponseEntity.ok(mapOf("message" to message))
+        return ResponseEntity.ok(mapOf("message" to message("auth.password_reset_sent")))
     }
 
     @PostMapping("/refresh")
@@ -252,27 +241,10 @@ class CqrsAuthController(
         @Valid @RequestBody request: com.ntt.authservice.auth.adapter.`in`.web.dto.SwitchDomainRequestDto,
         @RequestHeader("Authorization") authHeader: String
     ): ResponseEntity<AuthResponse> {
-        val userId = getCurrentUserId()
+        val userId = requestContext.requireUserId()
         val command = SwitchDomainCommand(userId = userId, newDomainCode = request.domainCode)
         val authToken = switchDomainHandler.handle(command)
-        val locale = LocaleContextHolder.getLocale()
-        val message = messageSource.getMessage("auth.switch_domain_success", null, "Domain switched successfully", locale)
-        return ResponseEntity.ok(AuthResponse.from(authToken).copy(message = message))
-    }
-
-    private fun getCurrentUserId(): Long {
-        return (org.springframework.security.core.context.SecurityContextHolder
-            .getContext().authentication?.principal as? String)?.toLong()
-            ?: throw InvalidCredentialsException()
-    }
-
-    private fun extractClientIp(request: HttpServletRequest): String {
-        val forwarded = request.getHeader("X-Forwarded-For")
-        return if (!forwarded.isNullOrBlank()) {
-            forwarded.split(",").first().trim()
-        } else {
-            request.remoteAddr
-        }
+        return ResponseEntity.ok(AuthResponse.from(authToken).copy(message = message("auth.switch_domain_success")))
     }
 
     private fun setRefreshTokenCookie(response: HttpServletResponse, refreshToken: String?) {

@@ -3,6 +3,7 @@ package com.ntt.authservice.rbac.adapter.`in`.web
 import com.ntt.authservice.rbac.adapter.out.persistence.entity.*
 import com.ntt.authservice.rbac.adapter.out.persistence.repository.*
 import com.ntt.authservice.shared.exception.ResourceNotFoundException
+import com.ntt.authservice.shared.web.AdminController
 import jakarta.validation.Valid
 import org.springframework.http.HttpStatus
 import org.springframework.http.ResponseEntity
@@ -20,7 +21,7 @@ class RolePermissionController(
     private val domainResourceRepository: DomainResourceRepository,
     private val actionRepository: ActionRepository,
     private val domainRoleRepository: DomainRoleRepository
-) {
+) : AdminController() {
 
     @GetMapping
     fun listRolePermissions(

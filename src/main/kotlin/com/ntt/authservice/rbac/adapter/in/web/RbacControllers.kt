@@ -4,6 +4,8 @@ import com.ntt.authservice.rbac.adapter.out.persistence.entity.*
 import com.ntt.authservice.rbac.adapter.out.persistence.repository.*
 import com.ntt.authservice.rbac.application.RbacEngine
 import com.ntt.authservice.shared.exception.*
+import com.ntt.authservice.shared.web.AdminController
+import com.ntt.authservice.shared.web.BaseController
 import jakarta.validation.Valid
 import jakarta.validation.constraints.NotBlank
 import org.springframework.http.HttpStatus
@@ -23,7 +25,7 @@ class DomainController(
     private val actionRepository: ActionRepository,
     private val permissionRepository: PermissionRepository,
     private val rolePermissionRepository: RolePermissionRepository
-) {
+) : AdminController() {
 
     @GetMapping
     fun listDomains(): ResponseEntity<List<DomainResponse>> {
@@ -101,7 +103,7 @@ class DomainController(
 class RoleController(
     private val domainRoleRepository: DomainRoleRepository,
     private val domainRepository: DomainRepository
-) {
+) : AdminController() {
 
     @GetMapping
     fun listRoles(@PathVariable domainId: Long): ResponseEntity<List<RoleResponse>> {
@@ -144,7 +146,7 @@ class GroupController(
     private val groupRoleRepository: GroupRoleRepository,
     private val userGroupRepository: UserGroupRepository,
     private val domainRepository: DomainRepository
-) {
+) : AdminController() {
 
     @GetMapping
     fun listGroups(@PathVariable domainId: Long): ResponseEntity<List<GroupResponse>> {
@@ -208,7 +210,7 @@ class GroupController(
 class ResourceController(
     private val domainResourceRepository: DomainResourceRepository,
     private val domainRepository: DomainRepository
-) {
+) : AdminController() {
 
     @GetMapping
     fun listResources(@PathVariable domainId: Long): ResponseEntity<List<ResourceResponse>> {
@@ -243,7 +245,7 @@ class ResourceController(
 @RequestMapping("/auth/permissions")
 class PermissionCheckController(
     private val rbacEngine: RbacEngine
-) {
+) : BaseController() {
 
     @PostMapping("/check")
     fun checkPermission(@Valid @RequestBody request: PermissionCheckRequest): ResponseEntity<PermissionCheckResponse> {

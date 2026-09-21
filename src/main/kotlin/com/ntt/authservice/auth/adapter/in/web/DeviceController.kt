@@ -3,10 +3,9 @@ package com.ntt.authservice.auth.adapter.`in`.web
 import com.ntt.authservice.auth.adapter.`in`.web.dto.DeviceResponse
 import com.ntt.authservice.auth.adapter.out.persistence.entity.LoginSessionEntity
 import com.ntt.authservice.auth.application.LoginSessionService
-import com.ntt.authservice.shared.exception.InvalidCredentialsException
+import com.ntt.authservice.shared.web.AuthenticatedController
 import org.slf4j.LoggerFactory
 import org.springframework.http.ResponseEntity
-import org.springframework.security.core.context.SecurityContextHolder
 import org.springframework.web.bind.annotation.*
 
 /**
@@ -21,7 +20,7 @@ import org.springframework.web.bind.annotation.*
 @RequestMapping("/auth/devices")
 class DeviceController(
     private val loginSessionService: LoginSessionService
-) {
+) : AuthenticatedController() {
 
     private val log = LoggerFactory.getLogger(DeviceController::class.java)
 
@@ -30,10 +29,9 @@ class DeviceController(
      */
     @GetMapping
     fun listDevices(): ResponseEntity<List<DeviceResponse>> {
-        val userId = getCurrentUserId()
-        val currentJti = getCurrentJti()
-        val sessions = loginSessionService.listDevicesForUser(userId)
-        val devices = sessions.map { it.toDeviceResponse(currentJti) }
+        val sessions = loginSessionService.listDevicesForUser(currentUserId())
+        val jti = requestContext.jti
+        val devices = sessions.map { it.toDeviceResponse(jti) }
         return ResponseEntity.ok(devices)
     }
 
@@ -42,8 +40,7 @@ class DeviceController(
      */
     @DeleteMapping("/{sessionId}")
     fun kickDevice(@PathVariable sessionId: Long): ResponseEntity<Map<String, Any>> {
-        val userId = getCurrentUserId()
-        val kicked = loginSessionService.kickDevice(sessionId, userId)
+        val kicked = loginSessionService.kickDevice(sessionId, currentUserId())
         return if (kicked) {
             ResponseEntity.ok(mapOf("message" to "Device kicked successfully" as Any))
         } else {
@@ -56,23 +53,12 @@ class DeviceController(
      */
     @DeleteMapping
     fun kickAllOtherDevices(): ResponseEntity<Map<String, Any>> {
-        val userId = getCurrentUserId()
-        val currentJti = getCurrentJti()
-        val kicked = loginSessionService.kickAllOtherDevices(userId, currentJti)
+        val jti = requestContext.jti
+        val kicked = loginSessionService.kickAllOtherDevices(currentUserId(), jti)
         return ResponseEntity.ok(mapOf(
             "message" to "Other devices kicked successfully" as Any,
             "kickedCount" to kicked as Any
         ))
-    }
-
-    private fun getCurrentUserId(): Long {
-        return (SecurityContextHolder.getContext().authentication?.principal as? String)?.toLong()
-            ?: throw InvalidCredentialsException()
-    }
-
-    private fun getCurrentJti(): String? {
-        val details = SecurityContextHolder.getContext().authentication?.details as? Map<*, *>
-        return details?.get("jti") as? String
     }
 
     private fun LoginSessionEntity.toDeviceResponse(currentJti: String?): DeviceResponse {

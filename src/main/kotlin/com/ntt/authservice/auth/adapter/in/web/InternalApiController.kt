@@ -4,6 +4,7 @@ import com.ntt.authservice.auth.application.ServiceTokenService
 import com.ntt.authservice.rbac.adapter.out.persistence.repository.UserRepository
 import com.ntt.authservice.rbac.application.RbacEngine
 import com.ntt.authservice.shared.exception.ResourceNotFoundException
+import com.ntt.authservice.shared.web.BaseController
 import jakarta.validation.Valid
 import org.springframework.http.ResponseEntity
 import org.springframework.web.bind.annotation.*
@@ -18,7 +19,7 @@ class InternalApiController(
     private val serviceTokenService: ServiceTokenService,
     private val userRepository: UserRepository,
     private val rbacEngine: RbacEngine
-) {
+) : BaseController() {
 
     /**
      * Issue a service token (called by services at startup).

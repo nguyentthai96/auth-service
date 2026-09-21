@@ -8,6 +8,7 @@ import com.ntt.authservice.auth.application.command.CreateAnonymousSessionComman
 import com.ntt.authservice.auth.application.command.RenewAnonymousTokenCommand
 import com.ntt.authservice.auth.application.command.RenewAnonymousTokenHandler
 import com.ntt.authservice.shared.exception.TokenExpiredException
+import com.ntt.authservice.shared.web.BaseController
 import jakarta.servlet.http.HttpServletRequest
 import jakarta.validation.Valid
 import org.springframework.http.HttpStatus
@@ -34,7 +35,7 @@ class AnonymousAuthController(
     private val renewAnonymousTokenHandler: RenewAnonymousTokenHandler,
     private val anonymousSessionDataService: AnonymousSessionDataService,
     private val jwtService: JwtService
-) {
+) : BaseController() {
 
     /**
      * Create an anonymous session — public endpoint (no auth required).
@@ -42,13 +43,12 @@ class AnonymousAuthController(
      */
     @PostMapping("")
     fun createAnonymousSession(
-        @RequestBody(required = false) request: CreateAnonymousSessionRequest?,
-        httpRequest: HttpServletRequest
+        @RequestBody(required = false) request: CreateAnonymousSessionRequest?
     ): ResponseEntity<AnonymousTokenResponse> {
         val command = CreateAnonymousSessionCommand(
-            ipAddress = extractClientIp(httpRequest),
+            ipAddress = requestContext.clientIp,
             deviceFingerprint = request?.deviceFingerprint
-                ?: httpRequest.getHeader("X-Device-Fingerprint")
+                ?: requestContext.deviceFingerprint
         )
 
         val result = anonymousSessionHandler.handle(command)
@@ -161,17 +161,5 @@ class AnonymousAuthController(
             throw TokenExpiredException()
         }
         return authHeader.substring(7)
-    }
-
-    /**
-     * Extract client IP address, respecting X-Forwarded-For header.
-     */
-    private fun extractClientIp(request: HttpServletRequest): String {
-        val forwarded = request.getHeader("X-Forwarded-For")
-        return if (!forwarded.isNullOrBlank()) {
-            forwarded.split(",").first().trim()
-        } else {
-            request.remoteAddr
-        }
     }
 }

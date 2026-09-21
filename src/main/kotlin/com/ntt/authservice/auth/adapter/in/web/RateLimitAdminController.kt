@@ -1,10 +1,7 @@
 package com.ntt.authservice.auth.adapter.`in`.web
 
-import com.ntt.authservice.auth.application.LockInfo
 import com.ntt.authservice.auth.application.MfaRateLimitService
-import com.ntt.authservice.auth.application.RateLimitType
-import org.springframework.context.MessageSource
-import org.springframework.context.i18n.LocaleContextHolder
+import com.ntt.authservice.shared.web.AdminController
 import org.springframework.http.ResponseEntity
 import org.springframework.security.access.prepost.PreAuthorize
 import org.springframework.web.bind.annotation.*
@@ -18,9 +15,8 @@ import org.springframework.web.bind.annotation.*
 @RequestMapping("/admin/rate-limits")
 @PreAuthorize("hasRole('ADMIN')")
 class RateLimitAdminController(
-    private val rateLimitService: MfaRateLimitService,
-    private val messageSource: MessageSource
-) {
+    private val rateLimitService: MfaRateLimitService
+) : AdminController() {
 
     /**
      * Get lock status for a user across all MFA rate limit types.
@@ -54,9 +50,11 @@ class RateLimitAdminController(
     @DeleteMapping("/locks/{userId}")
     fun adminUnlock(@PathVariable userId: Long): ResponseEntity<Map<String, Any?>> {
         rateLimitService.adminUnlock(userId)
-        val locale = LocaleContextHolder.getLocale()
-        val message = messageSource.getMessage("auth.rate_limit_unlocked", null, "Rate limit locks cleared successfully", locale)
-        return ResponseEntity.ok(mapOf("unlocked" to true, "userId" to userId, "message" to message))
+        return ResponseEntity.ok(mapOf(
+            "unlocked" to true,
+            "userId" to userId,
+            "message" to message("auth.rate_limit_unlocked")
+        ))
     }
 
     data class LockInfoResponse(

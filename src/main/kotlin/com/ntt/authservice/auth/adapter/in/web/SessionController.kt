@@ -2,11 +2,8 @@ package com.ntt.authservice.auth.adapter.`in`.web
 
 import com.ntt.authservice.auth.adapter.out.persistence.entity.LoginSessionEntity
 import com.ntt.authservice.auth.application.LoginSessionService
-import com.ntt.authservice.shared.exception.InvalidCredentialsException
-import org.springframework.context.MessageSource
-import org.springframework.context.i18n.LocaleContextHolder
+import com.ntt.authservice.shared.web.AuthenticatedController
 import org.springframework.http.ResponseEntity
-import org.springframework.security.core.context.SecurityContextHolder
 import org.springframework.web.bind.annotation.*
 
 /**
@@ -18,17 +15,15 @@ import org.springframework.web.bind.annotation.*
 @RestController
 @RequestMapping("/auth/sessions")
 class SessionController(
-    private val loginSessionService: LoginSessionService,
-    private val messageSource: MessageSource
-) {
+    private val loginSessionService: LoginSessionService
+) : AuthenticatedController() {
 
     /**
      * Get all active sessions for the current user.
      */
     @GetMapping
     fun getActiveSessions(): ResponseEntity<List<SessionResponse>> {
-        val userId = getCurrentUserId()
-        val sessions = loginSessionService.getActiveSessions(userId)
+        val sessions = loginSessionService.getActiveSessions(currentUserId())
         return ResponseEntity.ok(sessions.map { it.toResponse() })
     }
 
@@ -37,12 +32,9 @@ class SessionController(
      */
     @DeleteMapping("/{sessionId}")
     fun revokeSession(@PathVariable sessionId: Long): ResponseEntity<Map<String, Any?>> {
-        val userId = getCurrentUserId()
-        val revoked = loginSessionService.revokeSession(sessionId, userId, "MANUAL")
+        val revoked = loginSessionService.revokeSession(sessionId, currentUserId(), "MANUAL")
         return if (revoked) {
-            val locale = LocaleContextHolder.getLocale()
-            val message = messageSource.getMessage("auth.session_revoked", null, "Session revoked", locale)
-            ResponseEntity.ok(mapOf("message" to message))
+            okMessage("auth.session_revoked")
         } else {
             ResponseEntity.notFound().build()
         }
@@ -53,16 +45,8 @@ class SessionController(
      */
     @DeleteMapping
     fun revokeAllSessions(): ResponseEntity<Map<String, Any?>> {
-        val userId = getCurrentUserId()
-        loginSessionService.revokeAllSessions(userId, "MANUAL_ALL")
-        val locale = LocaleContextHolder.getLocale()
-        val message = messageSource.getMessage("auth.all_sessions_revoked", null, "All sessions revoked", locale)
-        return ResponseEntity.ok(mapOf("message" to message))
-    }
-
-    private fun getCurrentUserId(): Long {
-        return (SecurityContextHolder.getContext().authentication?.principal as? String)?.toLong()
-            ?: throw InvalidCredentialsException()
+        loginSessionService.revokeAllSessions(currentUserId(), "MANUAL_ALL")
+        return okMessage("auth.all_sessions_revoked")
     }
 
     private fun LoginSessionEntity.toResponse(): SessionResponse = SessionResponse(

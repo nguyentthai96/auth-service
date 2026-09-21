@@ -5,11 +5,9 @@ import com.ntt.authservice.auth.application.MfaService
 import com.ntt.authservice.auth.application.JwtService
 import com.ntt.authservice.auth.application.query.BuildAuthResponseHandler
 import com.ntt.authservice.auth.application.query.BuildAuthResponseQuery
+import com.ntt.authservice.shared.web.AuthenticatedController
 import jakarta.validation.Valid
-import org.springframework.context.MessageSource
-import org.springframework.context.i18n.LocaleContextHolder
 import org.springframework.http.ResponseEntity
-import org.springframework.security.core.context.SecurityContextHolder
 import org.springframework.web.bind.annotation.*
 
 /**
@@ -20,9 +18,8 @@ import org.springframework.web.bind.annotation.*
 class MfaController(
     private val mfaService: MfaService,
     private val buildAuthResponseHandler: BuildAuthResponseHandler,
-    private val jwtService: JwtService,
-    private val messageSource: MessageSource
-) {
+    private val jwtService: JwtService
+) : AuthenticatedController() {
 
     @PostMapping("/verify")
     fun verifyMfa(@Valid @RequestBody request: MfaVerifyRequest): ResponseEntity<Any> {
@@ -40,8 +37,7 @@ class MfaController(
 
     @PostMapping("/totp/setup")
     fun setupTotp(): ResponseEntity<TotpSetupResponse> {
-        val userId = getCurrentUserId()
-        val result = mfaService.setupTotp(userId)
+        val result = mfaService.setupTotp(currentUserId())
         return ResponseEntity.ok(
             TotpSetupResponse(
                 secret = result.secret,
@@ -53,11 +49,8 @@ class MfaController(
 
     @PostMapping("/totp/confirm")
     fun confirmTotp(@Valid @RequestBody request: TotpConfirmRequest): ResponseEntity<Map<String, Any?>> {
-        val userId = getCurrentUserId()
-        mfaService.confirmTotp(userId, request.code)
-        val locale = LocaleContextHolder.getLocale()
-        val message = messageSource.getMessage("auth.totp_confirmed", null, "TOTP setup confirmed successfully", locale)
-        return ResponseEntity.ok(mapOf("success" to true, "message" to message))
+        mfaService.confirmTotp(currentUserId(), request.code)
+        return ResponseEntity.ok(mapOf("success" to true, "message" to message("auth.totp_confirmed")))
     }
 
     @PostMapping("/resend")
@@ -74,8 +67,7 @@ class MfaController(
 
     @PutMapping("/settings")
     fun updateSettings(@Valid @RequestBody request: MfaSettingsRequest): ResponseEntity<MfaSettingsResponse> {
-        val userId = getCurrentUserId()
-        val result = mfaService.updateSettings(userId, request.enabled, request.method)
+        val result = mfaService.updateSettings(currentUserId(), request.enabled, request.method)
         return ResponseEntity.ok(
             MfaSettingsResponse(
                 mfaEnabled = result.mfaEnabled,
@@ -90,8 +82,7 @@ class MfaController(
      */
     @GetMapping("/recovery-codes")
     fun getRecoveryCodeCount(): ResponseEntity<Map<String, Long>> {
-        val userId = getCurrentUserId()
-        val remaining = mfaService.getRemainingRecoveryCodeCount(userId)
+        val remaining = mfaService.getRemainingRecoveryCodeCount(currentUserId())
         return ResponseEntity.ok(mapOf("remainingCodes" to remaining))
     }
 
@@ -117,19 +108,11 @@ class MfaController(
      */
     @PostMapping("/recovery-codes/regenerate")
     fun regenerateRecoveryCodes(): ResponseEntity<Map<String, Any?>> {
-        val userId = getCurrentUserId()
-        val codes = mfaService.generateRecoveryCodes(userId)
-        val locale = LocaleContextHolder.getLocale()
-        val warning = messageSource.getMessage("auth.recovery_codes_warning", null, "Save these codes — they will not be shown again.", locale)
+        val codes = mfaService.generateRecoveryCodes(currentUserId())
         return ResponseEntity.ok(mapOf(
             "codes" to codes,
             "count" to codes.size,
-            "warning" to warning
+            "warning" to message("auth.recovery_codes_warning")
         ))
-    }
-
-    private fun getCurrentUserId(): Long {
-        return (SecurityContextHolder.getContext().authentication?.principal as? String)?.toLong()
-            ?: throw com.ntt.authservice.shared.exception.InvalidCredentialsException()
     }
 }

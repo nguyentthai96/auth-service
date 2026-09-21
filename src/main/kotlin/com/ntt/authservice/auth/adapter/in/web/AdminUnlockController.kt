@@ -2,9 +2,9 @@ package com.ntt.authservice.auth.adapter.`in`.web
 
 import com.ntt.authservice.auth.application.command.UnlockUserCommand
 import com.ntt.authservice.auth.application.command.UnlockUserHandler
+import com.ntt.authservice.shared.web.AdminController
 import org.springframework.http.ResponseEntity
 import org.springframework.security.access.prepost.PreAuthorize
-import org.springframework.security.core.context.SecurityContextHolder
 import org.springframework.web.bind.annotation.PathVariable
 import org.springframework.web.bind.annotation.PostMapping
 import org.springframework.web.bind.annotation.RequestMapping
@@ -18,12 +18,12 @@ import org.springframework.web.bind.annotation.RestController
 @RequestMapping("/api/v1/admin/users")
 class AdminUnlockController(
     private val unlockUserHandler: UnlockUserHandler
-) {
+) : AdminController() {
 
     @PostMapping("/{userId}/unlock")
     @PreAuthorize("hasAnyRole('ADMIN', 'SUPER_ADMIN')")
     fun unlockUser(@PathVariable userId: Long): ResponseEntity<Map<String, Any>> {
-        val adminId = getCurrentUserId()
+        val adminId = requestContext.userId
             ?: throw IllegalStateException("Cannot resolve admin user ID")
 
         unlockUserHandler.handle(UnlockUserCommand(userId = userId, adminId = adminId))
@@ -35,9 +35,5 @@ class AdminUnlockController(
                 "message" to "Account has been unlocked successfully"
             )
         )
-    }
-
-    private fun getCurrentUserId(): Long? {
-        return (SecurityContextHolder.getContext().authentication?.principal as? String)?.toLong()
     }
 }

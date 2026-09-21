@@ -8,10 +8,9 @@ import com.ntt.authservice.auth.application.TokenBlacklistCacheService
 import com.ntt.authservice.auth.application.command.RevokeSessionsCommand
 import com.ntt.authservice.auth.application.command.RevokeSessionsHandler
 import com.ntt.authservice.auth.domain.service.TokenHasher
+import com.ntt.authservice.shared.web.BaseController
 import jakarta.servlet.http.HttpServletRequest
 import jakarta.validation.Valid
-import org.springframework.context.MessageSource
-import org.springframework.context.i18n.LocaleContextHolder
 import org.springframework.http.CacheControl
 import org.springframework.http.ResponseEntity
 import org.springframework.web.bind.annotation.*
@@ -29,9 +28,8 @@ class TokenController(
     private val jwtService: JwtService,
     private val revokeSessionsHandler: RevokeSessionsHandler,
     private val tokenBlacklistCacheService: TokenBlacklistCacheService,
-    private val claimValidatorChain: ClaimValidatorChain,
-    private val messageSource: MessageSource
-) {
+    private val claimValidatorChain: ClaimValidatorChain
+) : BaseController() {
 
     @PostMapping("/auth/introspect")
     fun introspect(@Valid @RequestBody request: IntrospectionRequest): ResponseEntity<IntrospectionResponse> {
@@ -107,8 +105,10 @@ class TokenController(
     @DeleteMapping("/admin/sessions/users/{userId}")
     fun revokeAllSessions(@PathVariable userId: Long): ResponseEntity<Map<String, Any?>> {
         val count = revokeSessionsHandler.handle(RevokeSessionsCommand(userId))
-        val locale = LocaleContextHolder.getLocale()
-        val message = messageSource.getMessage("auth.sessions_revoked_all", null, "All sessions revoked", locale)
-        return ResponseEntity.ok(mapOf("revokedCount" to count, "userId" to userId, "message" to message))
+        return ResponseEntity.ok(mapOf(
+            "revokedCount" to count,
+            "userId" to userId,
+            "message" to message("auth.sessions_revoked_all")
+        ))
     }
 }
