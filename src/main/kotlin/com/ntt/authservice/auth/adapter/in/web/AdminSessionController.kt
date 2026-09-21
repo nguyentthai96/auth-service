@@ -1,8 +1,13 @@
 package com.ntt.authservice.auth.adapter.`in`.web
 
+import com.ntt.authservice.auth.adapter.`in`.web.dto.AdminSessionInfo
+import com.ntt.authservice.auth.adapter.`in`.web.dto.RevokeSessionsResult
+import com.ntt.authservice.auth.adapter.`in`.web.dto.SessionStatsResult
 import com.ntt.authservice.auth.adapter.out.persistence.repository.LoginSessionRepository
 import com.ntt.authservice.auth.application.LoginSessionService
 import com.ntt.authservice.shared.web.AdminController
+import com.ntt.basecore.domain.web.payload.ApiResponse
+import com.ntt.basecore.domain.web.payload.PageResponse
 import org.springframework.data.domain.PageRequest
 import org.springframework.data.domain.Sort
 import org.springframework.http.ResponseEntity
@@ -32,58 +37,54 @@ class AdminSessionController(
     fun listAllActiveSessions(
         @RequestParam(defaultValue = "0") page: Int,
         @RequestParam(defaultValue = "20") size: Int
-    ): ResponseEntity<Map<String, Any?>> {
+    ): ResponseEntity<ApiResponse<PageResponse<AdminSessionInfo>>> {
         val pageable = PageRequest.of(page, size, Sort.by(Sort.Direction.DESC, "loginAt"))
         val sessionPage = loginSessionRepository.findBySessionActiveTrue(pageable)
+            .map { session ->
+                AdminSessionInfo(
+                    id = session.id,
+                    userId = session.userId,
+                    ipAddress = session.ipAddress,
+                    deviceType = session.deviceType,
+                    browserName = session.browserName,
+                    osName = session.osName,
+                    loginAt = session.loginAt?.toString(),
+                    lastActivityAt = session.lastActivityAt?.toString(),
+                    isNewDevice = session.isNewDevice
+                )
+            }
 
-        val sessions = sessionPage.content.map { session ->
-            mapOf(
-                "id" to session.id,
-                "userId" to session.userId,
-                "ipAddress" to session.ipAddress,
-                "deviceType" to session.deviceType,
-                "browserName" to session.browserName,
-                "osName" to session.osName,
-                "loginAt" to session.loginAt?.toString(),
-                "lastActivityAt" to session.lastActivityAt?.toString(),
-                "isNewDevice" to session.isNewDevice
-            )
-        }
-
-        return ResponseEntity.ok(mapOf(
-            "content" to sessions,
-            "page" to page,
-            "size" to size,
-            "totalElements" to sessionPage.totalElements,
-            "totalPages" to sessionPage.totalPages
-        ))
+        return pagedOkResponse(sessionPage)
     }
 
     /**
      * Get session statistics — total active, breakdown by device type.
      */
     @GetMapping("/stats")
-    fun getSessionStats(): ResponseEntity<Map<String, Any?>> {
+    fun getSessionStats(): ResponseEntity<ApiResponse<SessionStatsResult>> {
         val totalActive = loginSessionRepository.countBySessionActiveTrue()
         val deviceBreakdown = loginSessionRepository.countActiveSessionsByDeviceType()
             .associate { arr -> (arr[0] as? String ?: "UNKNOWN") to (arr[1] as Long) }
 
-        return ResponseEntity.ok(mapOf(
-            "totalActiveSessions" to totalActive,
-            "byDeviceType" to deviceBreakdown
-        ))
+        return okResponse(
+            SessionStatsResult(
+                totalActiveSessions = totalActive,
+                byDeviceType = deviceBreakdown
+            )
+        )
     }
 
     /**
      * Force revoke all sessions for a specific user.
      */
     @DeleteMapping("/user/{userId}")
-    fun forceRevokeUserSessions(@PathVariable userId: Long): ResponseEntity<Map<String, Any?>> {
+    fun forceRevokeUserSessions(@PathVariable userId: Long): ResponseEntity<ApiResponse<RevokeSessionsResult>> {
         val sessions = loginSessionService.getActiveSessions(userId)
         loginSessionService.revokeAllSessions(userId, "ADMIN_FORCE_REVOKE")
-        return ResponseEntity.ok(mapOf(
-            "message" to message("auth.admin_sessions_revoked", userId),
-            "revokedCount" to sessions.size
-        ))
+        return okResponse(
+            RevokeSessionsResult(revokedCount = sessions.size),
+            "auth.admin_sessions_revoked", userId
+        )
     }
 }
+

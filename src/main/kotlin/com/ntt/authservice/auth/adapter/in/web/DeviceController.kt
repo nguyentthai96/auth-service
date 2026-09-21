@@ -1,9 +1,11 @@
 package com.ntt.authservice.auth.adapter.`in`.web
 
 import com.ntt.authservice.auth.adapter.`in`.web.dto.DeviceResponse
-import com.ntt.authservice.auth.adapter.out.persistence.entity.LoginSessionEntity
+import com.ntt.authservice.auth.adapter.`in`.web.dto.KickDeviceResult
 import com.ntt.authservice.auth.application.LoginSessionService
+import com.ntt.authservice.auth.adapter.out.persistence.entity.LoginSessionEntity
 import com.ntt.authservice.shared.web.AuthenticatedController
+import com.ntt.basecore.domain.web.payload.ApiResponse
 import org.slf4j.LoggerFactory
 import org.springframework.http.ResponseEntity
 import org.springframework.web.bind.annotation.*
@@ -28,21 +30,21 @@ class DeviceController(
      * List all active devices for the current user.
      */
     @GetMapping
-    fun listDevices(): ResponseEntity<List<DeviceResponse>> {
+    fun listDevices(): ResponseEntity<ApiResponse<List<DeviceResponse>>> {
         val sessions = loginSessionService.listDevicesForUser(currentUserId())
         val jti = requestContext.jti
         val devices = sessions.map { it.toDeviceResponse(jti) }
-        return ResponseEntity.ok(devices)
+        return okResponse(devices)
     }
 
     /**
      * Kick (revoke) a specific device by session ID.
      */
     @DeleteMapping("/{sessionId}")
-    fun kickDevice(@PathVariable sessionId: Long): ResponseEntity<Map<String, Any>> {
+    fun kickDevice(@PathVariable sessionId: Long): ResponseEntity<ApiResponse<Unit>> {
         val kicked = loginSessionService.kickDevice(sessionId, currentUserId())
         return if (kicked) {
-            ResponseEntity.ok(mapOf("message" to "Device kicked successfully" as Any))
+            okMessageResponse("device.kicked")
         } else {
             ResponseEntity.notFound().build()
         }
@@ -52,13 +54,10 @@ class DeviceController(
      * Kick all other devices except the current one.
      */
     @DeleteMapping
-    fun kickAllOtherDevices(): ResponseEntity<Map<String, Any>> {
+    fun kickAllOtherDevices(): ResponseEntity<ApiResponse<KickDeviceResult>> {
         val jti = requestContext.jti
         val kicked = loginSessionService.kickAllOtherDevices(currentUserId(), jti)
-        return ResponseEntity.ok(mapOf(
-            "message" to "Other devices kicked successfully" as Any,
-            "kickedCount" to kicked as Any
-        ))
+        return okResponse(KickDeviceResult(kickedCount = kicked), "device.kicked_all")
     }
 
     private fun LoginSessionEntity.toDeviceResponse(currentJti: String?): DeviceResponse {

@@ -9,6 +9,7 @@ import com.ntt.authservice.auth.application.command.RenewAnonymousTokenCommand
 import com.ntt.authservice.auth.application.command.RenewAnonymousTokenHandler
 import com.ntt.authservice.shared.exception.TokenExpiredException
 import com.ntt.authservice.shared.web.BaseController
+import com.ntt.basecore.domain.web.payload.ApiResponse
 import jakarta.servlet.http.HttpServletRequest
 import jakarta.validation.Valid
 import org.springframework.http.HttpStatus
@@ -44,7 +45,7 @@ class AnonymousAuthController(
     @PostMapping("")
     fun createAnonymousSession(
         @RequestBody(required = false) request: CreateAnonymousSessionRequest?
-    ): ResponseEntity<AnonymousTokenResponse> {
+    ): ResponseEntity<ApiResponse<AnonymousTokenResponse>> {
         val command = CreateAnonymousSessionCommand(
             ipAddress = requestContext.clientIp,
             deviceFingerprint = request?.deviceFingerprint
@@ -53,7 +54,7 @@ class AnonymousAuthController(
 
         val result = anonymousSessionHandler.handle(command)
 
-        return ResponseEntity.status(HttpStatus.CREATED).body(
+        return createdResponse(
             AnonymousTokenResponse(
                 token = result.token,
                 sessionId = result.sessionId,
@@ -69,13 +70,13 @@ class AnonymousAuthController(
     @PostMapping("/renew")
     fun renewAnonymousToken(
         httpRequest: HttpServletRequest
-    ): ResponseEntity<AnonymousTokenResponse> {
+    ): ResponseEntity<ApiResponse<AnonymousTokenResponse>> {
         val token = extractBearerToken(httpRequest)
 
         val command = RenewAnonymousTokenCommand(currentToken = token)
         val result = renewAnonymousTokenHandler.handle(command)
 
-        return ResponseEntity.ok(
+        return okResponse(
             AnonymousTokenResponse(
                 token = result.token,
                 sessionId = result.sessionId,
@@ -113,12 +114,12 @@ class AnonymousAuthController(
         @RequestParam namespace: String,
         @RequestParam key: String,
         httpRequest: HttpServletRequest
-    ): ResponseEntity<SessionDataResponse> {
+    ): ResponseEntity<ApiResponse<SessionDataResponse>> {
         val sessionId = extractSessionIdFromToken(httpRequest)
 
         val value = anonymousSessionDataService.getData(sessionId, namespace, key)
 
-        return ResponseEntity.ok(
+        return okResponse(
             SessionDataResponse(
                 namespace = namespace,
                 key = key,

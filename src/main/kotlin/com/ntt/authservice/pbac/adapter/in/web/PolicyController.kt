@@ -4,6 +4,8 @@ import com.ntt.authservice.pbac.adapter.out.persistence.entity.PolicyConditionEn
 import com.ntt.authservice.pbac.adapter.out.persistence.entity.PolicyEntity
 import com.ntt.authservice.pbac.adapter.out.persistence.repository.PolicyJpaRepository
 import com.ntt.authservice.shared.exception.ResourceNotFoundException
+import com.ntt.authservice.shared.web.AdminController
+import com.ntt.basecore.domain.web.payload.ApiResponse
 import jakarta.validation.Valid
 import jakarta.validation.constraints.NotBlank
 import org.springframework.http.HttpStatus
@@ -15,23 +17,23 @@ import org.springframework.web.bind.annotation.*
 @RequestMapping("/admin/domains/{domainId}/policies")
 class PolicyController(
     private val policyRepository: PolicyJpaRepository
-) {
+) : AdminController() {
 
     @GetMapping
-    fun listPolicies(@PathVariable domainId: Long): ResponseEntity<List<PolicyResponse>> {
+    fun listPolicies(@PathVariable domainId: Long): ResponseEntity<ApiResponse<List<PolicyResponse>>> {
         val policies = policyRepository.findAllByDomainIdAndStatusAndActiveTrue(domainId)
-        return ResponseEntity.ok(policies.map { it.toResponse() })
+        return okResponse(policies.map { it.toResponse() })
     }
 
     @GetMapping("/{id}")
     fun getPolicy(
         @PathVariable domainId: Long,
         @PathVariable id: Long
-    ): ResponseEntity<PolicyResponse> {
+    ): ResponseEntity<ApiResponse<PolicyResponse>> {
         val policy = policyRepository.findById(id).orElseThrow {
             ResourceNotFoundException("Policy", id)
         }
-        return ResponseEntity.ok(policy.toResponse())
+        return okResponse(policy.toResponse())
     }
 
     @PostMapping
@@ -39,7 +41,7 @@ class PolicyController(
     fun createPolicy(
         @PathVariable domainId: Long,
         @Valid @RequestBody request: PolicyCreateRequest
-    ): ResponseEntity<PolicyResponse> {
+    ): ResponseEntity<ApiResponse<PolicyResponse>> {
         val policy = PolicyEntity().apply {
             this.domainId = domainId
             name = request.name
@@ -69,7 +71,7 @@ class PolicyController(
         saved.conditions.forEach { it.policyId = saved.id!! }
         policyRepository.save(saved)
 
-        return ResponseEntity.status(HttpStatus.CREATED).body(saved.toResponse())
+        return createdResponse(saved.toResponse())
     }
 
     @PutMapping("/{id}/activate")
@@ -77,7 +79,7 @@ class PolicyController(
     fun activatePolicy(
         @PathVariable domainId: Long,
         @PathVariable id: Long
-    ): ResponseEntity<PolicyResponse> {
+    ): ResponseEntity<ApiResponse<PolicyResponse>> {
         val policy = policyRepository.findById(id).orElseThrow {
             ResourceNotFoundException("Policy", id)
         }
@@ -89,7 +91,7 @@ class PolicyController(
 
         policy.status = "ACTIVE"
         // updatedAt is auto-managed by AuditableEntity
-        return ResponseEntity.ok(policyRepository.save(policy).toResponse())
+        return okResponse(policyRepository.save(policy).toResponse())
     }
 
     @PutMapping("/{id}/deactivate")
@@ -97,13 +99,13 @@ class PolicyController(
     fun deactivatePolicy(
         @PathVariable domainId: Long,
         @PathVariable id: Long
-    ): ResponseEntity<PolicyResponse> {
+    ): ResponseEntity<ApiResponse<PolicyResponse>> {
         val policy = policyRepository.findById(id).orElseThrow {
             ResourceNotFoundException("Policy", id)
         }
         policy.status = "INACTIVE"
         // updatedAt is auto-managed by AuditableEntity
-        return ResponseEntity.ok(policyRepository.save(policy).toResponse())
+        return okResponse(policyRepository.save(policy).toResponse())
     }
 
     @DeleteMapping("/{id}")

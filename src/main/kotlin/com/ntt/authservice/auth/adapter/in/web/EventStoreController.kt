@@ -3,6 +3,7 @@ package com.ntt.authservice.auth.adapter.`in`.web
 import com.ntt.authservice.auth.application.port.out.EventStorePort
 import com.ntt.authservice.shared.exception.EventNotFoundException
 import com.ntt.authservice.shared.web.BaseController
+import com.ntt.basecore.domain.web.payload.ApiResponse
 import org.springframework.http.ResponseEntity
 import org.springframework.web.bind.annotation.*
 
@@ -30,11 +31,11 @@ class EventStoreController(
     fun getEventsByAggregate(
         @PathVariable aggregateType: String,
         @PathVariable aggregateId: Long
-    ): ResponseEntity<List<Any>> {
+    ): ResponseEntity<ApiResponse<List<Any>>> {
         val events = eventStorePort.findByAggregate(aggregateType, aggregateId)
         if (events.isEmpty()) {
             throw EventNotFoundException(aggregateType, aggregateId)
         }
-        return ResponseEntity.ok(events)
+        return okResponse(events)
     }
 }

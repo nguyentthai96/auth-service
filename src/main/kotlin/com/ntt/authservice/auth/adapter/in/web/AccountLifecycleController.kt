@@ -1,7 +1,10 @@
 package com.ntt.authservice.auth.adapter.`in`.web
 
+import com.ntt.authservice.auth.adapter.`in`.web.dto.DataExportResult
+import com.ntt.authservice.auth.adapter.`in`.web.dto.DeletionRequestResult
 import com.ntt.authservice.auth.application.AccountLifecycleService
 import com.ntt.authservice.shared.web.AuthenticatedController
+import com.ntt.basecore.domain.web.payload.ApiResponse
 import jakarta.validation.Valid
 import jakarta.validation.constraints.Size
 import org.springframework.http.ResponseEntity
@@ -29,11 +32,9 @@ class AccountLifecycleController(
      * Deactivate own account — user-initiated.
      */
     @PostMapping("/deactivate")
-    fun deactivateAccount(): ResponseEntity<Map<String, String?>> {
+    fun deactivateAccount(): ResponseEntity<ApiResponse<Unit>> {
         accountLifecycleService.deactivateAccount(currentUserId())
-        return ResponseEntity.ok(mapOf(
-            "message" to message("auth.account_deactivated")
-        ))
+        return okMessageResponse("auth.account_deactivated")
     }
 
     /**
@@ -43,54 +44,58 @@ class AccountLifecycleController(
     @PostMapping("/deletion-request")
     fun requestDeletion(
         @Valid @RequestBody request: DeletionRequest?
-    ): ResponseEntity<Map<String, Any?>> {
+    ): ResponseEntity<ApiResponse<DeletionRequestResult>> {
         val result = accountLifecycleService.requestDeletion(currentUserId(), request?.reason)
-        return ResponseEntity.ok(mapOf(
-            "message" to message("auth.deletion_requested"),
-            "requestId" to (result.id ?: 0),
-            "scheduledDeleteAt" to result.scheduledDeleteAt.toString(),
-            "gracePeriodDays" to AccountLifecycleService.DELETION_GRACE_PERIOD_DAYS
-        ))
+        return okResponse(
+            DeletionRequestResult(
+                requestId = result.id ?: 0,
+                scheduledDeleteAt = result.scheduledDeleteAt.toString(),
+                gracePeriodDays = AccountLifecycleService.DELETION_GRACE_PERIOD_DAYS
+            ),
+            "auth.deletion_requested"
+        )
     }
 
     /**
      * Cancel a pending deletion request.
      */
     @DeleteMapping("/deletion-request")
-    fun cancelDeletion(): ResponseEntity<Map<String, String?>> {
+    fun cancelDeletion(): ResponseEntity<ApiResponse<Unit>> {
         accountLifecycleService.cancelDeletion(currentUserId())
-        return ResponseEntity.ok(mapOf(
-            "message" to message("auth.deletion_cancelled")
-        ))
+        return okMessageResponse("auth.deletion_cancelled")
     }
 
     /**
      * Request data export — GDPR Right to Data Portability.
      */
     @PostMapping("/export")
-    fun requestDataExport(): ResponseEntity<Map<String, Any?>> {
+    fun requestDataExport(): ResponseEntity<ApiResponse<DataExportResult>> {
         val export = accountLifecycleService.requestDataExport(currentUserId())
-        return ResponseEntity.ok(mapOf(
-            "exportId" to export.id,
-            "status" to export.status,
-            "requestedAt" to export.requestedAt.toString(),
-            "expiresAt" to export.expiresAt?.toString()
-        ))
+        return okResponse(
+            DataExportResult(
+                exportId = export.id,
+                status = export.status,
+                requestedAt = export.requestedAt.toString(),
+                expiresAt = export.expiresAt?.toString()
+            )
+        )
     }
 
     /**
      * Get data export status.
      */
     @GetMapping("/export/{exportId}")
-    fun getExportStatus(@PathVariable exportId: Long): ResponseEntity<Map<String, Any?>> {
+    fun getExportStatus(@PathVariable exportId: Long): ResponseEntity<ApiResponse<DataExportResult>> {
         val export = accountLifecycleService.getDataExport(exportId)
-        return ResponseEntity.ok(mapOf(
-            "exportId" to export.id,
-            "status" to export.status,
-            "fileSizeBytes" to export.fileSizeBytes,
-            "completedAt" to export.completedAt?.toString(),
-            "expiresAt" to export.expiresAt?.toString()
-        ))
+        return okResponse(
+            DataExportResult(
+                exportId = export.id,
+                status = export.status,
+                requestedAt = export.requestedAt.toString(),
+                expiresAt = export.expiresAt?.toString(),
+                fileSizeBytes = export.fileSizeBytes
+            )
+        )
     }
 }
 
@@ -98,3 +103,4 @@ data class DeletionRequest(
     @field:Size(max = 1000, message = "Reason must be under 1000 characters")
     val reason: String? = null
 )
+

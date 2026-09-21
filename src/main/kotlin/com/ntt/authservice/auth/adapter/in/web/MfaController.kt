@@ -6,6 +6,7 @@ import com.ntt.authservice.auth.application.JwtService
 import com.ntt.authservice.auth.application.query.BuildAuthResponseHandler
 import com.ntt.authservice.auth.application.query.BuildAuthResponseQuery
 import com.ntt.authservice.shared.web.AuthenticatedController
+import com.ntt.basecore.domain.web.payload.ApiResponse
 import jakarta.validation.Valid
 import org.springframework.http.ResponseEntity
 import org.springframework.web.bind.annotation.*
@@ -22,7 +23,7 @@ class MfaController(
 ) : AuthenticatedController() {
 
     @PostMapping("/verify")
-    fun verifyMfa(@Valid @RequestBody request: MfaVerifyRequest): ResponseEntity<Any> {
+    fun verifyMfa(@Valid @RequestBody request: MfaVerifyRequest): ResponseEntity<ApiResponse<Any>> {
         val response = mfaService.verifyMfa(
             mfaToken = request.mfaToken,
             code = request.code,
@@ -32,13 +33,13 @@ class MfaController(
                 AuthResponse.from(buildAuthResponseHandler.handle(BuildAuthResponseQuery(userId)))
             }
         )
-        return ResponseEntity.ok(response)
+        return okResponse(response)
     }
 
     @PostMapping("/totp/setup")
-    fun setupTotp(): ResponseEntity<TotpSetupResponse> {
+    fun setupTotp(): ResponseEntity<ApiResponse<TotpSetupResponse>> {
         val result = mfaService.setupTotp(currentUserId())
-        return ResponseEntity.ok(
+        return okResponse(
             TotpSetupResponse(
                 secret = result.secret,
                 qrCodeUri = result.qrCodeUri,
@@ -48,15 +49,15 @@ class MfaController(
     }
 
     @PostMapping("/totp/confirm")
-    fun confirmTotp(@Valid @RequestBody request: TotpConfirmRequest): ResponseEntity<Map<String, Any?>> {
+    fun confirmTotp(@Valid @RequestBody request: TotpConfirmRequest): ResponseEntity<ApiResponse<Unit>> {
         mfaService.confirmTotp(currentUserId(), request.code)
-        return ResponseEntity.ok(mapOf("success" to true, "message" to message("auth.totp_confirmed")))
+        return okMessageResponse("auth.totp_confirmed")
     }
 
     @PostMapping("/resend")
-    fun resendOtp(@Valid @RequestBody request: MfaResendRequest): ResponseEntity<MfaRequiredResponse> {
+    fun resendOtp(@Valid @RequestBody request: MfaResendRequest): ResponseEntity<ApiResponse<MfaRequiredResponse>> {
         val result = mfaService.resendOtp(request.mfaToken)
-        return ResponseEntity.ok(
+        return okResponse(
             MfaRequiredResponse(
                 mfaToken = result.mfaToken,
                 method = result.method,
@@ -66,9 +67,9 @@ class MfaController(
     }
 
     @PutMapping("/settings")
-    fun updateSettings(@Valid @RequestBody request: MfaSettingsRequest): ResponseEntity<MfaSettingsResponse> {
+    fun updateSettings(@Valid @RequestBody request: MfaSettingsRequest): ResponseEntity<ApiResponse<MfaSettingsResponse>> {
         val result = mfaService.updateSettings(currentUserId(), request.enabled, request.method)
-        return ResponseEntity.ok(
+        return okResponse(
             MfaSettingsResponse(
                 mfaEnabled = result.mfaEnabled,
                 mfaMethod = result.mfaMethod
@@ -81,9 +82,9 @@ class MfaController(
      * Returns remaining count only (codes are shown once on generation).
      */
     @GetMapping("/recovery-codes")
-    fun getRecoveryCodeCount(): ResponseEntity<Map<String, Long>> {
+    fun getRecoveryCodeCount(): ResponseEntity<ApiResponse<RecoveryCodeCountResult>> {
         val remaining = mfaService.getRemainingRecoveryCodeCount(currentUserId())
-        return ResponseEntity.ok(mapOf("remainingCodes" to remaining))
+        return okResponse(RecoveryCodeCountResult(remainingCodes = remaining))
     }
 
     /**
@@ -91,7 +92,7 @@ class MfaController(
      * On success, promotes the MFA session to full auth (same as TOTP/OTP verify).
      */
     @PostMapping("/recovery-codes/verify")
-    fun verifyRecoveryCode(@Valid @RequestBody request: RecoveryCodeVerifyRequest): ResponseEntity<Any> {
+    fun verifyRecoveryCode(@Valid @RequestBody request: RecoveryCodeVerifyRequest): ResponseEntity<ApiResponse<Any>> {
         val response = mfaService.verifyRecoveryCodeMfa(
             mfaToken = request.mfaToken,
             code = request.code,
@@ -99,7 +100,7 @@ class MfaController(
                 AuthResponse.from(buildAuthResponseHandler.handle(BuildAuthResponseQuery(userId)))
             }
         )
-        return ResponseEntity.ok(response)
+        return okResponse(response)
     }
 
     /**
@@ -107,12 +108,12 @@ class MfaController(
      * Previous codes are invalidated.
      */
     @PostMapping("/recovery-codes/regenerate")
-    fun regenerateRecoveryCodes(): ResponseEntity<Map<String, Any?>> {
+    fun regenerateRecoveryCodes(): ResponseEntity<ApiResponse<RecoveryCodesResult>> {
         val codes = mfaService.generateRecoveryCodes(currentUserId())
-        return ResponseEntity.ok(mapOf(
-            "codes" to codes,
-            "count" to codes.size,
-            "warning" to message("auth.recovery_codes_warning")
-        ))
+        return okResponse(
+            RecoveryCodesResult(codes = codes, count = codes.size),
+            "auth.recovery_codes_warning"
+        )
     }
 }
+

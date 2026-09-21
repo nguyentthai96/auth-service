@@ -2,6 +2,7 @@ package com.ntt.authservice.auth.adapter.`in`.web
 
 import com.ntt.authservice.auth.application.MfaRateLimitService
 import com.ntt.authservice.shared.web.AdminController
+import com.ntt.basecore.domain.web.payload.ApiResponse
 import org.springframework.http.ResponseEntity
 import org.springframework.security.access.prepost.PreAuthorize
 import org.springframework.web.bind.annotation.*
@@ -25,9 +26,9 @@ class RateLimitAdminController(
      * @return map of lock type → lock info (null if not locked)
      */
     @GetMapping("/locks/{userId}")
-    fun getLockInfo(@PathVariable userId: Long): ResponseEntity<LockInfoResponse> {
+    fun getLockInfo(@PathVariable userId: Long): ResponseEntity<ApiResponse<LockInfoResponse>> {
         val lockInfo = rateLimitService.getLockInfo(userId)
-        return ResponseEntity.ok(
+        return okResponse(
             LockInfoResponse(
                 userId = userId,
                 locks = lockInfo.mapKeys { it.key.key }.filterValues { it != null }
@@ -48,13 +49,9 @@ class RateLimitAdminController(
      * @return confirmation with i18n message
      */
     @DeleteMapping("/locks/{userId}")
-    fun adminUnlock(@PathVariable userId: Long): ResponseEntity<Map<String, Any?>> {
+    fun adminUnlock(@PathVariable userId: Long): ResponseEntity<ApiResponse<Unit>> {
         rateLimitService.adminUnlock(userId)
-        return ResponseEntity.ok(mapOf(
-            "unlocked" to true,
-            "userId" to userId,
-            "message" to message("auth.rate_limit_unlocked")
-        ))
+        return okMessageResponse("auth.rate_limit_unlocked", userId)
     }
 
     data class LockInfoResponse(

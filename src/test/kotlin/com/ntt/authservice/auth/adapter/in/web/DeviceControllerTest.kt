@@ -12,6 +12,8 @@ import org.springframework.security.core.Authentication
 import org.springframework.security.core.context.SecurityContext
 import org.springframework.security.core.context.SecurityContextHolder
 import org.springframework.test.util.ReflectionTestUtils
+import com.ntt.authservice.shared.web.RequestContext
+import org.springframework.context.MessageSource
 import java.time.Instant
 
 class DeviceControllerTest {
@@ -23,6 +25,14 @@ class DeviceControllerTest {
     fun setUp() {
         loginSessionService = mock(LoginSessionService::class.java)
         controller = DeviceController(loginSessionService)
+
+        val requestContext = RequestContext().apply {
+            userId = 123L
+            jti = "current-jti"
+        }
+        val messageSource = mock(MessageSource::class.java)
+        `when`(messageSource.getMessage(anyString(), any(), any())).thenReturn("Success")
+        controller.injectBaseDependencies(requestContext, messageSource)
 
         // Mock security context with user principal "123" and jti in details
         val auth = UsernamePasswordAuthenticationToken("123", null, emptyList())
@@ -50,8 +60,8 @@ class DeviceControllerTest {
         val response = controller.listDevices()
 
         assertEquals(HttpStatus.OK, response.statusCode)
-        assertEquals(1, response.body?.size)
-        assertEquals("Chrome", response.body?.first()?.browserName)
+        assertEquals(1, response.body?.data?.size)
+        assertEquals("Chrome", response.body?.data?.first()?.browserName)
     }
 
     @Test
@@ -80,6 +90,6 @@ class DeviceControllerTest {
         val response = controller.kickAllOtherDevices()
 
         assertEquals(HttpStatus.OK, response.statusCode)
-        assertEquals(3, response.body?.get("kickedCount"))
+        assertEquals(3, response.body?.data?.kickedCount)
     }
 }

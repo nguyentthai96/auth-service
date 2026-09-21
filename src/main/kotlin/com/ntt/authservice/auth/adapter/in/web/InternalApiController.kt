@@ -1,10 +1,13 @@
 package com.ntt.authservice.auth.adapter.`in`.web
 
+import com.ntt.authservice.auth.adapter.`in`.web.dto.ServiceTokenResult
+import com.ntt.authservice.auth.adapter.`in`.web.dto.UserRolesResult
 import com.ntt.authservice.auth.application.ServiceTokenService
 import com.ntt.authservice.rbac.adapter.out.persistence.repository.UserRepository
 import com.ntt.authservice.rbac.application.RbacEngine
 import com.ntt.authservice.shared.exception.ResourceNotFoundException
 import com.ntt.authservice.shared.web.BaseController
+import com.ntt.basecore.domain.web.payload.ApiResponse
 import jakarta.validation.Valid
 import org.springframework.http.ResponseEntity
 import org.springframework.web.bind.annotation.*
@@ -25,30 +28,33 @@ class InternalApiController(
      * Issue a service token (called by services at startup).
      */
     @PostMapping("/service-token")
-    fun issueServiceToken(@Valid @RequestBody request: ServiceTokenRequest): ResponseEntity<Map<String, String>> {
+    fun issueServiceToken(@Valid @RequestBody request: ServiceTokenRequest): ResponseEntity<ApiResponse<ServiceTokenResult>> {
         val token = serviceTokenService.generateServiceToken(request.serviceName)
-        return ResponseEntity.ok(mapOf(
-            "token" to token,
-            "type" to "Bearer",
-            "serviceName" to request.serviceName
-        ))
+        return okResponse(
+            ServiceTokenResult(
+                token = token,
+                serviceName = request.serviceName
+            )
+        )
     }
 
     /**
      * Get roles for a user by ID (called by other services for authorization).
      */
     @GetMapping("/users/{id}/roles")
-    fun getUserRoles(@PathVariable id: Long, @RequestParam domainId: Long): ResponseEntity<Map<String, Any>> {
+    fun getUserRoles(@PathVariable id: Long, @RequestParam domainId: Long): ResponseEntity<ApiResponse<UserRolesResult>> {
         val user = userRepository.findById(id).orElseThrow {
             ResourceNotFoundException("User", id)
         }
         val roles = rbacEngine.getUserRoles(id, domainId)
-        return ResponseEntity.ok(mapOf(
-            "userId" to id,
-            "domainId" to domainId,
-            "roles" to roles,
-            "status" to user.status
-        ))
+        return okResponse(
+            UserRolesResult(
+                userId = id,
+                domainId = domainId,
+                roles = roles,
+                status = user.status
+            )
+        )
     }
 }
 
@@ -56,3 +62,4 @@ data class ServiceTokenRequest(
     val serviceName: String,
     val serviceSecret: String? = null
 )
+

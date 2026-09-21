@@ -3,6 +3,7 @@ package com.ntt.authservice.auth.adapter.`in`.web
 import com.ntt.authservice.auth.adapter.out.persistence.entity.LoginSessionEntity
 import com.ntt.authservice.auth.application.LoginSessionService
 import com.ntt.authservice.shared.web.AuthenticatedController
+import com.ntt.basecore.domain.web.payload.ApiResponse
 import org.springframework.http.ResponseEntity
 import org.springframework.web.bind.annotation.*
 
@@ -22,19 +23,19 @@ class SessionController(
      * Get all active sessions for the current user.
      */
     @GetMapping
-    fun getActiveSessions(): ResponseEntity<List<SessionResponse>> {
+    fun getActiveSessions(): ResponseEntity<ApiResponse<List<SessionResponse>>> {
         val sessions = loginSessionService.getActiveSessions(currentUserId())
-        return ResponseEntity.ok(sessions.map { it.toResponse() })
+        return okResponse(sessions.map { it.toResponse() })
     }
 
     /**
      * Revoke a specific session by ID.
      */
     @DeleteMapping("/{sessionId}")
-    fun revokeSession(@PathVariable sessionId: Long): ResponseEntity<Map<String, Any?>> {
+    fun revokeSession(@PathVariable sessionId: Long): ResponseEntity<ApiResponse<Unit>> {
         val revoked = loginSessionService.revokeSession(sessionId, currentUserId(), "MANUAL")
         return if (revoked) {
-            okMessage("auth.session_revoked")
+            okMessageResponse("auth.session_revoked")
         } else {
             ResponseEntity.notFound().build()
         }
@@ -44,9 +45,9 @@ class SessionController(
      * Revoke all sessions for the current user (force re-login on all devices).
      */
     @DeleteMapping
-    fun revokeAllSessions(): ResponseEntity<Map<String, Any?>> {
+    fun revokeAllSessions(): ResponseEntity<ApiResponse<Unit>> {
         loginSessionService.revokeAllSessions(currentUserId(), "MANUAL_ALL")
-        return okMessage("auth.all_sessions_revoked")
+        return okMessageResponse("auth.all_sessions_revoked")
     }
 
     private fun LoginSessionEntity.toResponse(): SessionResponse = SessionResponse(

@@ -52,7 +52,7 @@ class AdminSessionControllerTest {
         // When/Then
         mockMvc.perform(delete("/admin/sessions/user/42"))
             .andExpect(status().isOk)
-            .andExpect(jsonPath("$.revokedCount").value(3))
+            .andExpect(jsonPath("$.data.revokedCount").value(3))
             .andExpect(jsonPath("$.message").exists())
 
         verify(loginSessionService).revokeAllSessions(42L, "ADMIN_FORCE_REVOKE")
@@ -86,8 +86,8 @@ class AdminSessionControllerTest {
             .param("page", "0")
             .param("size", "20"))
             .andExpect(status().isOk)
-            .andExpect(jsonPath("$.content").isArray)
-            .andExpect(jsonPath("$.totalElements").value(0))
+            .andExpect(jsonPath("$.data.items").isArray)
+            .andExpect(jsonPath("$.data.totalElements").value(0))
     }
 
     @Test
@@ -102,7 +102,7 @@ class AdminSessionControllerTest {
         // When/Then
         mockMvc.perform(get("/admin/sessions/stats"))
             .andExpect(status().isOk)
-            .andExpect(jsonPath("$.totalActiveSessions").value(15))
-            .andExpect(jsonPath("$.byDeviceType").exists())
+            .andExpect(jsonPath("$.data.totalActiveSessions").value(15))
+            .andExpect(jsonPath("$.data.byDeviceType").exists())
     }
 }

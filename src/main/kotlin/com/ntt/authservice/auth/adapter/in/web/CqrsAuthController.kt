@@ -19,6 +19,8 @@ import com.ntt.authservice.rbac.adapter.out.persistence.repository.UserRepositor
 import com.ntt.authservice.shared.config.SecurityProperties
 import com.ntt.authservice.shared.exception.InvalidCredentialsException
 import com.ntt.authservice.shared.web.BaseController
+import com.ntt.basecore.domain.web.payload.ApiResponse
+import com.ntt.authservice.auth.adapter.`in`.web.dto.MfaRequiredResponse
 import jakarta.servlet.http.Cookie
 import jakarta.servlet.http.HttpServletRequest
 import jakarta.servlet.http.HttpServletResponse
@@ -73,7 +75,7 @@ class CqrsAuthController(
     @PostMapping("/register")
     fun register(
         @Valid @RequestBody request: com.ntt.authservice.auth.adapter.`in`.web.dto.RegisterRequestDto
-    ): ResponseEntity<AuthResponse> {
+    ): ResponseEntity<ApiResponse<AuthResponse>> {
         val anonymousTokenJti = extractAnonymousTokenJti(request.anonymousToken)
 
         val command = RegisterCommand(
@@ -121,14 +123,14 @@ class CqrsAuthController(
             }
         }
 
-        return ResponseEntity.status(HttpStatus.CREATED).body(response.copy(message = successMessage))
+        return createdResponse(response.copy(message = successMessage), "auth.register_success")
     }
 
     @PostMapping("/login")
     fun login(
         @Valid @RequestBody request: com.ntt.authservice.auth.adapter.`in`.web.dto.LoginRequestDto,
         httpResponse: HttpServletResponse
-    ): ResponseEntity<Any> {
+    ): ResponseEntity<ApiResponse<Any>> {
         val anonymousTokenJti = extractAnonymousTokenJti(request.anonymousToken)
 
         val command = LoginCommand(
@@ -166,14 +168,13 @@ class CqrsAuthController(
                     result.response.copy(refreshToken = null)
                 }
 
-                ResponseEntity.ok(responseWithPromotion)
+                okResponse(responseWithPromotion)
             }
-            is LoginResult.MfaRequired -> ResponseEntity.ok(
-                mapOf(
-                    "mfaRequired" to true,
-                    "mfaToken" to result.mfaToken,
-                    "method" to result.method,
-                    "expiresIn" to result.expiresIn
+            is LoginResult.MfaRequired -> okResponse(
+                MfaRequiredResponse(
+                    mfaToken = result.mfaToken,
+                    method = result.method,
+                    expiresIn = result.expiresIn
                 )
             )
         }
@@ -182,7 +183,7 @@ class CqrsAuthController(
     @PostMapping("/logout")
     fun logout(
         httpResponse: HttpServletResponse
-    ): ResponseEntity<Map<String, String>> {
+    ): ResponseEntity<ApiResponse<Unit>> {
         val userId = requestContext.requireUserId()
 
         // Revoke all active sessions for this user
@@ -191,36 +192,36 @@ class CqrsAuthController(
         // Clear refresh token cookie
         clearRefreshTokenCookie(httpResponse)
 
-        return ResponseEntity.ok(mapOf("message" to message("auth.logout_success")))
+        return okMessageResponse("auth.logout_success")
     }
 
     @PostMapping("/change-password")
     fun changePassword(
         @Valid @RequestBody request: ChangePasswordRequestDto,
         @RequestHeader("Authorization") authHeader: String
-    ): ResponseEntity<Map<String, String>> {
+    ): ResponseEntity<ApiResponse<Unit>> {
         val userId = requestContext.requireUserId()
         val domainId = domainLookupService.getPrimaryDomainId(userId)
         passwordPolicyService.changePassword(userId, request.oldPassword, request.newPassword, domainId)
-        return ResponseEntity.ok(mapOf("message" to message("auth.password_changed")))
+        return okMessageResponse("auth.password_changed")
     }
 
     @PostMapping("/forgot-password")
-    fun forgotPassword(@Valid @RequestBody request: ForgotPasswordRequestDto): ResponseEntity<Map<String, String>> {
+    fun forgotPassword(@Valid @RequestBody request: ForgotPasswordRequestDto): ResponseEntity<ApiResponse<Unit>> {
         // Always return 200 to prevent email enumeration
         val user = userRepository.findByEmailAndActiveTrue(request.email)
         if (user != null) {
             val resetToken = java.util.UUID.randomUUID().toString()
             notificationGateway.sendPasswordResetLink(user.id!!, user.email, resetToken)
         }
-        return ResponseEntity.ok(mapOf("message" to message("auth.password_reset_sent")))
+        return okMessageResponse("auth.password_reset_sent")
     }
 
     @PostMapping("/refresh")
     fun refresh(
         httpRequest: HttpServletRequest,
         httpResponse: HttpServletResponse
-    ): ResponseEntity<AuthResponse> {
+    ): ResponseEntity<ApiResponse<AuthResponse>> {
         // Extract refresh token from cookie (preferred) or body
         val refreshToken = extractRefreshTokenFromCookie(httpRequest)
             ?: httpRequest.getParameter("refreshToken")
@@ -233,18 +234,18 @@ class CqrsAuthController(
         setRefreshTokenCookie(httpResponse, authToken.refreshToken)
 
         val response = AuthResponse.from(authToken).copy(refreshToken = null)
-        return ResponseEntity.ok(response)
+        return okResponse(response)
     }
 
     @PostMapping("/switch-domain")
     fun switchDomain(
         @Valid @RequestBody request: com.ntt.authservice.auth.adapter.`in`.web.dto.SwitchDomainRequestDto,
         @RequestHeader("Authorization") authHeader: String
-    ): ResponseEntity<AuthResponse> {
+    ): ResponseEntity<ApiResponse<AuthResponse>> {
         val userId = requestContext.requireUserId()
         val command = SwitchDomainCommand(userId = userId, newDomainCode = request.domainCode)
         val authToken = switchDomainHandler.handle(command)
-        return ResponseEntity.ok(AuthResponse.from(authToken).copy(message = message("auth.switch_domain_success")))
+        return okResponse(AuthResponse.from(authToken).copy(message = message("auth.switch_domain_success")))
     }
 
     private fun setRefreshTokenCookie(response: HttpServletResponse, refreshToken: String?) {

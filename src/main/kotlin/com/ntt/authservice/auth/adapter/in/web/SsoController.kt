@@ -5,6 +5,7 @@ import com.ntt.authservice.auth.application.SsoAdapter
 import com.ntt.authservice.auth.application.query.BuildAuthResponseHandler
 import com.ntt.authservice.auth.application.query.BuildAuthResponseQuery
 import com.ntt.authservice.shared.web.AuthenticatedController
+import com.ntt.basecore.domain.web.payload.ApiResponse
 import jakarta.validation.Valid
 import org.springframework.http.ResponseEntity
 import org.springframework.web.bind.annotation.*
@@ -20,7 +21,7 @@ class SsoController(
 ) : AuthenticatedController() {
 
     @PostMapping("/callback")
-    fun ssoCallback(@Valid @RequestBody request: SsoCallbackRequest): ResponseEntity<Any> {
+    fun ssoCallback(@Valid @RequestBody request: SsoCallbackRequest): ResponseEntity<ApiResponse<Any>> {
         val response = ssoAdapter.handleCallback(
             code = request.code,
             provider = request.provider,
@@ -29,26 +30,27 @@ class SsoController(
                 AuthResponse.from(buildAuthResponseHandler.handle(BuildAuthResponseQuery(userId)))
             }
         )
-        return ResponseEntity.ok(response)
+        return okResponse(response)
     }
 
     @GetMapping("/providers")
-    fun getProviders(@RequestParam(required = false) domainCode: String?): ResponseEntity<List<SsoProviderInfoDto>> {
+    fun getProviders(@RequestParam(required = false) domainCode: String?): ResponseEntity<ApiResponse<List<SsoProviderInfoDto>>> {
         val providers = ssoAdapter.getProviders().map {
             SsoProviderInfoDto(id = it.id, name = it.name, enabled = it.enabled)
         }
-        return ResponseEntity.ok(providers)
+        return okResponse(providers)
     }
 
     @PostMapping("/link")
-    fun linkIdentity(@Valid @RequestBody request: SsoLinkRequest): ResponseEntity<Map<String, Any?>> {
+    fun linkIdentity(@Valid @RequestBody request: SsoLinkRequest): ResponseEntity<ApiResponse<SsoLinkResult>> {
         ssoAdapter.linkIdentity(currentUserId(), request.code, request.provider, request.redirectUri)
-        return ResponseEntity.ok(mapOf("linked" to true, "message" to message("auth.sso_identity_linked")))
+        return okResponse(SsoLinkResult(linked = true), "auth.sso_identity_linked")
     }
 
     @DeleteMapping("/unlink/{provider}")
-    fun unlinkIdentity(@PathVariable provider: String): ResponseEntity<Map<String, Any?>> {
+    fun unlinkIdentity(@PathVariable provider: String): ResponseEntity<ApiResponse<SsoLinkResult>> {
         ssoAdapter.unlinkIdentity(currentUserId(), provider)
-        return ResponseEntity.ok(mapOf("linked" to false, "message" to message("auth.sso_identity_unlinked")))
+        return okResponse(SsoLinkResult(linked = false), "auth.sso_identity_unlinked")
     }
 }
+

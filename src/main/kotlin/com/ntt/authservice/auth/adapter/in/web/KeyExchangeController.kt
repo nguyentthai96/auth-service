@@ -4,6 +4,7 @@ import com.ntt.basecore.autoconfigure.security.cipher.key.KeyExchangeRequest
 import com.ntt.basecore.autoconfigure.security.cipher.key.KeyExchangeResponse
 import com.ntt.basecore.autoconfigure.security.cipher.key.KeyExchangeService
 import com.ntt.authservice.shared.web.BaseController
+import com.ntt.basecore.domain.web.payload.ApiResponse
 import jakarta.validation.Valid
 import org.springframework.http.ResponseEntity
 import org.springframework.web.bind.annotation.PostMapping
@@ -30,8 +31,8 @@ class KeyExchangeController(
      * @return Server public key, key session ID, and expiry metadata
      */
     @PostMapping
-    fun exchange(@Valid @RequestBody request: KeyExchangeRequest): ResponseEntity<KeyExchangeResponse> {
+    fun exchange(@Valid @RequestBody request: KeyExchangeRequest): ResponseEntity<ApiResponse<KeyExchangeResponse>> {
         val response = keyExchangeService.exchange(request)
-        return ResponseEntity.ok(response)
+        return okResponse(response)
     }
 }

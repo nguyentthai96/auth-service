@@ -5,6 +5,7 @@ import com.ntt.authservice.auth.application.AltchaCaptchaVerifier
 import com.ntt.authservice.auth.application.ImageCaptchaChallenge
 import com.ntt.authservice.auth.application.ImageCaptchaStrategy
 import com.ntt.authservice.shared.web.BaseController
+import com.ntt.basecore.domain.web.payload.ApiResponse
 import org.springframework.http.ResponseEntity
 import org.springframework.web.bind.annotation.GetMapping
 import org.springframework.web.bind.annotation.RequestMapping
@@ -31,10 +32,10 @@ class CaptchaController(
     @GetMapping("/challenge")
     fun getChallenge(
         @RequestParam(required = false, defaultValue = "altcha") type: String
-    ): ResponseEntity<*> {
+    ): ResponseEntity<ApiResponse<Any>> {
         return when (type.lowercase()) {
-            "image" -> ResponseEntity.ok(imageCaptchaStrategy.generateChallenge())
-            else -> ResponseEntity.ok(altchaCaptchaVerifier.generateChallenge())
+            "image" -> okResponse(imageCaptchaStrategy.generateChallenge() as Any)
+            else -> okResponse(altchaCaptchaVerifier.generateChallenge() as Any)
         }
     }
 }

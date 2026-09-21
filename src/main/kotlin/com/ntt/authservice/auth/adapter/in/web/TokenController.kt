@@ -1,6 +1,7 @@
 package com.ntt.authservice.auth.adapter.`in`.web
 
 import com.ntt.authservice.auth.adapter.`in`.web.dto.*
+import com.ntt.authservice.auth.adapter.`in`.web.dto.RevokeResult
 import com.ntt.authservice.auth.application.ClaimValidationStatus
 import com.ntt.authservice.auth.application.ClaimValidatorChain
 import com.ntt.authservice.auth.application.JwtService
@@ -9,6 +10,7 @@ import com.ntt.authservice.auth.application.command.RevokeSessionsCommand
 import com.ntt.authservice.auth.application.command.RevokeSessionsHandler
 import com.ntt.authservice.auth.domain.service.TokenHasher
 import com.ntt.authservice.shared.web.BaseController
+import com.ntt.basecore.domain.web.payload.ApiResponse
 import jakarta.servlet.http.HttpServletRequest
 import jakarta.validation.Valid
 import org.springframework.http.CacheControl
@@ -32,7 +34,7 @@ class TokenController(
 ) : BaseController() {
 
     @PostMapping("/auth/introspect")
-    fun introspect(@Valid @RequestBody request: IntrospectionRequest): ResponseEntity<IntrospectionResponse> {
+    fun introspect(@Valid @RequestBody request: IntrospectionRequest): ResponseEntity<ApiResponse<IntrospectionResponse>> {
         return try {
             val claims = jwtService.parseToken(request.token)
             val jti = claims.id
@@ -50,7 +52,7 @@ class TokenController(
             val permissions = claims["permissions"] as? List<String>
 
             ResponseEntity.ok(
-                IntrospectionResponse(
+                ApiResponse.success(IntrospectionResponse(
                     active = isActive,
                     sub = claims.subject,
                     username = claims["username"] as? String,
@@ -63,10 +65,10 @@ class TokenController(
                     tokenType = if (isActive) "Bearer" else null,
                     scope = if (isActive) permissions?.joinToString(" ") else null,
                     clientId = if (isActive) claims.audience?.firstOrNull() else null
-                )
+                ))
             )
         } catch (e: Exception) {
-            ResponseEntity.ok(IntrospectionResponse(active = false))
+            ResponseEntity.ok(ApiResponse.success(IntrospectionResponse(active = false)))
         }
     }
 
@@ -103,12 +105,11 @@ class TokenController(
     }
 
     @DeleteMapping("/admin/sessions/users/{userId}")
-    fun revokeAllSessions(@PathVariable userId: Long): ResponseEntity<Map<String, Any?>> {
+    fun revokeAllSessions(@PathVariable userId: Long): ResponseEntity<ApiResponse<RevokeResult>> {
         val count = revokeSessionsHandler.handle(RevokeSessionsCommand(userId))
-        return ResponseEntity.ok(mapOf(
-            "revokedCount" to count,
-            "userId" to userId,
-            "message" to message("auth.sessions_revoked_all")
-        ))
+        return okResponse(
+            RevokeResult(revokedCount = count, userId = userId),
+            "auth.sessions_revoked_all"
+        )
     }
 }

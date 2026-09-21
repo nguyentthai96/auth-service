@@ -4,6 +4,7 @@ import com.ntt.authservice.rbac.adapter.out.persistence.entity.*
 import com.ntt.authservice.rbac.adapter.out.persistence.repository.*
 import com.ntt.authservice.shared.exception.ResourceNotFoundException
 import com.ntt.authservice.shared.web.AdminController
+import com.ntt.basecore.domain.web.payload.ApiResponse
 import jakarta.validation.Valid
 import org.springframework.http.HttpStatus
 import org.springframework.http.ResponseEntity
@@ -27,7 +28,7 @@ class RolePermissionController(
     fun listRolePermissions(
         @PathVariable domainId: Long,
         @PathVariable roleId: Long
-    ): ResponseEntity<List<RolePermissionResponse>> {
+    ): ResponseEntity<ApiResponse<List<RolePermissionResponse>>> {
         val rolePerms = rolePermissionRepository.findAllByRoleIdAndActiveTrue(roleId)
         val result = rolePerms.mapNotNull { rp ->
             val perm = permissionRepository.findById(rp.permissionId).orElse(null)
@@ -43,7 +44,7 @@ class RolePermissionController(
                 )
             } else null
         }
-        return ResponseEntity.ok(result)
+        return okResponse(result)
     }
 
     @PostMapping

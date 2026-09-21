@@ -1,5 +1,7 @@
 package com.ntt.authservice.shared.web
 
+import com.ntt.basecore.domain.web.payload.ApiResponse
+import com.ntt.basecore.domain.web.payload.PageResponse
 import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.context.MessageSource
 import org.springframework.data.domain.Page
@@ -15,6 +17,11 @@ import org.springframework.http.ResponseEntity
  * Uses setter injection for [RequestContext] and [MessageSource] so that
  * subclasses do NOT need to forward these through their constructors.
  * Spring injects these automatically when creating the concrete controller bean.
+ *
+ * Response helpers come in two flavors:
+ * - **Raw helpers** (`ok`, `created`): Return raw body — backward compatible.
+ * - **ApiResponse helpers** (`okResponse`, `createdResponse`, `pagedOkResponse`):
+ *   Return standardized `ApiResponse<T>` envelope from base-core.
  *
  * FR-004: BaseController with response helpers.
  */
@@ -37,15 +44,53 @@ abstract class BaseController {
         this.messageSource = messageSource
     }
 
+    // ── ApiResponse<T> wrapped helpers (PREFERRED) ──────────────────────
+
     /**
-     * Returns HTTP 200 with the given body.
+     * Returns HTTP 200 with data wrapped in [ApiResponse].
+     */
+    protected fun <T> okResponse(data: T): ResponseEntity<ApiResponse<T>> =
+        ResponseEntity.ok(ApiResponse.success(data))
+
+    /**
+     * Returns HTTP 200 with data and i18n message wrapped in [ApiResponse].
+     */
+    protected fun <T> okResponse(data: T, messageKey: String, vararg args: Any?): ResponseEntity<ApiResponse<T>> =
+        ResponseEntity.ok(ApiResponse.success(data, message(messageKey, *args)))
+
+    /**
+     * Returns HTTP 200 with only an i18n message in [ApiResponse] (no data).
+     * Replaces: `ResponseEntity.ok(mapOf("message" to message(...)))`
+     */
+    protected fun okMessageResponse(messageKey: String, vararg args: Any?): ResponseEntity<ApiResponse<Unit>> =
+        ResponseEntity.ok(ApiResponse.success(message(messageKey, *args)))
+
+    /**
+     * Returns HTTP 201 CREATED with data wrapped in [ApiResponse].
+     */
+    protected fun <T> createdResponse(data: T, messageKey: String? = null): ResponseEntity<ApiResponse<T>> =
+        ResponseEntity.status(HttpStatus.CREATED)
+            .body(ApiResponse.success(data, messageKey?.let { message(it) } ?: ""))
+
+    /**
+     * Returns HTTP 200 with paginated data wrapped in [ApiResponse]<[PageResponse]<T>>.
+     * Uses base-core [PageResponse.from] to extract page metadata.
+     */
+    protected fun <T : Any> pagedOkResponse(page: Page<T>): ResponseEntity<ApiResponse<PageResponse<T>>> =
+        ResponseEntity.ok(ApiResponse.success(PageResponse.from(page)))
+
+    // ── Raw helpers (backward compatible) ────────────────────────────────
+
+    /**
+     * Returns HTTP 200 with the given body (raw, no envelope).
      */
     protected fun <T : Any> ok(body: T): ResponseEntity<T> =
         ResponseEntity.ok(body)
 
     /**
-     * Returns HTTP 200 with body and an i18n message.
+     * Returns HTTP 200 with body and an i18n message (legacy Map format).
      */
+    @Deprecated("Use okResponse(data, messageKey) instead", ReplaceWith("okResponse(body, messageKey, *args)"))
     protected fun ok(body: Any, messageKey: String, vararg args: Any?): ResponseEntity<Map<String, Any?>> =
         ResponseEntity.ok(
             mapOf(
@@ -55,14 +100,14 @@ abstract class BaseController {
         )
 
     /**
-     * Returns HTTP 200 with only an i18n message.
-     * Replaces the common pattern: ResponseEntity.ok(mapOf("message" to messageSource.getMessage(...)))
+     * Returns HTTP 200 with only an i18n message (legacy Map format).
      */
+    @Deprecated("Use okMessageResponse(messageKey) instead", ReplaceWith("okMessageResponse(messageKey, *args)"))
     protected fun okMessage(messageKey: String, vararg args: Any?): ResponseEntity<Map<String, Any?>> =
         ResponseEntity.ok(mapOf("message" to message(messageKey, *args)))
 
     /**
-     * Returns HTTP 201 CREATED with the given body.
+     * Returns HTTP 201 CREATED with the given body (raw, no envelope).
      */
     protected fun <T : Any> created(body: T): ResponseEntity<T> =
         ResponseEntity.status(HttpStatus.CREATED).body(body)
@@ -83,8 +128,9 @@ abstract class BaseController {
     }
 
     /**
-     * Returns HTTP 200 with a paginated response containing page metadata.
+     * Returns HTTP 200 with a paginated response (legacy Map format).
      */
+    @Deprecated("Use pagedOkResponse(page) instead", ReplaceWith("pagedOkResponse(page)"))
     protected fun <T : Any> pagedResponse(page: Page<T>): ResponseEntity<Map<String, Any?>> =
         ResponseEntity.ok(
             mapOf(

@@ -51,11 +51,11 @@ class KeyExchangeIntegrationTest {
             content = objectMapper.writeValueAsString(request)
         }.andExpect {
             status { isOk() }
-            jsonPath("$.keyId") { exists() }
-            jsonPath("$.serverPublicKey") { exists() }
-            jsonPath("$.keyVersion") { value(1) }
-            jsonPath("$.algorithm") { value("AES_GCM") }
-            jsonPath("$.expiresAt") { exists() }
+            jsonPath("$.data.keyId") { exists() }
+            jsonPath("$.data.serverPublicKey") { exists() }
+            jsonPath("$.data.keyVersion") { value(1) }
+            jsonPath("$.data.algorithm") { value("AES_GCM") }
+            jsonPath("$.data.expiresAt") { exists() }
         }
     }
 
@@ -80,7 +80,7 @@ class KeyExchangeIntegrationTest {
             status { isOk() }
         }.andReturn()
 
-        val keyId1 = objectMapper.readTree(result1.response.contentAsString).get("keyId").asText()
+        val keyId1 = objectMapper.readTree(result1.response.contentAsString).get("data").get("keyId").asText()
 
         // Second call — should return existing session
         val result2 = mockMvc.post("/auth/key-exchange") {
@@ -90,7 +90,7 @@ class KeyExchangeIntegrationTest {
             status { isOk() }
         }.andReturn()
 
-        val keyId2 = objectMapper.readTree(result2.response.contentAsString).get("keyId").asText()
+        val keyId2 = objectMapper.readTree(result2.response.contentAsString).get("data").get("keyId").asText()
 
         assert(keyId1 == keyId2) { "Expected idempotent keyId but got different values: $keyId1 vs $keyId2" }
     }

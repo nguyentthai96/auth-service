@@ -2,6 +2,7 @@ package com.ntt.authservice.rbac.adapter.`in`.web
 
 import com.ntt.authservice.rbac.adapter.out.persistence.repository.UserRepository
 import com.ntt.authservice.shared.web.BaseController
+import com.ntt.basecore.domain.web.payload.ApiResponse
 import jakarta.persistence.EntityManager
 import jakarta.persistence.PersistenceContext
 import org.springframework.data.domain.PageRequest
@@ -35,7 +36,7 @@ class InternalUserController(
     fun getAllUsers(
         @RequestParam(defaultValue = "0") page: Int,
         @RequestParam(defaultValue = "500") size: Int
-    ): ResponseEntity<InternalUserPageResponse> {
+    ): ResponseEntity<ApiResponse<InternalUserPageResponse>> {
         val effectiveSize = size.coerceIn(1, 1000)
         val pageable = PageRequest.of(page, effectiveSize, Sort.by("id").ascending())
 
@@ -57,7 +58,7 @@ class InternalUserController(
             )
         }
 
-        return ResponseEntity.ok(
+        return okResponse(
             InternalUserPageResponse(
                 content = userResponses,
                 page = usersPage.number,
