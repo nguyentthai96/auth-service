@@ -132,6 +132,8 @@ app:
         lock-seconds: 0
     cqrs:
       enabled: ${CQRS_ENABLED:true}
+      logging:
+        enabled: ${CQRS_LOGGING_ENABLED:true}
     fingerprint:
       enabled: ${FINGERPRINT_ENABLED:true}
       validation-enabled: ${FINGERPRINT_VALIDATION:true}
