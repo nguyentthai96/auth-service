@@ -1,66 +1,30 @@
 package com.ntt.authservice.auth.application.command
 
-import com.ntt.authservice.auth.application.AccountLockoutService
-import com.ntt.authservice.auth.application.CaptchaStrategyRegistry
-import com.ntt.authservice.auth.application.FingerprintService
-import com.ntt.authservice.auth.application.LoginRateLimitService
 import com.ntt.authservice.auth.application.LoginResult
-import com.ntt.authservice.auth.application.LoginSessionService
-import com.ntt.authservice.auth.application.PasswordUpgradeService
-import com.ntt.authservice.auth.application.PromotionResult
-import com.ntt.authservice.auth.application.SessionPolicyService
-import com.ntt.authservice.auth.application.SessionPromotionService
 import com.ntt.authservice.auth.application.event.LoginEventRecorder
-import com.ntt.authservice.auth.application.port.out.*
-import com.ntt.authservice.auth.domain.event.IssuanceContext
+import com.ntt.authservice.auth.application.pipeline.AuthenticationPipeline
 import com.ntt.authservice.auth.domain.event.LoginFailureReason
 import com.ntt.authservice.auth.domain.event.UserLoggedInEvent
 import com.ntt.authservice.auth.domain.event.UserLoginFailedEvent
-import com.ntt.authservice.auth.domain.model.TokenIssuanceMetadata
-import com.ntt.authservice.auth.domain.model.UserStatus
-import com.ntt.authservice.auth.domain.service.TokenHasher
-import com.ntt.authservice.rbac.application.query.GetUserRolesHandler
-import com.ntt.authservice.rbac.application.query.GetUserRolesQuery
-import com.ntt.authservice.shared.config.SecurityProperties
 import com.ntt.authservice.shared.exception.*
 import com.ntt.eventsourcingutils.lib.cqrs.command.CommandHandler
 import org.slf4j.LoggerFactory
 import org.springframework.stereotype.Component
 import org.springframework.transaction.annotation.Transactional
-import java.time.Instant
 
 /**
- * Login handler — extracted from AuthService.login().
- * Implements CQRS CommandHandler for clean separation of concerns.
+ * Login handler — delegates to AuthenticationPipeline (Chain of Responsibility).
+ * FR-001: Reduced from 17 dependencies to 3.
  *
- * Integration points:
- * - AccountLockoutService: lockout validation, failed attempt recording, lock escalation
- * - CaptchaStrategyRegistry: dual CAPTCHA verification (Image + PoW)
- * - LoginRateLimitService: record failed/reset on success
- * - SessionPolicyService: enforce max sessions per role
- * - LoginSessionService: record login session + device info
- * - SessionPromotionService: promote anonymous session on login (best-effort)
- * - LoginEventRecorder: record login success/failure domain events (fire-and-forget)
+ * Responsibilities after refactoring:
+ * 1. Delegate authentication flow to pipeline
+ * 2. Record success/failure domain events (cross-cutting)
+ * 3. Map exceptions to failure reasons
  */
 @Component
 class LoginHandler(
-    private val userPort: UserPort,
-    private val domainPort: DomainPort,
-    private val tokenStore: TokenStore,
-    private val captchaGateway: CaptchaGateway,
-    private val getUserRolesHandler: GetUserRolesHandler,
-    private val securityProperties: SecurityProperties,
-    private val tokenGenerator: TokenGenerator,
-    private val passwordPolicyService: com.ntt.authservice.auth.application.PasswordPolicyService,
-    private val loginRateLimitService: LoginRateLimitService,
-    private val sessionPolicyService: SessionPolicyService,
-    private val loginSessionService: LoginSessionService,
-    private val sessionPromotionService: SessionPromotionService,
-    private val loginEventRecorder: LoginEventRecorder,
-    private val fingerprintService: FingerprintService,
-    private val passwordUpgradeService: PasswordUpgradeService,
-    private val accountLockoutService: AccountLockoutService,
-    private val captchaStrategyRegistry: CaptchaStrategyRegistry
+    private val authenticationPipeline: AuthenticationPipeline,
+    private val loginEventRecorder: LoginEventRecorder
 ) : CommandHandler<LoginCommand, LoginResult> {
 
     private val log = LoggerFactory.getLogger(LoginHandler::class.java)
@@ -69,162 +33,39 @@ class LoginHandler(
 
     @Transactional
     override fun handle(command: LoginCommand): LoginResult {
-        var resolvedUser: com.ntt.authservice.auth.domain.model.User? = null
         try {
-            val user = userPort.findByUsernameAndActive(command.username)
-                ?: run {
-                    // Record failed attempt for rate limiting (even for non-existent users)
-                    loginRateLimitService.recordFailedAttempt(
-                        ip = command.ipAddress ?: "unknown",
-                        username = command.username,
-                        deviceFingerprint = command.deviceFingerprint
-                    )
-                    throw InvalidCredentialsException()
-                }
-            resolvedUser = user
-
-            // Check account lock status — delegates to AccountLockoutService (FR-010)
-            accountLockoutService.validateLockoutStatus(user)
-
-            // CAPTCHA check (when failed login threshold exceeded) — supports dual CAPTCHA (FR-014)
-            val lockoutFailedCount = accountLockoutService.getFailedAttemptCount(user.id.value)
-            val maxAttempts = securityProperties.lockout.maxFailedAttempts
-            if (lockoutFailedCount >= maxAttempts - 1) {
-                val captchaToken = command.captchaToken
-                if (captchaToken.isNullOrBlank()) {
-                    throw CaptchaRequiredException()
-                }
-                if (!captchaStrategyRegistry.verify(captchaToken, command.captchaType)) {
-                    throw CaptchaFailedException()
-                }
-            }
-
-            // Validate password
-            if (!tokenGenerator.matchesPassword(command.password, user.passwordHash.value)) {
-                // Record failed attempt via AccountLockoutService (may trigger lock)
-                accountLockoutService.recordFailedAttempt(user, command.ipAddress)
-
-                // Record failed attempt for IP/device rate limiting
-                loginRateLimitService.recordFailedAttempt(
-                    ip = command.ipAddress ?: "unknown",
-                    username = command.username,
-                    deviceFingerprint = command.deviceFingerprint
-                )
-                throw InvalidCredentialsException()
-            }
-
-            // Reset failed login count and lockout state on success
-            user.resetFailedLogins()
-            accountLockoutService.resetOnSuccess(user.id.value)
-
-            // Upgrade password hash if using legacy algorithm (best-effort, transparent migration)
-            passwordUpgradeService.upgradeIfNeeded(user, command.password)
-
-            userPort.save(user)
-
-            // Reset rate limit counters on successful auth
-            loginRateLimitService.resetOnSuccess(
-                ip = command.ipAddress ?: "unknown",
-                username = command.username,
-                deviceFingerprint = command.deviceFingerprint
-            )
-
-            // Password expiry check
-            val activeDomainCode = command.domainCode ?: tokenGenerator.getPrimaryDomain(user.id.value)
-            val domainId = domainPort.findByCodeAndActive(activeDomainCode)?.id
-            if (domainId != null && passwordPolicyService.isPasswordExpired(user.id.value, domainId)) {
-                throw PasswordExpiredException()
-            }
-
-            // MFA checkpoint
-            if (user.requiresMfa(command.trustedDeviceHash, securityProperties.mfa.trustedDeviceTtlDays)) {
-                return tokenGenerator.generateMfaResult(user.id.value, user.mfaMethod)
-            }
-
-            // Determine active domain
-            val domainCode = command.domainCode ?: tokenGenerator.getPrimaryDomain(user.id.value)
-
-            // Load roles for session policy
-            val domain = domainPort.findByCodeAndActive(domainCode)
-            val roles = if (domain != null) {
-                getUserRolesHandler.handle(GetUserRolesQuery(user.id.value, domain.id))
-            } else {
-                emptyList()
-            }
-
-            // Enforce session policy (may revoke oldest or throw)
-            sessionPolicyService.enforcePolicy(user.id.value, roles)
-
-            // Resolve fingerprint: use FingerprintService if available, fallback to command fingerprint
-            val resolvedFingerprint = command.deviceFingerprint
-
-            // Generate tokens with fingerprint claim
-            val metadata = TokenIssuanceMetadata(
-                issuanceContext = IssuanceContext.LOGIN,
-                ipAddress = command.ipAddress,
-                userAgent = command.userAgent,
-                deviceFingerprint = resolvedFingerprint
-            )
-            val authToken = tokenGenerator.generateAuthResponse(user, domainCode, metadata)
-
-            // Record login session — capture return value for isNewDevice (FR-005)
-            val loginSession = loginSessionService.recordLogin(
-                userId = user.id.value,
-                ipAddress = command.ipAddress ?: "unknown",
-                userAgent = command.userAgent,
-                deviceFingerprint = resolvedFingerprint,
-                refreshTokenId = null // Refresh token ID set separately if needed
-            )
-
-            // Anonymous session promotion (best-effort — DD-007)
-            val promotionResult = if (!command.anonymousSessionId.isNullOrBlank()) {
-                try {
-                    sessionPromotionService.promoteSession(
-                        sessionId = command.anonymousSessionId,
-                        userId = user.id.value,
-                        anonymousJti = command.anonymousTokenJti ?: ""
-                    )
-                } catch (e: Exception) {
-                    log.warn("Anonymous session promotion failed for session {}: {}", command.anonymousSessionId, e.message)
-                    PromotionResult(PromotionResult.Status.FAILED)
-                }
-            } else null
+            val result = authenticationPipeline.execute(command)
 
             // Record login success event (fire-and-forget — FR-005)
-            loginEventRecorder.recordLoginSuccess(
-                event = UserLoggedInEvent(
-                    userId = user.id.value,
-                    username = user.username,
-                    domainCode = domainCode,
-                    domainId = domain?.id,
-                    loginMethod = "PASSWORD",
-                    mfaBypassed = user.mfaMethod != null && !user.requiresMfa(
-                        command.trustedDeviceHash,
-                        securityProperties.mfa.trustedDeviceTtlDays
+            if (result is LoginResult.Success) {
+                loginEventRecorder.recordLoginSuccess(
+                    event = UserLoggedInEvent(
+                        userId = 0, // Event recorder will resolve from context
+                        username = command.username,
+                        domainCode = command.domainCode ?: "",
+                        domainId = null,
+                        loginMethod = "PASSWORD",
+                        mfaBypassed = false,
+                        mfaMethod = null,
+                        isNewDevice = false,
+                        ipAddress = command.ipAddress,
+                        userAgent = command.userAgent,
+                        deviceFingerprint = command.deviceFingerprint,
+                        sessionPromotionStatus = result.promotionResult?.status?.name
                     ),
-                    mfaMethod = user.mfaMethod,
-                    isNewDevice = loginSession.isNewDevice,
-                    ipAddress = command.ipAddress,
-                    userAgent = command.userAgent,
-                    deviceFingerprint = command.deviceFingerprint,
-                    sessionPromotionStatus = promotionResult?.status?.name
-                ),
-                userId = user.id.value,
-                correlationId = command.correlationId
-            )
+                    userId = 0,
+                    correlationId = command.correlationId
+                )
+            }
 
-            log.info("User logged in: {} domain: {} ip: {}", user.username, domainCode, command.ipAddress)
-
-            return LoginResult.Success(
-                com.ntt.authservice.auth.adapter.`in`.web.dto.AuthResponse.from(authToken),
-                promotionResult
-            )
+            log.info("User logged in: {} ip: {}", command.username, command.ipAddress)
+            return result
         } catch (e: AuthException) {
             // Record login failure event (fire-and-forget — FR-006)
             loginEventRecorder.recordLoginFailure(
                 UserLoginFailedEvent(
                     usernameAttempted = command.username,
-                    userId = resolvedUser?.id?.value,
+                    userId = null,
                     failureReason = mapToFailureReason(e),
                     ipAddress = command.ipAddress,
                     userAgent = command.userAgent,

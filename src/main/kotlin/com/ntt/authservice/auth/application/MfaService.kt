@@ -32,7 +32,8 @@ class MfaService(
     private val auditLogService: AuditLogService,
     private val rateLimitService: MfaRateLimitService,
     private val recoveryCodeRepository: MfaRecoveryCodeRepository,
-    private val notificationGateway: NotificationGateway
+    private val notificationGateway: NotificationGateway,
+    private val mfaProviderRegistry: com.ntt.authservice.auth.application.mfa.MfaProviderRegistry
 ) {
 
     private val log = LoggerFactory.getLogger(MfaService::class.java)
@@ -49,17 +50,8 @@ class MfaService(
      * @return mfaToken (JWT, 5min TTL) + method
      */
     fun initiateMfa(userId: Long, method: String): LoginResult.MfaRequired {
-        when (method) {
-            "SMS", "EMAIL" -> {
-                val channel = method.lowercase()
-                val code = otpService.generateOtp(userId, channel)
-                notificationGateway.sendOtp(userId, channel, code)
-            }
-            "TOTP" -> {
-                // TOTP is stateless — no server-side action needed
-            }
-            else -> throw MfaCodeInvalidException("Unsupported MFA method: $method")
-        }
+        // Delegate to MFA provider (FR-012 — OCP via Strategy pattern)
+        mfaProviderRegistry.get(method).initiate(userId)
 
         val mfaToken = jwtService.generateMfaToken(userId, method)
         return LoginResult.MfaRequired(
@@ -97,23 +89,12 @@ class MfaService(
             ResourceNotFoundException("User", userId)
         }
 
-        when (method) {
-            "SMS", "EMAIL" -> {
-                // OTP-specific rate limit check (FR-001)
-                rateLimitService.checkAndIncrement(userId, RateLimitType.OTP_VERIFY)
-                otpService.verifyOtp(userId, method.lowercase(), code)
-            }
-            "TOTP" -> {
-                val encryptedSecret = user.totpSecretEncrypted
-                    ?: throw TotpNotSetupException()
-                val secret = totpService.decryptSecret(encryptedSecret)
-                if (!totpService.verifyCode(secret, code)) {
-                    auditLogService.logEvent(userId, AuditAction.MFA_VERIFY_FAILED, "User", userId.toString(), "method=TOTP")
-                    throw MfaCodeInvalidException("Invalid TOTP code")
-                }
-            }
-            else -> throw MfaCodeInvalidException("Unsupported MFA method: $method")
+        // Delegate verification to MFA provider (FR-012 — OCP via Strategy pattern)
+        // OTP-specific rate limit check (FR-001) — applies to SMS/EMAIL
+        if (method == "SMS" || method == "EMAIL") {
+            rateLimitService.checkAndIncrement(userId, RateLimitType.OTP_VERIFY)
         }
+        mfaProviderRegistry.get(method).verify(userId, code)
 
         // Reset rate limit counters on successful verification (FR-011)
         rateLimitService.resetCounters(userId)

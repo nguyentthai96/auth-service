@@ -13,8 +13,6 @@ import com.ntt.authservice.auth.application.PromotionResult
 import com.ntt.authservice.auth.application.RegisterResult
 import com.ntt.authservice.auth.application.command.*
 import com.ntt.authservice.auth.application.port.out.NotificationGateway
-import com.ntt.authservice.auth.application.query.BuildAuthResponseQuery
-import com.ntt.authservice.auth.application.query.BuildAuthResponseHandler
 import com.ntt.authservice.rbac.adapter.out.persistence.repository.UserRepository
 import com.ntt.authservice.shared.config.SecurityProperties
 import com.ntt.authservice.shared.exception.InvalidCredentialsException
@@ -41,12 +39,8 @@ import org.springframework.web.bind.annotation.*
 @RequestMapping("/auth")
 @ConditionalOnProperty(name = ["app.security.cqrs.enabled"], havingValue = "true", matchIfMissing = true)
 class CqrsAuthController(
-    private val loginHandler: LoginHandler,
-    private val registerHandler: RegisterHandler,
-    private val refreshTokenHandler: RefreshTokenHandler,
-    private val switchDomainHandler: SwitchDomainHandler,
-    private val revokeSessionsHandler: RevokeSessionsHandler,
-    private val buildAuthResponseHandler: BuildAuthResponseHandler,
+    private val commandBus: com.ntt.eventsourcingutils.lib.cqrs.command.CommandBus,
+    private val queryBus: com.ntt.eventsourcingutils.lib.cqrs.query.QueryBus,
     private val passwordPolicyService: PasswordPolicyService,
     private val loginSessionService: LoginSessionService,
     private val domainLookupService: DomainLookupService,
@@ -91,7 +85,7 @@ class CqrsAuthController(
             userAgent = requestContext.userAgent,
             correlationId = requestContext.correlationId
         )
-        val result = registerHandler.handle(command)
+        val result = commandBus.dispatch(command)
 
         // Build response with promotion metadata from RegisterResult (DD-013)
         val successMessage = message("auth.register_success")
@@ -146,7 +140,7 @@ class CqrsAuthController(
             anonymousTokenJti = anonymousTokenJti,
             correlationId = requestContext.correlationId
         )
-        val result = loginHandler.handle(command)
+        val result = commandBus.dispatch(command)
         return when (result) {
             is LoginResult.Success -> {
                 // Set refresh token as HttpOnly cookie
@@ -228,7 +222,7 @@ class CqrsAuthController(
             ?: throw InvalidCredentialsException()
 
         val command = RefreshTokenCommand(refreshToken = refreshToken)
-        val authToken = refreshTokenHandler.handle(command)
+        val authToken = commandBus.dispatch(command)
 
         // Set new refresh token cookie
         setRefreshTokenCookie(httpResponse, authToken.refreshToken)
@@ -244,7 +238,7 @@ class CqrsAuthController(
     ): ResponseEntity<ApiResponse<AuthResponse>> {
         val userId = requestContext.requireUserId()
         val command = SwitchDomainCommand(userId = userId, newDomainCode = request.domainCode)
-        val authToken = switchDomainHandler.handle(command)
+        val authToken = commandBus.dispatch(command)
         return okResponse(AuthResponse.from(authToken).copy(message = message("auth.switch_domain_success")))
     }
 

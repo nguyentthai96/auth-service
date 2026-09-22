@@ -70,38 +70,48 @@ class PolicyEvaluator(
         }
     }
 
+    /**
+     * Single-pass policy evaluation (FR-017).
+     * Evaluates all policies in one iteration, tracking both DENY and ALLOW matches.
+     * BR-003: DENY takes precedence — short-circuits immediately.
+     */
     private fun evaluatePolicies(
         policies: List<PolicyEntity>,
         userAttributes: Map<String, Any>,
         requestContext: Map<String, Any>
     ): Boolean {
-        // Sort by priority (lower number = higher priority)
         val sorted = policies.sortedBy { it.priority }
+        var anyAllowMatched = false
+        var hasAllowPolicies = false
 
         for (policy in sorted) {
+            if (policy.effect == "ALLOW") hasAllowPolicies = true
+
             val conditionsMet = policy.conditions.all { condition ->
                 evaluateCondition(condition, userAttributes, requestContext)
             }
 
             if (conditionsMet) {
-                // BR-003: DENY always wins
-                if (policy.effect == "DENY") {
-                    log.debug("PBAC DENY: policy={} matched", policy.name)
-                    return false
+                when (policy.effect) {
+                    "DENY" -> {
+                        log.debug("PBAC DENY: policy={} matched", policy.name)
+                        return false
+                    }
+                    "ALLOW" -> {
+                        log.debug("PBAC ALLOW: policy={} matched", policy.name)
+                        anyAllowMatched = true
+                    }
                 }
             }
         }
 
-        // If no DENY matched and at least one ALLOW matched
-        val anyAllowMatched = sorted.any { policy ->
-            policy.effect == "ALLOW" && policy.conditions.all { condition ->
-                evaluateCondition(condition, userAttributes, requestContext)
-            }
-        }
-
-        return anyAllowMatched || sorted.none { it.effect == "ALLOW" }
+        return anyAllowMatched || !hasAllowPolicies
     }
 
+    /**
+     * Evaluate a single condition using ConditionOperator enum (FR-016).
+     * OCP: adding a new operator = adding a new enum entry in ConditionOperator.
+     */
     private fun evaluateCondition(
         condition: PolicyConditionEntity,
         userAttributes: Map<String, Any>,
@@ -109,29 +119,8 @@ class PolicyEvaluator(
     ): Boolean {
         val actualValue = resolveAttributePath(condition.attributePath, userAttributes, requestContext)
         val expectedValue = parseJsonValue(condition.value)
-
-        return when (condition.operator) {
-            "eq" -> actualValue?.toString() == expectedValue?.toString()
-            "neq" -> actualValue?.toString() != expectedValue?.toString()
-            "in" -> {
-                val set = (expectedValue as? List<*>)?.map { it.toString() } ?: emptyList()
-                actualValue?.toString() in set
-            }
-            "not_in" -> {
-                val set = (expectedValue as? List<*>)?.map { it.toString() } ?: emptyList()
-                actualValue?.toString() !in set
-            }
-            "gt" -> compareNumbers(actualValue, expectedValue) > 0
-            "gte" -> compareNumbers(actualValue, expectedValue) >= 0
-            "lt" -> compareNumbers(actualValue, expectedValue) < 0
-            "lte" -> compareNumbers(actualValue, expectedValue) <= 0
-            "contains" -> actualValue?.toString()?.contains(expectedValue?.toString() ?: "") == true
-            "starts_with" -> actualValue?.toString()?.startsWith(expectedValue?.toString() ?: "") == true
-            else -> {
-                log.warn("Unknown operator: {}", condition.operator)
-                false
-            }
-        }
+        val operator = ConditionOperator.fromString(condition.operator)
+        return operator.evaluate(actualValue, expectedValue)
     }
 
     private fun resolveAttributePath(path: String, userAttrs: Map<String, Any>, context: Map<String, Any>): Any? {
@@ -167,9 +156,4 @@ class PolicyEvaluator(
         }
     }
 
-    private fun compareNumbers(a: Any?, b: Any?): Int {
-        val numA = (a as? Number)?.toDouble() ?: a?.toString()?.toDoubleOrNull() ?: 0.0
-        val numB = (b as? Number)?.toDouble() ?: b?.toString()?.toDoubleOrNull() ?: 0.0
-        return numA.compareTo(numB)
-    }
 }

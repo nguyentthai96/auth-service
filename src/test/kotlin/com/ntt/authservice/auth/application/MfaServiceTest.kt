@@ -40,6 +40,7 @@ class MfaServiceTest {
     @Mock private lateinit var rateLimitService: MfaRateLimitService
     @Mock private lateinit var recoveryCodeRepository: MfaRecoveryCodeRepository
     @Mock private lateinit var notificationGateway: NotificationGateway
+    @Mock private lateinit var mfaProviderRegistry: com.ntt.authservice.auth.application.mfa.MfaProviderRegistry
     @Mock private lateinit var mfaProperties: SecurityProperties.MfaProperties
     @Mock private lateinit var jwtProperties: SecurityProperties.JwtProperties
     @Mock private lateinit var valueOps: ValueOperations<String, String>
@@ -64,7 +65,7 @@ class MfaServiceTest {
         mfaService = MfaService(
             otpService, totpService, jwtService, userRepository,
             securityProperties, redisTemplate, auditLogService, rateLimitService,
-            recoveryCodeRepository, notificationGateway
+            recoveryCodeRepository, notificationGateway, mfaProviderRegistry
         )
     }
 

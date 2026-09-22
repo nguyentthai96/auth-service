@@ -20,8 +20,8 @@ dependencies {
     implementation("org.springframework.boot:spring-boot-starter-actuator")
     implementation("org.springframework.retry:spring-retry")
     implementation("com.ntt:common-log")
-//  - CQRS / Event Sourcing (Phase 2)
-    implementation("com.ntt:eventsourcing-utils:0.0.1-SNAPSHOT")
+//  - CQRS / Event Sourcing (Phase 2) — base-cqrs-starter transitively includes eventsourcing-utils
+    implementation("com.ntt:base-cqrs-starter")
 //  - CACHE (Phase 4 — Caffeine L1 + Redis L2)
     implementation("com.github.ben-manes.caffeine:caffeine")
     implementation("com.ntt:base-cache-starter")

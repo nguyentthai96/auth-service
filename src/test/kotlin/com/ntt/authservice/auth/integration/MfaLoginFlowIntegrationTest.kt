@@ -43,6 +43,7 @@ class MfaLoginFlowIntegrationTest {
     @Mock private lateinit var rateLimitService: MfaRateLimitService
     @Mock private lateinit var recoveryCodeRepository: com.ntt.authservice.auth.adapter.out.persistence.repository.MfaRecoveryCodeRepository
     @Mock private lateinit var notificationGateway: NotificationGateway
+    @Mock private lateinit var mfaProviderRegistry: com.ntt.authservice.auth.application.mfa.MfaProviderRegistry
     @Mock private lateinit var valueOps: ValueOperations<String, String>
     @Mock private lateinit var mockClaims: Claims
 
@@ -77,7 +78,7 @@ class MfaLoginFlowIntegrationTest {
         mfaService = MfaService(
             otpService, totpService, jwtService, userRepository,
             securityProperties, redisTemplate, auditLogService, rateLimitService,
-            recoveryCodeRepository, notificationGateway
+            recoveryCodeRepository, notificationGateway, mfaProviderRegistry
         )
     }
 
