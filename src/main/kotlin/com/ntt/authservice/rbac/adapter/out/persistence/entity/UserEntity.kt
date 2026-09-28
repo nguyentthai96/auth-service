@@ -1,6 +1,6 @@
 package com.ntt.authservice.rbac.adapter.out.persistence.entity
 
-import com.ntt.basecore.model.id.SnowflakePersistentAuditableEntity
+import com.ntt.basecore.model.id.DualIdPersistentAuditableEntity
 import jakarta.persistence.*
 
 /**
@@ -9,9 +9,10 @@ import jakarta.persistence.*
  */
 @Entity
 @Table(name = "users")
-class UserEntity : SnowflakePersistentAuditableEntity() {
-
-    override var id: Long? = null
+class UserEntity : DualIdPersistentAuditableEntity() {
+    // Inherited from DualIdPersistentAuditableEntity:
+    //   val id: Long? (Snowflake PK)
+    //   val uuid: UUID (UUIDv7, immutable, auto-generated)
 
     @Column(nullable = false, unique = true, length = 100)
     lateinit var username: String

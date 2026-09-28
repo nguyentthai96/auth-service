@@ -6,9 +6,7 @@ import com.ntt.authservice.auth.application.port.out.EventPublisher
 import org.slf4j.LoggerFactory
 import org.springframework.beans.factory.ObjectProvider
 import org.springframework.stereotype.Service
-import jakarta.servlet.http.HttpServletRequest
-import org.springframework.web.context.request.RequestContextHolder
-import org.springframework.web.context.request.ServletRequestAttributes
+import com.ntt.basecore.context.RequestContextHolder
 import java.time.Instant
 
 /**
@@ -45,9 +43,9 @@ class AuditLogService(
         entityId: String? = null,
         details: String? = null
     ) {
-        val request = getCurrentRequest()
-        val ipAddress = request?.let { getClientIp(it) } ?: "unknown"
-        val userAgent = request?.getHeader("User-Agent") ?: "unknown"
+        val context = RequestContextHolder.get()
+        val ipAddress = context.clientIp
+        val userAgent = context.userAgent ?: "unknown"
         val maskedDetails = maskSensitiveData(details)
 
         // Structured log output
@@ -144,24 +142,6 @@ class AuditLogService(
             )
         }
         return masked
-    }
-
-    private fun getCurrentRequest(): HttpServletRequest? {
-        return try {
-            val attrs = RequestContextHolder.getRequestAttributes() as? ServletRequestAttributes
-            attrs?.request
-        } catch (e: Exception) {
-            null
-        }
-    }
-
-    private fun getClientIp(request: HttpServletRequest): String {
-        val forwarded = request.getHeader("X-Forwarded-For")
-        return if (!forwarded.isNullOrBlank()) {
-            forwarded.split(",").first().trim()
-        } else {
-            request.remoteAddr
-        }
     }
 }
 

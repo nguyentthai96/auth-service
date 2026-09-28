@@ -53,7 +53,11 @@ class MfaService(
         // Delegate to MFA provider (FR-012 — OCP via Strategy pattern)
         mfaProviderRegistry.get(method).initiate(userId)
 
-        val mfaToken = jwtService.generateMfaToken(userId, method)
+        // Look up user's publicId (UUID) for MFA token subject
+        val userEntity = userRepository.findById(userId).orElseThrow {
+            ResourceNotFoundException("User", userId)
+        }
+        val mfaToken = jwtService.generateMfaToken(userEntity.uuid, method)
         return LoginResult.MfaRequired(
             mfaToken = mfaToken,
             method = method,
@@ -78,16 +82,21 @@ class MfaService(
             throw MfaTokenExpiredException()
         }
 
-        val userId = claims.subject.toLong()
+        // MFA token subject is now UUID string (user-identity-dual-key)
+        val userUuid = try {
+            java.util.UUID.fromString(claims.subject)
+        } catch (e: IllegalArgumentException) {
+            throw MfaCodeInvalidException("Invalid MFA token subject")
+        }
         val method = claims["method"] as? String ?: throw MfaCodeInvalidException("Missing method in MFA token")
+
+        // Resolve UUID → UserEntity
+        val user = userRepository.findByUuidAndActiveTrue(userUuid)
+            ?: throw ResourceNotFoundException("User", userUuid)
+        val userId = user.id!!
 
         // MFA login rate limit check (FR-003) — applies to all MFA methods
         rateLimitService.checkAndIncrement(userId, RateLimitType.MFA_LOGIN)
-
-        // Pre-load user once — avoids duplicate findById in TOTP + trusted device branches
-        val user = userRepository.findById(userId).orElseThrow {
-            ResourceNotFoundException("User", userId)
-        }
 
         // Delegate verification to MFA provider (FR-012 — OCP via Strategy pattern)
         // OTP-specific rate limit check (FR-001) — applies to SMS/EMAIL
@@ -176,12 +185,22 @@ class MfaService(
             throw MfaTokenExpiredException()
         }
 
-        val userId = claims.subject.toLong()
+        // MFA token subject is UUID string (user-identity-dual-key)
+        val userUuid = try {
+            java.util.UUID.fromString(claims.subject)
+        } catch (e: IllegalArgumentException) {
+            throw MfaCodeInvalidException("Invalid MFA token subject")
+        }
         val method = claims["method"] as? String ?: throw MfaCodeInvalidException("Missing method")
 
         if (method != "SMS" && method != "EMAIL") {
             throw MfaCodeInvalidException("Resend only available for SMS/EMAIL")
         }
+
+        // Resolve UUID → user for internal operations
+        val user = userRepository.findByUuidAndActiveTrue(userUuid)
+            ?: throw ResourceNotFoundException("User", userUuid)
+        val userId = user.id!!
 
         // Resend count limit: max 3 per MFA session
         val resendKey = "mfa:resend:$userId"
@@ -196,7 +215,7 @@ class MfaService(
         val code = otpService.generateOtp(userId, method.lowercase())
         notificationGateway.sendOtp(userId, method.lowercase(), code)
 
-        val newMfaToken = jwtService.generateMfaToken(userId, method)
+        val newMfaToken = jwtService.generateMfaToken(userUuid, method)
         return LoginResult.MfaRequired(
             mfaToken = newMfaToken,
             method = method,
@@ -316,7 +335,15 @@ class MfaService(
             throw MfaTokenExpiredException()
         }
 
-        val userId = claims.subject.toLong()
+        // MFA token subject is UUID string (user-identity-dual-key)
+        val userUuid = try {
+            java.util.UUID.fromString(claims.subject)
+        } catch (e: IllegalArgumentException) {
+            throw MfaTokenExpiredException()
+        }
+        val user = userRepository.findByUuidAndActiveTrue(userUuid)
+            ?: throw ResourceNotFoundException("User", userUuid)
+        val userId = user.id!!
         rateLimitService.checkAndIncrement(userId, RateLimitType.MFA_LOGIN)
         verifyRecoveryCode(userId, code)
         rateLimitService.resetCounters(userId)

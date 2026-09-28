@@ -12,6 +12,7 @@ import java.time.temporal.ChronoUnit
  */
 class User(
     val id: UserId,
+    val publicId: java.util.UUID = java.util.UUID.randomUUID(),
     val username: String,
     val email: Email,
     val fullName: String,

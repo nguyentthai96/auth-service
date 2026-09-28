@@ -14,6 +14,7 @@ import com.ntt.authservice.rbac.adapter.out.persistence.entity.UserEntity
 
 fun UserEntity.toDomain() = User(
     id = UserId(this.id ?: 0L),
+    publicId = this.uuid,
     username = this.username ?: "",
     email = Email(this.email ?: ""),
     passwordHash = PasswordHash(this.passwordHash ?: ""),

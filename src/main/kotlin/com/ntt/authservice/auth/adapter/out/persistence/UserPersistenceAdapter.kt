@@ -59,12 +59,31 @@ class UserPersistenceAdapter(
         return userRepository.save(entity).toDomain()
     }
 
+    // New: Identity resolution methods (user-identity-dual-key)
+
+    override fun findByEmailAndActive(email: String): User? {
+        return userRepository.findByEmailAndActiveTrue(email)?.toDomain()
+    }
+
+    override fun findByPhoneAndActive(phone: String): User? {
+        return userRepository.findByPhoneAndActiveTrue(phone)?.toDomain()
+    }
+
+    override fun findByUuidAndActive(uuid: java.util.UUID): User? {
+        return userRepository.findByUuidAndActiveTrue(uuid)?.toDomain()
+    }
+
+    override fun findByIdentifierAny(identifier: String): User? {
+        return userRepository.findByIdentifierAny(identifier)?.toDomain()
+    }
+
     companion object {
         /**
          * Entity → Domain mapping.
          */
         fun UserEntity.toDomain(): User = User(
             id = UserId(this.id!!),
+            publicId = this.uuid,
             username = this.username,
             email = Email(this.email),
             passwordHash = PasswordHash(this.passwordHash),

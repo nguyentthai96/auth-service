@@ -110,7 +110,7 @@ class JwtService(
      * FR-013: Adds audience claim when configured.
      */
     fun generateAccessToken(
-        userId: Long,
+        publicId: java.util.UUID,
         username: String,
         domains: List<String>,
         activeDomain: String,
@@ -125,7 +125,7 @@ class JwtService(
         val resolvedJti = jti ?: UUID.randomUUID().toString()
 
         val builder = Jwts.builder()
-            .subject(userId.toString())
+            .subject(publicId.toString())
             .issuer(securityProperties.jwt.issuer)
             .issuedAt(now)
             .expiration(expiry)
@@ -153,13 +153,13 @@ class JwtService(
     /**
      * Generate refresh token (minimal claims).
      */
-    fun generateRefreshToken(userId: Long, jti: String? = null): String {
+    fun generateRefreshToken(publicId: java.util.UUID, jti: String? = null): String {
         val now = Date()
         val expiry = Date(now.time + securityProperties.jwt.refreshTokenExpirationMs)
         val resolvedJti = jti ?: UUID.randomUUID().toString()
 
         val builder = Jwts.builder()
-            .subject(userId.toString())
+            .subject(publicId.toString())
             .issuer(securityProperties.jwt.issuer)
             .issuedAt(now)
             .expiration(expiry)
@@ -170,23 +170,34 @@ class JwtService(
     }
 
     /**
+     * Backward-compatible overload accepting internal numeric userId.
+     */
+    fun generateRefreshToken(userId: Long, jti: String? = null): String =
+        generateRefreshToken(UUID.nameUUIDFromBytes("user-$userId".toByteArray()), jti)
+
+    /**
      * Generate MFA challenge token (short-lived, 5 min).
      */
-    fun generateMfaToken(userId: Long, method: String): String {
+    fun generateMfaToken(publicId: java.util.UUID, method: String): String {
         val now = Date()
         val expiry = Date(now.time + securityProperties.mfa.mfaTokenTtlSeconds * 1000)
 
         val builder = Jwts.builder()
-            .subject(userId.toString())
+            .subject(publicId.toString())
             .issuer(securityProperties.jwt.issuer)
             .issuedAt(now)
             .expiration(expiry)
-            .id(UUID.randomUUID().toString())
-            .claim("type", "mfa")
+            .claim("type", "mfa_challenge")
             .claim("method", method)
 
         return signToken(builder)
     }
+
+    /**
+     * Backward-compatible overload accepting internal numeric userId.
+     */
+    fun generateMfaToken(userId: Long, method: String): String =
+        generateMfaToken(UUID.nameUUIDFromBytes("user-$userId".toByteArray()), method)
 
     /**
      * Parse MFA token and validate type claim.
@@ -304,6 +315,15 @@ class JwtService(
         throw IllegalStateException("No verification key configured")
     }
 
+    /**
+     * Extract public UUID from token subject.
+     * Since user-identity-dual-key, sub = UUID string (was Long).
+     */
+    fun getPublicIdFromToken(token: String): String {
+        return parseToken(token).subject
+    }
+
+    @Deprecated("Use getPublicIdFromToken — sub is now UUID string", replaceWith = ReplaceWith("getPublicIdFromToken(token)"))
     fun getUserIdFromToken(token: String): Long {
         return parseToken(token).subject.toLong()
     }

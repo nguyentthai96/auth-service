@@ -15,6 +15,17 @@ interface UserRepository : JpaRepository<UserEntity, Long> {
     fun findByEmailAndActiveTrue(email: String): UserEntity?
     fun existsByUsername(username: String): Boolean
     fun existsByEmail(email: String): Boolean
+
+    // New: Identity resolution methods (user-identity-dual-key)
+    fun findByPhoneAndActiveTrue(phone: String): UserEntity?
+    fun findByUuidAndActiveTrue(uuid: java.util.UUID): UserEntity?
+
+    @Query("""
+        SELECT u FROM UserEntity u
+        WHERE (u.username = :identifier OR u.email = :identifier OR u.phone = :identifier)
+        AND u.active = true
+    """)
+    fun findByIdentifierAny(@Param("identifier") identifier: String): UserEntity?
 }
 
 @Repository

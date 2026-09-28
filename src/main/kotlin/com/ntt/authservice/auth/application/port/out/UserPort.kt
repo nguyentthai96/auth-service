@@ -12,4 +12,10 @@ interface UserPort {
     fun existsByUsername(username: String): Boolean
     fun existsByEmail(email: String): Boolean
     fun save(user: User): User
+
+    // New: Identity resolution methods (user-identity-dual-key)
+    fun findByEmailAndActive(email: String): User?
+    fun findByPhoneAndActive(phone: String): User?
+    fun findByUuidAndActive(uuid: java.util.UUID): User?
+    fun findByIdentifierAny(identifier: String): User?
 }

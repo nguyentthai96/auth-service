@@ -71,6 +71,7 @@ class RegisterHandler(
         val encodedPassword = tokenGenerator.encodePassword(command.password)
         val user = User(
             id = UserId(0), // will be assigned by persistence layer
+            publicId = java.util.UUID.randomUUID(),
             username = command.username,
             email = Email(command.email),
             passwordHash = PasswordHash(encodedPassword),

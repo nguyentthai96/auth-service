@@ -61,7 +61,7 @@ class TokenGenerator(
 
         // Generate tokens
         val accessToken = jwtService.generateAccessToken(
-            userId = user.id.value,
+            publicId = user.publicId,
             username = user.username,
             domains = emptyList(), // populated by caller or lazy-loaded
             activeDomain = domainCode,
@@ -72,7 +72,7 @@ class TokenGenerator(
             deviceFingerprint = metadata?.deviceFingerprint
         )
 
-        val refreshToken = jwtService.generateRefreshToken(user.id.value)
+        val refreshToken = jwtService.generateRefreshToken(user.publicId)
 
         // Store refresh token hash
         val tokenHash = TokenHasher.hash(refreshToken)
