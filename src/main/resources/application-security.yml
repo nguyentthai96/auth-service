@@ -34,6 +34,15 @@ app:
       kafka-timeout-ms: 5000
   security:
     enabled: true
+    session-validation:
+      enabled: false
+    public-paths:
+      - /auth/**
+      - /actuator/**
+      - /health/**
+      - /captcha/**
+      - /.well-known/**
+      - /unlock/**
     jwt:
       secret-key: ${JWT_SECRET_KEY:your-256-bit-secret-key-change-in-production}
       algorithm: ${JWT_ALGORITHM:RS256}
