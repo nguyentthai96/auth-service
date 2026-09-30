@@ -2,7 +2,7 @@ package com.ntt.authservice.shared.config
 
 import com.ntt.authservice.auth.adapter.`in`.web.filter.LoginRateLimitFilter
 import com.ntt.authservice.auth.adapter.`in`.web.filter.ServiceAuthFilter
-import com.ntt.authservice.shared.security.DynamicAuthorizationManager
+import com.ntt.basecore.autoconfigure.security.DynamicAuthorizationManager
 import com.ntt.authservice.shared.security.JwtAuthFilter
 import com.ntt.basecore.autoconfigure.openapi.OpenApiAutoConfiguration
 import org.springframework.beans.factory.annotation.Value

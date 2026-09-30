@@ -1,6 +1,7 @@
 package com.ntt.authservice.shared.security
 
 import org.slf4j.LoggerFactory
+import com.ntt.basecore.autoconfigure.security.DynamicAuthorizationManager
 import org.springframework.boot.autoconfigure.condition.ConditionalOnBean
 import org.springframework.context.annotation.Profile
 import org.springframework.data.redis.connection.Message

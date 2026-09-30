@@ -1,7 +1,8 @@
 package com.ntt.authservice.shared.security
 
-import com.ntt.authservice.shared.security.entity.EndpointSecurityRuleEntity
-import com.ntt.authservice.shared.security.repository.EndpointSecurityRuleRepository
+import com.ntt.basecore.autoconfigure.security.entity.EndpointSecurityRuleEntity
+import com.ntt.basecore.autoconfigure.security.DynamicAuthorizationManager
+import com.ntt.basecore.autoconfigure.security.repository.EndpointSecurityRuleRepository
 import com.ntt.authservice.shared.exception.ResourceNotFoundException
 import jakarta.validation.Valid
 import jakarta.validation.constraints.NotBlank
