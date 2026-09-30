@@ -4,15 +4,12 @@ spring:
   docker:
     compose:
       enabled: false
-  jackson:
-    default-property-inclusion: non_null
-  threads:
-    virtual:
-      enabled: true
 
   config:
     import:
-      # Common base-core configs
+      # Base-core shared config (logging, filter chain, security, observability, cipher, etc.)
+      - classpath:application-base-core.yml
+      # Legacy split configs (will be migrated into base-core shared config)
       - optional:classpath:application-core-observability.yml
       - optional:classpath:application-core-logging.yml
       - optional:classpath:application-core-resilience.yml
@@ -26,3 +23,14 @@ spring:
 
 server:
   port: 8081
+
+# ── Auth-service overrides ──────────────────────────────────────────
+logging:
+  level:
+    com.ntt.authservice: DEBUG
+    org.hibernate.SQL: DEBUG
+
+management:
+  metrics:
+    tags:
+      application: auth-service
