@@ -46,7 +46,7 @@ class JwtAuthFilterTest {
     @Mock private lateinit var tokenBlacklistCacheService: TokenBlacklistCacheService
     @Mock private lateinit var claimValidatorChain: ClaimValidatorChain
     @Mock private lateinit var tokenEventRecorder: TokenEventRecorder
-    @Mock private lateinit var securityProperties: SecurityProperties
+    private var securityProperties: SecurityProperties = SecurityProperties()
     @Mock private lateinit var fingerprintService: FingerprintService
 
     private lateinit var meterRegistry: SimpleMeterRegistry

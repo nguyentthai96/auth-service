@@ -31,7 +31,7 @@ import java.net.URI
 class AuthControllerAdvice(
     validator: LocalValidatorFactoryBean,
     private val messageSource: MessageSource
-) : BaseControllerAdvice(validator) {
+) : BaseControllerAdvice(validator, messageSource) {
 
     /**
      * Handle AuthException hierarchy with RFC 7807 ProblemDetail.

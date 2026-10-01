@@ -100,9 +100,10 @@ class RequestContext {
 
     // === Locale ===
     var locale: Locale
-        get() = activeContext.locale
+        get() = org.springframework.context.i18n.LocaleContextHolder.getLocale()
         set(value) {
             activeContext.locale = value
+            org.springframework.context.i18n.LocaleContextHolder.setLocale(value)
         }
 
     // === Anonymous session (optional) ===

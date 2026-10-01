@@ -90,7 +90,8 @@ class RequestContextFilter(
     }
 
     override fun shouldNotFilter(request: HttpServletRequest): Boolean {
-        return !request.requestURI.startsWith("/api/")
+        val uri = request.requestURI
+        return !uri.startsWith("/auth") && !uri.startsWith("/api/")
     }
 
     companion object {
