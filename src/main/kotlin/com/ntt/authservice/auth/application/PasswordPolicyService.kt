@@ -1,9 +1,7 @@
 package com.ntt.authservice.auth.application
 
 import com.ntt.authservice.rbac.adapter.out.persistence.entity.PasswordHistoryEntity
-import com.ntt.authservice.rbac.adapter.out.persistence.entity.PasswordPolicyEntity
 import com.ntt.authservice.rbac.adapter.out.persistence.repository.PasswordHistoryRepository
-import com.ntt.authservice.rbac.adapter.out.persistence.repository.PasswordPolicyRepository
 import com.ntt.authservice.rbac.adapter.out.persistence.repository.UserRepository
 import com.ntt.authservice.shared.config.SecurityProperties
 import com.ntt.authservice.shared.audit.AuditAction
@@ -19,11 +17,11 @@ import java.time.Instant
 /**
  * Global password policy enforcement via Passay.
  * Includes password history check and change flow.
- * Domain scope removed — single global policy.
+ * Domain scope removed — single global policy, fetched from System Admin.
  */
 @Service
 class PasswordPolicyService(
-    private val passwordPolicyRepository: PasswordPolicyRepository,
+    private val passwordPolicyConfigProvider: PasswordPolicyConfigProvider,
     private val passwordHistoryRepository: PasswordHistoryRepository,
     private val userRepository: UserRepository,
     private val securityProperties: SecurityProperties,
@@ -33,15 +31,12 @@ class PasswordPolicyService(
 
     private val log = LoggerFactory.getLogger(PasswordPolicyService::class.java)
 
-    @Volatile
-    private var cachedValidator: PasswordValidator? = null
-
     /**
      * Validate password against global policy.
      * @return list of violation messages (empty = valid)
      */
     fun validatePasswordStrength(password: String): List<String> {
-        val validator = cachedValidator ?: buildValidator(getPolicy()).also { cachedValidator = it }
+        val validator = buildValidator(getPolicy())
         val result = validator.validate(PasswordData(password))
         return if (result.isValid) emptyList()
         else validator.getMessages(result)
@@ -110,21 +105,10 @@ class PasswordPolicyService(
     }
 
     /**
-     * Get global password policy (falls back to system defaults).
+     * Get global password policy from provider.
      */
-    fun getPolicy(): PasswordPolicyEntity {
-        return passwordPolicyRepository.findFirstBy() ?: PasswordPolicyEntity()
-    }
-
-    /**
-     * Update global password policy and invalidate cached validator.
-     */
-    fun updatePolicy(policy: PasswordPolicyEntity): PasswordPolicyEntity {
-        policy.updatedAt = Instant.now()
-        val saved = passwordPolicyRepository.save(policy)
-        cachedValidator = null
-        log.info("Global password policy updated")
-        return saved
+    fun getPolicy(): PasswordPolicyConfig {
+        return passwordPolicyConfigProvider.getConfig()
     }
 
     /**
@@ -139,7 +123,7 @@ class PasswordPolicyService(
         return Instant.now().isAfter(expiresAt)
     }
 
-    private fun buildValidator(policy: PasswordPolicyEntity): PasswordValidator {
+    private fun buildValidator(policy: PasswordPolicyConfig): PasswordValidator {
         val rules = mutableListOf<Rule>()
 
         rules.add(LengthRule(policy.minLength, policy.maxLength))

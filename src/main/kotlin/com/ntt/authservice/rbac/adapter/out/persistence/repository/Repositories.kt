@@ -101,11 +101,7 @@ interface UserIdentityRepository : JpaRepository<UserIdentityEntity, Long> {
     fun countByUserIdAndActiveTrue(userId: Long): Long
 }
 
-@Repository
-interface PasswordPolicyRepository : JpaRepository<PasswordPolicyEntity, Long> {
-    /** Returns the single global password policy (if exists). */
-    fun findFirstBy(): PasswordPolicyEntity?
-}
+
 
 @Repository
 interface PasswordHistoryRepository : JpaRepository<PasswordHistoryEntity, Long> {
