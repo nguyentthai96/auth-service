@@ -13,7 +13,6 @@ data class RegisterRequestDto(
     @field:NotBlank @field:Size(min = 8, max = 100) val password: String,
     @field:NotBlank val fullName: String,
     val phone: String? = null,
-    val domainCode: String = "default",
     val anonymousSessionId: String? = null,
     val anonymousToken: String? = null
 )
@@ -21,7 +20,6 @@ data class RegisterRequestDto(
 data class LoginRequestDto(
     @field:NotBlank val username: String,
     @field:NotBlank val password: String,
-    val domainCode: String? = null,
     val captchaToken: String? = null,
     val trustedDeviceHash: String? = null,
     val deviceFingerprint: String? = null,
@@ -34,9 +32,7 @@ data class RefreshTokenRequestDto(
     @field:NotBlank val refreshToken: String
 )
 
-data class SwitchDomainRequestDto(
-    @field:NotBlank val domainCode: String
-)
+
 
 data class ChangePasswordRequestDto(
     @field:NotBlank(message = "Old password is required")

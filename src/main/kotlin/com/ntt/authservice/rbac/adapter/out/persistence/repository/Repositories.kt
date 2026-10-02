@@ -1,6 +1,8 @@
 package com.ntt.authservice.rbac.adapter.out.persistence.repository
 
 import com.ntt.authservice.rbac.adapter.out.persistence.entity.*
+import org.springframework.data.domain.Page
+import org.springframework.data.domain.Pageable
 import org.springframework.data.jpa.repository.JpaRepository
 import org.springframework.data.jpa.repository.Modifying
 import org.springframework.data.jpa.repository.Query
@@ -29,21 +31,8 @@ interface UserRepository : JpaRepository<UserEntity, Long> {
 }
 
 @Repository
-interface DomainRepository : JpaRepository<DomainEntity, Long> {
-    fun findByCodeAndActiveTrue(code: String): DomainEntity?
-    fun findAllByActiveTrue(): List<DomainEntity>
-    fun existsByCode(code: String): Boolean
-}
-
-@Repository
-interface UserDomainRepository : JpaRepository<UserDomainEntity, Long> {
-    fun findAllByUserIdAndActiveTrue(userId: Long): List<UserDomainEntity>
-    fun findByUserIdAndDomainIdAndActiveTrue(userId: Long, domainId: Long): UserDomainEntity?
-}
-
-@Repository
 interface GroupRepository : JpaRepository<GroupEntity, Long> {
-    fun findAllByDomainIdAndActiveTrue(domainId: Long): List<GroupEntity>
+    fun findAllByActiveTrue(): List<GroupEntity>
 }
 
 @Repository
@@ -52,9 +41,9 @@ interface UserGroupRepository : JpaRepository<UserGroupEntity, Long> {
 }
 
 @Repository
-interface DomainRoleRepository : JpaRepository<DomainRoleEntity, Long> {
-    fun findAllByDomainIdAndActiveTrue(domainId: Long): List<DomainRoleEntity>
-    fun findByDomainIdAndCodeAndActiveTrue(domainId: Long, code: String): DomainRoleEntity?
+interface RoleRepository : JpaRepository<RoleEntity, Long> {
+    fun findAllByActiveTrue(): List<RoleEntity>
+    fun findByCodeAndActiveTrue(code: String): RoleEntity?
 }
 
 @Repository
@@ -68,9 +57,9 @@ interface ActionRepository : JpaRepository<ActionEntity, Long> {
 }
 
 @Repository
-interface DomainResourceRepository : JpaRepository<DomainResourceEntity, Long> {
-    fun findAllByDomainIdAndActiveTrue(domainId: Long): List<DomainResourceEntity>
-    fun findByDomainIdAndCodeAndActiveTrue(domainId: Long, code: String): DomainResourceEntity?
+interface ResourceRepository : JpaRepository<ResourceEntity, Long> {
+    fun findAllByActiveTrue(): List<ResourceEntity>
+    fun findByCodeAndActiveTrue(code: String): ResourceEntity?
 }
 
 @Repository
@@ -114,11 +103,13 @@ interface UserIdentityRepository : JpaRepository<UserIdentityEntity, Long> {
 
 @Repository
 interface PasswordPolicyRepository : JpaRepository<PasswordPolicyEntity, Long> {
-    fun findByDomainId(domainId: Long): PasswordPolicyEntity?
+    /** Returns the single global password policy (if exists). */
+    fun findFirstBy(): PasswordPolicyEntity?
 }
 
 @Repository
 interface PasswordHistoryRepository : JpaRepository<PasswordHistoryEntity, Long> {
     fun findByUserIdOrderByCreatedAtDesc(userId: Long): List<PasswordHistoryEntity>
+    fun findByUserIdOrderByCreatedAtDesc(userId: Long, pageable: Pageable): Page<PasswordHistoryEntity>
     fun deleteByUserIdAndIdNotIn(userId: Long, keepIds: List<Long>)
 }

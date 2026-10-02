@@ -25,8 +25,7 @@ class BuildAuthResponseHandler(
         val user = userPort.findById(query.userId)
             ?: throw ResourceNotFoundException("User", query.userId)
 
-        val domainCode = tokenGenerator.getPrimaryDomain(user.id.value)
-        return tokenGenerator.generateAuthResponse(user, domainCode)
+        return tokenGenerator.generateAuthResponse(user)
     }
 
 

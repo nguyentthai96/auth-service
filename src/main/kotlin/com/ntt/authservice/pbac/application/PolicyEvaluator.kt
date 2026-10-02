@@ -18,6 +18,7 @@ import java.util.concurrent.*
  * - Evaluates JSONB conditions against user attributes and request context
  * - DENY policies take precedence over ALLOW (BR-003)
  * - Has 500ms timeout to prevent hanging (flow-logic-review finding)
+ * Domain logic removed — global scope.
  */
 @Service
 class PolicyEvaluator(
@@ -33,9 +34,8 @@ class PolicyEvaluator(
     }
 
     /**
-     * Evaluate all active policies for a given resource:action in domain.
+     * Evaluate all active policies for a given resource:action (global scope).
      *
-     * @param domainId the domain scope
      * @param resourceId the target resource (nullable = apply to all)
      * @param actionId the target action (nullable = apply to all)
      * @param userAttributes user context (id, groups, roles, etc.)
@@ -43,16 +43,15 @@ class PolicyEvaluator(
      * @return true if allowed, false if denied
      */
     fun evaluate(
-        domainId: Long,
         resourceId: Long?,
         actionId: Long?,
         userAttributes: Map<String, Any>,
         requestContext: Map<String, Any> = emptyMap()
     ): Boolean {
-        val policies = policyRepository.findApplicablePolicies(domainId, resourceId, actionId)
+        val policies = policyRepository.findApplicablePolicies(resourceId, actionId)
 
         if (policies.isEmpty()) {
-            log.debug("No policies found for domain={} resource={} action={}", domainId, resourceId, actionId)
+            log.debug("No policies found for resource={} action={}", resourceId, actionId)
             return true // No policies = allow (RBAC already passed)
         }
 
@@ -64,7 +63,7 @@ class PolicyEvaluator(
         return try {
             future.get(EVALUATION_TIMEOUT_MS, TimeUnit.MILLISECONDS)
         } catch (e: TimeoutException) {
-            log.warn("Policy evaluation timed out for domain={}", domainId)
+            log.warn("Policy evaluation timed out for resource={} action={}", resourceId, actionId)
             future.cancel(true)
             throw PolicyEvaluationException("Policy evaluation timed out after ${EVALUATION_TIMEOUT_MS}ms")
         }

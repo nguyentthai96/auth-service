@@ -171,8 +171,6 @@ class JwtAuthFilter(
                 authorities = roles.map { SimpleGrantedAuthority(it) } +
                         permissions.map { SimpleGrantedAuthority("PERM_$it") }
                 authDetails = mapOf(
-                    "activeDomain" to (claims["active_domain"] ?: ""),
-                    "domains" to (claims["domains"] ?: emptyList<String>()),
                     "username" to (claims["username"] ?: "")
                 )
             }

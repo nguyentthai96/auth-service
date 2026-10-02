@@ -13,7 +13,6 @@ data class AuthToken(
     val expiresIn: Long,
     val userId: Long,
     val username: String,
-    val activeDomain: String,
     val roles: List<String>,
     val permissions: List<String>
 )

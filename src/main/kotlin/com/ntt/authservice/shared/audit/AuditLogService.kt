@@ -34,7 +34,11 @@ class AuditLogService(
 
     /**
      * Log an audit event with contextual information.
-     * Persists to DB (immutable audit_logs table) AND publishes to event stream (FR-015).
+     * Structured log is SYNCHRONOUS (real-time monitoring).
+     * DB persistence + Kafka publish are ASYNCHRONOUS (non-blocking request path).
+     *
+     * RequestContext is captured on the caller thread before async dispatch
+     * to preserve IP/UserAgent context across thread boundaries.
      */
     fun logEvent(
         userId: Long?,
@@ -43,12 +47,13 @@ class AuditLogService(
         entityId: String? = null,
         details: String? = null
     ) {
+        // Capture request context on caller thread (BEFORE async dispatch)
         val context = RequestContextHolder.get()
         val ipAddress = context.clientIp
         val userAgent = context.userAgent ?: "unknown"
         val maskedDetails = maskSensitiveData(details)
 
-        // Structured log output
+        // Structured log output — SYNCHRONOUS (for real-time alerting/monitoring)
         log.info(
             "AUDIT action={} userId={} entityType={} entityId={} ip={} userAgent={} details={}",
             action.name,
@@ -60,7 +65,25 @@ class AuditLogService(
             maskedDetails ?: "-"
         )
 
-        // Persist to audit_logs table (FR-015 — replaces TODO)
+        // DB persistence + Kafka publish — ASYNCHRONOUS (non-blocking)
+        persistAndPublishAsync(userId, action, entityType, entityId, maskedDetails, ipAddress, userAgent)
+    }
+
+    /**
+     * Async persistence and event publishing.
+     * Runs on "auditExecutor" thread pool with CallerRunsPolicy fallback.
+     */
+    @org.springframework.scheduling.annotation.Async("auditExecutor")
+    fun persistAndPublishAsync(
+        userId: Long?,
+        action: AuditAction,
+        entityType: String?,
+        entityId: String?,
+        maskedDetails: String?,
+        ipAddress: String?,
+        userAgent: String
+    ) {
+        // Persist to audit_logs table (FR-015)
         auditLogRepository.ifAvailable?.let { repo ->
             try {
                 // Wrap plain-text details into valid JSON for JSONB column
@@ -84,7 +107,6 @@ class AuditLogService(
                 repo.save(entity)
             } catch (e: Exception) {
                 log.error("Failed to persist audit log: action={} userId={} error={}", action.name, userId, e.message)
-                // Non-blocking: audit persistence failure should not break the main flow
             }
         }
 

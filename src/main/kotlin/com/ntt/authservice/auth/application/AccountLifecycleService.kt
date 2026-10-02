@@ -6,7 +6,7 @@ import com.ntt.authservice.auth.adapter.out.persistence.entity.AccountDeletionRe
 import com.ntt.authservice.auth.adapter.out.persistence.repository.AccountDataExportRepository
 import com.ntt.authservice.auth.adapter.out.persistence.repository.AccountDeletionRequestRepository
 import com.ntt.authservice.auth.adapter.out.persistence.repository.LoginSessionRepository
-import com.ntt.authservice.rbac.adapter.out.persistence.repository.UserDomainRepository
+
 import com.ntt.authservice.rbac.adapter.out.persistence.repository.UserRepository
 import com.ntt.authservice.rbac.application.RbacEngine
 import com.ntt.authservice.auth.application.port.out.AccountDeactivatedEvent
@@ -35,7 +35,6 @@ import java.time.temporal.ChronoUnit
 @Service
 class AccountLifecycleService(
     private val userRepository: UserRepository,
-    private val userDomainRepository: UserDomainRepository,
     private val loginSessionRepository: LoginSessionRepository,
     private val deletionRequestRepository: AccountDeletionRequestRepository,
     private val dataExportRepository: AccountDataExportRepository,
@@ -280,7 +279,6 @@ class AccountLifecycleService(
             ResourceNotFoundException("User", userId)
         }
 
-        val domains = userDomainRepository.findAllByUserIdAndActiveTrue(userId)
         val sessions = loginSessionRepository.findByUserIdAndSessionActiveTrue(userId)
 
         return mapOf(
@@ -298,13 +296,6 @@ class AccountLifecycleService(
                 "status" to user.status,
                 "createdAt" to user.createdAt?.toString()
             ),
-            "domainMemberships" to domains.map { d ->
-                mapOf(
-                    "domainId" to d.domainId,
-                    "isPrimary" to d.isPrimary,
-                    "joinedAt" to d.joinedAt?.toString()
-                )
-            },
             "activeSessions" to sessions.map { s ->
                 mapOf(
                     "ipAddress" to s.ipAddress,

@@ -112,8 +112,6 @@ class JwtService(
     fun generateAccessToken(
         publicId: java.util.UUID,
         username: String,
-        domains: List<String>,
-        activeDomain: String,
         roles: List<String>,
         permissions: List<String>,
         groups: List<String>,
@@ -131,8 +129,6 @@ class JwtService(
             .expiration(expiry)
             .id(resolvedJti)
             .claim("username", username)
-            .claim("domains", domains)
-            .claim("active_domain", activeDomain)
             .claim("roles", roles)
             .claim("permissions", permissions)
             .claim("groups", groups)

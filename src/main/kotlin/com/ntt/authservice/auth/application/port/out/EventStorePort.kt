@@ -2,7 +2,7 @@ package com.ntt.authservice.auth.application.port.out
 
 /**
  * Outbound port for event store persistence (FR-004, FR-009).
- * Follows existing port pattern (UserPort, DomainPort).
+ * Follows existing port pattern (UserPort).
  *
  * The event store is append-only — no update/delete operations.
  */

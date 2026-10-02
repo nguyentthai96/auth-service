@@ -22,7 +22,6 @@ import java.time.Instant
 class SsoAdapter(
     private val userRepository: UserRepository,
     private val userIdentityRepository: UserIdentityRepository,
-    private val domainRepository: DomainRepository,
     private val jwtService: JwtService,
     private val securityProperties: SecurityProperties,
     private val oauth2TokenExchanger: OAuth2TokenExchanger,
@@ -70,8 +69,7 @@ class SsoAdapter(
         eventPublisher.publish(SsoProvisionedEvent(
             userId = user.id!!,
             provider = provider,
-            email = idpUser.email,
-            domainCode = securityProperties.sso.defaultDomainCode
+            email = idpUser.email
         ))
 
         return authResponseBuilder(user.id!!)
@@ -141,8 +139,6 @@ class SsoAdapter(
     }
 
     private fun provisionSsoUser(idpUser: IdpUserInfo, provider: String): UserEntity {
-        val defaultDomain = domainRepository.findByCodeAndActiveTrue(securityProperties.sso.defaultDomainCode)
-
         val user = UserEntity().apply {
             this.username = idpUser.email ?: "${provider}_${idpUser.sub}"
             this.email = idpUser.email ?: "${provider}_${idpUser.sub}@sso.local"

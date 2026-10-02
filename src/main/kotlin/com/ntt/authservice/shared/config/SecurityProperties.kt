@@ -169,7 +169,6 @@ data class SecurityProperties(
     data class SsoProperties(
         val enabled: Boolean = false,
         val autoProvisionEnabled: Boolean = false,
-        val defaultDomainCode: String = "default",
         val timeoutMs: Long = 10_000,
         /** Config-driven SSO provider endpoints — keyed by provider ID (e.g., "google", "keycloak"). */
         val providers: Map<String, ProviderConfig> = emptyMap()

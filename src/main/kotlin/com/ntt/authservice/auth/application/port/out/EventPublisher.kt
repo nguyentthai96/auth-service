@@ -21,7 +21,6 @@ interface DomainEvent {
  */
 data class PermissionChangedEvent(
     val userId: Long? = null,
-    val domainId: Long? = null,
     override val eventType: String = "iam.permission.changed"
 ) : DomainEvent
 
@@ -32,8 +31,7 @@ data class PermissionChangedEvent(
 data class SsoProvisionedEvent(
     val userId: Long,
     val provider: String,
-    val email: String?,
-    val domainCode: String
+    val email: String?
 ) : DomainEvent {
     override val eventType: String = "iam.user.sso_provisioned"
 }
@@ -87,8 +85,7 @@ data class UserUpdatedEvent(
     val phone: String? = null,
     val status: String,
     val avatarUrl: String? = null,
-    val roles: List<String> = emptyList(),
-    val domainCode: String? = null
+    val roles: List<String> = emptyList()
 ) : DomainEvent {
     override val eventType: String = "iam.user.updated"
 }

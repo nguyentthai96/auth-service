@@ -18,8 +18,6 @@ import java.time.Instant
 data class UserLoggedInEvent(
     val userId: Long,
     val username: String,
-    val domainCode: String,
-    val domainId: Long?,
     val loginMethod: String = "PASSWORD",
     val mfaBypassed: Boolean,
     val mfaMethod: String?,

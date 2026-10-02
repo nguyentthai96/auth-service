@@ -5,7 +5,6 @@ import com.ntt.authservice.auth.application.port.out.*
 import com.ntt.authservice.auth.domain.model.AuthToken
 import com.ntt.authservice.auth.domain.model.TokenIssuanceMetadata
 import com.ntt.authservice.auth.domain.model.User
-import com.ntt.authservice.auth.application.DomainLookupService
 import com.ntt.authservice.auth.domain.event.IssuanceContext
 import com.ntt.authservice.auth.domain.event.TokenIssuedEvent
 import com.ntt.authservice.auth.domain.service.TokenHasher
@@ -17,7 +16,6 @@ import com.ntt.authservice.rbac.application.query.GetPermissionsQuery
 import com.ntt.authservice.rbac.application.query.GetUserRolesHandler
 import com.ntt.authservice.rbac.application.query.GetUserRolesQuery
 import com.ntt.authservice.shared.config.SecurityProperties
-import com.ntt.authservice.shared.exception.ResourceNotFoundException
 import org.springframework.security.crypto.password.PasswordEncoder
 import org.springframework.stereotype.Component
 import java.time.Instant
@@ -28,11 +26,11 @@ import java.util.UUID
  * Extracted from AuthService.generateAuthResponse().
  *
  * FR-008: Records TokenIssuedEvent via TokenEventRecorder after successful token generation.
+ * Domain logic removed — global RBAC scope.
  */
 @Component
 class TokenGenerator(
     private val userPort: UserPort,
-    private val domainPort: DomainPort,
     private val tokenStore: TokenStore,
     private val jwtService: JwtService,
     private val mfaService: MfaService,
@@ -40,21 +38,16 @@ class TokenGenerator(
     private val securityProperties: SecurityProperties,
     private val getPermissionsHandler: GetPermissionsHandler,
     private val getUserRolesHandler: GetUserRolesHandler,
-    private val domainLookupService: DomainLookupService,
     private val tokenEventRecorder: TokenEventRecorder
 ) {
 
     fun generateAuthResponse(
         user: User,
-        domainCode: String,
         metadata: TokenIssuanceMetadata? = null
     ): AuthToken {
-        val domain = domainPort.findByCodeAndActive(domainCode)
-            ?: throw ResourceNotFoundException("Domain", domainCode)
-
-        // Load roles and permissions
-        val roles = getUserRolesHandler.handle(GetUserRolesQuery(user.id.value, domain.id))
-        val permissions = getPermissionsHandler.handle(GetPermissionsQuery(user.id.value, domain.id))
+        // Load roles and permissions (global scope — no domainId)
+        val roles = getUserRolesHandler.handle(GetUserRolesQuery(user.id.value))
+        val permissions = getPermissionsHandler.handle(GetPermissionsQuery(user.id.value))
 
         // Pre-generate JTI for event correlation (DD-002)
         val accessTokenJti = UUID.randomUUID().toString()
@@ -63,8 +56,6 @@ class TokenGenerator(
         val accessToken = jwtService.generateAccessToken(
             publicId = user.publicId,
             username = user.username,
-            domains = emptyList(), // populated by caller or lazy-loaded
-            activeDomain = domainCode,
             roles = roles,
             permissions = permissions,
             groups = emptyList(),
@@ -88,8 +79,6 @@ class TokenGenerator(
             event = TokenIssuedEvent(
                 userId = user.id.value,
                 username = user.username,
-                domainCode = domainCode,
-                domainId = domain.id,
                 issuanceContext = issuanceContext,
                 accessTokenJti = accessTokenJti,
                 refreshTokenHash = tokenHash,
@@ -112,14 +101,9 @@ class TokenGenerator(
             expiresIn = securityProperties.jwt.accessTokenExpirationMs / 1000,
             userId = user.id.value,
             username = user.username,
-            activeDomain = domainCode,
             roles = roles,
             permissions = permissions
         )
-    }
-
-    fun getPrimaryDomain(userId: Long): String {
-        return domainLookupService.getPrimaryDomainCode(userId)
     }
 
     fun generateMfaResult(userId: Long, mfaMethod: String): LoginResult {

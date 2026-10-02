@@ -5,15 +5,12 @@ import jakarta.persistence.*
 import java.time.Instant
 
 /**
- * Domain-scoped password complexity policy.
- * Each domain can have one policy; falls back to system defaults if absent.
+ * Global password complexity policy (single row — domain_id removed).
+ * Falls back to system defaults if absent.
  */
 @Entity
 @Table(name = "password_policies")
 class PasswordPolicyEntity : SnowflakeBaseEntity() {
-
-    @Column(name = "domain_id", nullable = false, unique = true)
-    var domainId: Long = 0
 
     @Column(name = "min_length", nullable = false)
     var minLength: Int = 8

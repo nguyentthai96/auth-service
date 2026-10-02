@@ -15,7 +15,6 @@ data class RegisterCommand(
     val password: String,
     val fullName: String,
     val phone: String? = null,
-    val domainCode: String,
     val anonymousSessionId: String? = null,
     val anonymousTokenJti: String? = null,
     val ipAddress: String? = null,

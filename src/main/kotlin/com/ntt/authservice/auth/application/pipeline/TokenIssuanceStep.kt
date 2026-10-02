@@ -10,8 +10,7 @@ import org.springframework.stereotype.Component
 /**
  * Step 5: Token issuance — generate JWT access/refresh tokens.
  * FR-008: Generate authentication tokens with device fingerprint claim.
- *
- * Source: LoginHandler.kt L162-221 (token generation portion)
+ * Domain logic removed — global RBAC scope.
  */
 @Component
 class TokenIssuanceStep(
@@ -27,22 +26,20 @@ class TokenIssuanceStep(
         val command = context.command
         val user = context.user
             ?: throw IllegalStateException("User not resolved in previous step")
-        val domainCode = context.domainCode
-            ?: throw IllegalStateException("Domain code not resolved in previous step")
 
         // Resolve fingerprint
         val resolvedFingerprint = command.deviceFingerprint
 
-        // Generate tokens with fingerprint claim
+        // Generate tokens with fingerprint claim (global scope)
         val metadata = TokenIssuanceMetadata(
             issuanceContext = IssuanceContext.LOGIN,
             ipAddress = command.ipAddress,
             userAgent = command.userAgent,
             deviceFingerprint = resolvedFingerprint
         )
-        val authToken = tokenGenerator.generateAuthResponse(user, domainCode, metadata)
+        val authToken = tokenGenerator.generateAuthResponse(user, metadata)
 
-        log.debug("Token issued for user: {} domain: {}", user.username, domainCode)
+        log.debug("Token issued for user: {}", user.username)
         return StepOutcome.Continue(
             context.copy(authResponse = AuthResponse.from(authToken))
         )

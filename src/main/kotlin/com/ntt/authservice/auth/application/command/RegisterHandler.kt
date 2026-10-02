@@ -13,10 +13,7 @@ import com.ntt.authservice.auth.domain.model.UserStatus
 import com.ntt.authservice.auth.domain.model.vo.Email
 import com.ntt.authservice.auth.domain.model.vo.PasswordHash
 import com.ntt.authservice.auth.domain.model.vo.UserId
-import com.ntt.authservice.rbac.adapter.out.persistence.entity.UserDomainEntity
-import com.ntt.authservice.rbac.adapter.out.persistence.repository.UserDomainRepository
 import com.ntt.authservice.shared.exception.DuplicateResourceException
-import com.ntt.authservice.shared.exception.ResourceNotFoundException
 import com.ntt.eventsourcingutils.lib.cqrs.command.CommandHandler
 import org.slf4j.LoggerFactory
 import org.springframework.stereotype.Component
@@ -33,16 +30,16 @@ import org.springframework.transaction.annotation.Transactional
  * FR-004: Event store persistence via EventService
  * FR-007: Transactional outbox via EventService
  * FR-020: Structured transaction logging
+ *
+ * Domain logic removed — global RBAC scope.
  */
 @Component
 class RegisterHandler(
     private val userPort: UserPort,
-    private val domainPort: DomainPort,
     private val eventPublisher: EventPublisher,
     private val eventService: EventService,
     private val tokenGenerator: TokenGenerator,
-    private val sessionPromotionService: SessionPromotionService,
-    private val userDomainRepository: UserDomainRepository
+    private val sessionPromotionService: SessionPromotionService
 ) : CommandHandler<RegisterCommand, RegisterResult> {
 
     private val log = LoggerFactory.getLogger(RegisterHandler::class.java)
@@ -51,8 +48,8 @@ class RegisterHandler(
 
     @Transactional
     override fun handle(command: RegisterCommand): RegisterResult {
-        log.debug("REGISTER_START username={}, domain={}, correlationId={}",
-            command.username, command.domainCode, command.correlationId)
+        log.debug("REGISTER_START username={}, correlationId={}",
+            command.username, command.correlationId)
 
         // Validate uniqueness
         if (userPort.existsByUsername(command.username)) {
@@ -62,10 +59,6 @@ class RegisterHandler(
             throw DuplicateResourceException("User", "email", command.email)
         }
         log.debug("REGISTER_VALIDATION_PASSED username={}", command.username)
-
-        // Validate domain exists
-        val domain = domainPort.findByCodeAndActive(command.domainCode)
-            ?: throw ResourceNotFoundException("Domain", command.domainCode)
 
         // Create user via domain model
         val encodedPassword = tokenGenerator.encodePassword(command.password)
@@ -83,16 +76,6 @@ class RegisterHandler(
         val savedUser = userPort.save(user)
         log.debug("REGISTER_USER_PERSISTED userId={}, username={}", savedUser.id.value, savedUser.username)
 
-        // Create domain membership (required for login to resolve primary domain)
-        val membership = UserDomainEntity().apply {
-            userId = savedUser.id.value
-            domainId = domain.id
-            isPrimary = true
-            joinedAt = java.time.Instant.now()
-        }
-        userDomainRepository.save(membership)
-        log.debug("REGISTER_DOMAIN_MEMBERSHIP_CREATED userId={}, domainId={}", savedUser.id.value, domain.id)
-
         // Record enriched domain event via EventService (transactional: event_store + outbox)
         eventService.record(
             aggregateType = "User",
@@ -103,8 +86,6 @@ class RegisterHandler(
                 email = command.email,
                 fullName = command.fullName,
                 phone = command.phone,
-                domainCode = command.domainCode,
-                domainId = domain.id,
                 status = "ACTIVE",
                 registrationSource = determineRegistrationSource(command),
                 ipAddress = command.ipAddress,
@@ -116,7 +97,7 @@ class RegisterHandler(
         )
         log.debug("REGISTER_EVENT_RECORDED userId={}, topic=iam.user.registered", savedUser.id.value)
 
-        log.info("User registered: {} in domain: {}", savedUser.username, command.domainCode)
+        log.info("User registered: {}", savedUser.username)
 
         // Generate auth tokens (FR-011: pass issuance metadata)
         val metadata = TokenIssuanceMetadata(
@@ -125,7 +106,7 @@ class RegisterHandler(
             userAgent = command.userAgent,
             correlationId = command.correlationId
         )
-        val authToken = tokenGenerator.generateAuthResponse(savedUser, command.domainCode, metadata)
+        val authToken = tokenGenerator.generateAuthResponse(savedUser, metadata)
         log.debug("REGISTER_TOKEN_GENERATED userId={}", savedUser.id.value)
 
         // Anonymous session promotion (best-effort — DD-006, DD-007)

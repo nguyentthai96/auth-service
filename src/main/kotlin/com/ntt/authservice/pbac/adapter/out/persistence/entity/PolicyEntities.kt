@@ -7,13 +7,11 @@ import jakarta.persistence.*
 /**
  * PBAC Policy entity.
  * Inherits: id (Snowflake), audit fields, active from base-core.
+ * Domain logic removed — global scope.
  */
 @Entity
 @Table(name = "policies")
 class PolicyEntity : SnowflakePersistentAuditableEntity() {
-
-    @Column(name = "domain_id", nullable = false)
-    var domainId: Long = 0
 
     @Column(nullable = false, length = 200)
     lateinit var name: String

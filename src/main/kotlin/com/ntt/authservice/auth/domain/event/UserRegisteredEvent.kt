@@ -15,8 +15,6 @@ data class UserRegisteredEvent(
     val email: String,
     val fullName: String,
     val phone: String?,
-    val domainCode: String,
-    val domainId: Long?,
     val status: String,
     val registrationSource: String,
     val ipAddress: String?,

@@ -9,10 +9,11 @@ import org.springframework.transaction.annotation.Transactional
 /**
  * CheckPermissionHandler — replaces RbacEngine.hasPermission().
  * Uses RbacResolver for chain resolution.
+ * Global scope — domain_id removed.
  */
 @Component
 class CheckPermissionHandler(
-    private val domainResourceRepository: DomainResourceRepository,
+    private val resourceRepository: ResourceRepository,
     private val actionRepository: ActionRepository,
     private val permissionRepository: PermissionRepository,
     private val rbacResolver: RbacResolver
@@ -22,9 +23,8 @@ class CheckPermissionHandler(
 
     @Transactional(readOnly = true)
     override fun handle(query: CheckPermissionQuery): Boolean {
-        val resource = domainResourceRepository.findByDomainIdAndCodeAndActiveTrue(
-            query.domainId, query.resourceCode
-        ) ?: return false
+        val resource = resourceRepository.findByCodeAndActiveTrue(query.resourceCode)
+            ?: return false
 
         val action = actionRepository.findByCode(query.actionCode)
             ?: return false
@@ -35,6 +35,4 @@ class CheckPermissionHandler(
         val userPermissionIds = rbacResolver.resolveUserPermissionIds(query.userId)
         return permission.id!! in userPermissionIds
     }
-
-
 }

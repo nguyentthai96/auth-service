@@ -42,15 +42,14 @@ class InternalApiController(
      * Get roles for a user by ID (called by other services for authorization).
      */
     @GetMapping("/users/{id}/roles")
-    fun getUserRoles(@PathVariable id: Long, @RequestParam domainId: Long): ResponseEntity<ApiResponse<UserRolesResult>> {
+    fun getUserRoles(@PathVariable id: Long): ResponseEntity<ApiResponse<UserRolesResult>> {
         val user = userRepository.findById(id).orElseThrow {
             ResourceNotFoundException("User", id)
         }
-        val roles = rbacEngine.getUserRoles(id, domainId)
+        val roles = rbacEngine.getUserRoles(id)
         return okResponse(
             UserRolesResult(
                 userId = id,
-                domainId = domainId,
                 roles = roles,
                 status = user.status
             )

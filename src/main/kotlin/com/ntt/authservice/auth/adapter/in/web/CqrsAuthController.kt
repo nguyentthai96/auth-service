@@ -4,7 +4,7 @@ import com.ntt.authservice.auth.adapter.`in`.web.dto.AuthResponse
 import com.ntt.authservice.auth.adapter.`in`.web.dto.ChangePasswordRequestDto
 import com.ntt.authservice.auth.adapter.`in`.web.dto.DataTransferredInfo
 import com.ntt.authservice.auth.adapter.`in`.web.dto.ForgotPasswordRequestDto
-import com.ntt.authservice.auth.application.DomainLookupService
+
 import com.ntt.authservice.auth.application.JwtService
 import com.ntt.authservice.auth.application.LoginResult
 import com.ntt.authservice.auth.application.LoginSessionService
@@ -43,7 +43,6 @@ class CqrsAuthController(
     private val queryBus: com.ntt.eventsourcingutils.lib.cqrs.query.QueryBus,
     private val passwordPolicyService: PasswordPolicyService,
     private val loginSessionService: LoginSessionService,
-    private val domainLookupService: DomainLookupService,
     private val securityProperties: SecurityProperties,
     private val jwtService: JwtService,
     private val notificationGateway: NotificationGateway,
@@ -78,7 +77,6 @@ class CqrsAuthController(
             password = request.password,
             fullName = request.fullName,
             phone = request.phone,
-            domainCode = request.domainCode,
             anonymousSessionId = request.anonymousSessionId,
             anonymousTokenJti = anonymousTokenJti,
             ipAddress = requestContext.clientIp,
@@ -130,7 +128,6 @@ class CqrsAuthController(
         val command = LoginCommand(
             username = request.username,
             password = request.password,
-            domainCode = request.domainCode,
             captchaToken = request.captchaToken,
             trustedDeviceHash = request.trustedDeviceHash,
             ipAddress = requestContext.clientIp,
@@ -195,8 +192,7 @@ class CqrsAuthController(
         @RequestHeader("Authorization") authHeader: String
     ): ResponseEntity<ApiResponse<Unit>> {
         val userId = requestContext.requireUserId()
-        val domainId = domainLookupService.getPrimaryDomainId(userId)
-        passwordPolicyService.changePassword(userId, request.oldPassword, request.newPassword, domainId)
+        passwordPolicyService.changePassword(userId, request.oldPassword, request.newPassword)
         return okMessageResponse("auth.password_changed")
     }
 
@@ -231,16 +227,7 @@ class CqrsAuthController(
         return okResponse(response)
     }
 
-    @PostMapping("/switch-domain")
-    fun switchDomain(
-        @Valid @RequestBody request: com.ntt.authservice.auth.adapter.`in`.web.dto.SwitchDomainRequestDto,
-        @RequestHeader("Authorization") authHeader: String
-    ): ResponseEntity<ApiResponse<AuthResponse>> {
-        val userId = requestContext.requireUserId()
-        val command = SwitchDomainCommand(userId = userId, newDomainCode = request.domainCode)
-        val authToken = commandBus.dispatch(command)
-        return okResponse(AuthResponse.from(authToken).copy(message = message("auth.switch_domain_success")))
-    }
+
 
     private fun setRefreshTokenCookie(response: HttpServletResponse, refreshToken: String?) {
         if (refreshToken == null) return

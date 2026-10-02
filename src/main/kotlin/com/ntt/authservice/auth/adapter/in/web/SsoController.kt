@@ -34,7 +34,7 @@ class SsoController(
     }
 
     @GetMapping("/providers")
-    fun getProviders(@RequestParam(required = false) domainCode: String?): ResponseEntity<ApiResponse<List<SsoProviderInfoDto>>> {
+    fun getProviders(): ResponseEntity<ApiResponse<List<SsoProviderInfoDto>>> {
         val providers = ssoAdapter.getProviders().map {
             SsoProviderInfoDto(id = it.id, name = it.name, enabled = it.enabled)
         }

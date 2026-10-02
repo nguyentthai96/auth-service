@@ -86,7 +86,6 @@ class RefreshTokenHandler(
             correlationId = correlationId
         )
 
-        val domainCode = tokenGenerator.getPrimaryDomain(user.id.value)
 
         // Pass metadata with TOKEN_REFRESH context + shared correlationId
         val metadata = TokenIssuanceMetadata(
@@ -94,6 +93,6 @@ class RefreshTokenHandler(
             previousRefreshTokenHash = tokenHash,
             correlationId = correlationId
         )
-        return tokenGenerator.generateAuthResponse(user, domainCode, metadata)
+        return tokenGenerator.generateAuthResponse(user, metadata)
     }
 }

@@ -11,7 +11,6 @@ data class AuthResponse(
     val expiresIn: Long,
     val userId: Long,
     val username: String,
-    val activeDomain: String,
     val roles: List<String>,
     val permissions: List<String>,
     val promotedFromAnonymous: Boolean = false,
@@ -30,7 +29,6 @@ data class AuthResponse(
             expiresIn = token.expiresIn,
             userId = token.userId,
             username = token.username,
-            activeDomain = token.activeDomain,
             roles = token.roles,
             permissions = token.permissions
         )

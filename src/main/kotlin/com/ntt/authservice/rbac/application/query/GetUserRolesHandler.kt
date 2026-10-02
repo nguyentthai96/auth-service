@@ -9,12 +9,13 @@ import org.springframework.transaction.annotation.Transactional
 /**
  * GetUserRolesHandler — replaces RbacEngine.getUserRoles().
  * Batch-loads roles with cache support.
+ * Global scope — domain_id removed.
  */
 @Component
 class GetUserRolesHandler(
     private val userGroupRepository: UserGroupRepository,
     private val groupRoleRepository: GroupRoleRepository,
-    private val domainRoleRepository: DomainRoleRepository
+    private val roleRepository: RoleRepository
 ) : QueryHandler<GetUserRolesQuery, List<String>> {
 
     private val log = LoggerFactory.getLogger(GetUserRolesHandler::class.java)
@@ -32,15 +33,12 @@ class GetUserRolesHandler(
                 .map { it.roleId }
         }.toSet()
 
-        val domainRoles = domainRoleRepository.findAllByDomainIdAndActiveTrue(query.domainId)
-        val roles = domainRoles
+        val roles = roleRepository.findAllByActiveTrue()
             .filter { it.id!! in roleIds }
             .map { it.code }
 
-        log.debug("Loaded {} roles for userId={} domainId={}", roles.size, query.userId, query.domainId)
+        log.debug("Loaded {} roles for userId={}", roles.size, query.userId)
 
         return roles
     }
-
-
 }

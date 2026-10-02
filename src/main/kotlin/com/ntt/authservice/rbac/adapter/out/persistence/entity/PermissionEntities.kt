@@ -24,14 +24,11 @@ class ActionEntity : SnowflakeBaseEntity() {
 }
 
 /**
- * Domain resource (e.g., bookings, rooms, payments).
+ * Resource (global scope — renamed from DomainResourceEntity, domain_id removed).
  */
 @Entity
-@Table(name = "domain_resources", uniqueConstraints = [UniqueConstraint(columnNames = ["domain_id", "code"])])
-class DomainResourceEntity : SnowflakePersistentAuditableEntity() {
-
-    @Column(name = "domain_id", nullable = false)
-    var domainId: Long = 0
+@Table(name = "resources", uniqueConstraints = [UniqueConstraint(columnNames = ["code"])])
+class ResourceEntity : SnowflakePersistentAuditableEntity() {
 
     @Column(nullable = false, length = 50)
     lateinit var code: String

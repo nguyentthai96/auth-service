@@ -14,6 +14,7 @@ import org.springframework.transaction.annotation.Transactional
  * NEW: One query joining all tables with cache lookup.
  *
  * FR-007 compliance: Uses PermissionCache port for L1/L2 caching.
+ * Global scope — domain_id removed.
  */
 @Component
 class GetPermissionsHandler(
@@ -21,7 +22,7 @@ class GetPermissionsHandler(
     private val groupRoleRepository: GroupRoleRepository,
     private val rolePermissionRepository: RolePermissionRepository,
     private val permissionRepository: PermissionRepository,
-    private val domainResourceRepository: DomainResourceRepository,
+    private val resourceRepository: ResourceRepository,
     private val actionRepository: ActionRepository
 ) : QueryHandler<GetPermissionsQuery, List<String>> {
 
@@ -50,7 +51,7 @@ class GetPermissionsHandler(
         val resourceIds = allPermissions.map { it.resourceId }.toSet()
         val actionIds = allPermissions.map { it.actionId }.toSet()
 
-        val resourceMap = domainResourceRepository.findAllById(resourceIds).associateBy { it.id }
+        val resourceMap = resourceRepository.findAllById(resourceIds).associateBy { it.id }
         val actionMap = actionRepository.findAllById(actionIds).associateBy { it.id }
 
         val permissions = allPermissions.mapNotNull { perm ->
@@ -59,10 +60,8 @@ class GetPermissionsHandler(
             "${resource.code}:${action.code}"
         }
 
-        log.debug("Loaded {} permissions for userId={} domainId={}", permissions.size, query.userId, query.domainId)
+        log.debug("Loaded {} permissions for userId={}", permissions.size, query.userId)
 
         return permissions
     }
-
-
 }

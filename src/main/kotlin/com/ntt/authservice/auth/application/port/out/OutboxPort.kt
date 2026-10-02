@@ -2,7 +2,7 @@ package com.ntt.authservice.auth.application.port.out
 
 /**
  * Outbound port for transactional outbox operations (FR-007).
- * Follows existing port pattern (UserPort, DomainPort).
+ * Follows existing port pattern (UserPort).
  */
 interface OutboxPort {
 

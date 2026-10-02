@@ -42,8 +42,6 @@ class LoginHandler(
                     event = UserLoggedInEvent(
                         userId = 0, // Event recorder will resolve from context
                         username = command.username,
-                        domainCode = command.domainCode ?: "",
-                        domainId = null,
                         loginMethod = "PASSWORD",
                         mfaBypassed = false,
                         mfaMethod = null,

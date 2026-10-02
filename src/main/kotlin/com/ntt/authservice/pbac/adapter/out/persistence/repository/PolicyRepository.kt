@@ -11,16 +11,15 @@ typealias PolicyRepository = PolicyJpaRepository
 @Repository
 interface PolicyJpaRepository : JpaRepository<PolicyEntity, Long> {
 
-    fun findAllByDomainIdAndStatusAndActiveTrue(domainId: Long, status: String = "ACTIVE"): List<PolicyEntity>
+    fun findAllByStatusAndActiveTrue(status: String = "ACTIVE"): List<PolicyEntity>
 
     @Query("""
         SELECT p FROM PolicyEntity p 
-        WHERE p.domainId = :domainId 
-          AND p.status = 'ACTIVE' 
+        WHERE p.status = 'ACTIVE' 
           AND p.active = true
           AND (p.resourceId = :resourceId OR p.resourceId IS NULL)
           AND (p.actionId = :actionId OR p.actionId IS NULL)
         ORDER BY p.priority ASC
     """)
-    fun findApplicablePolicies(domainId: Long, resourceId: Long?, actionId: Long?): List<PolicyEntity>
+    fun findApplicablePolicies(resourceId: Long?, actionId: Long?): List<PolicyEntity>
 }

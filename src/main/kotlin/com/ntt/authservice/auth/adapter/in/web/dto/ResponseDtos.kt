@@ -54,7 +54,6 @@ data class ServiceTokenResult(
 
 data class UserRolesResult(
     val userId: Long,
-    val domainId: Long,
     val roles: List<Any>,
     val status: String
 )

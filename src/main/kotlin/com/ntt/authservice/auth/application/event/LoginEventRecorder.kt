@@ -44,8 +44,8 @@ class LoginEventRecorder(
                 correlationId = correlationId
             )
             log.debug(
-                "Login success event recorded: userId={}, domain={}, isNewDevice={}, correlationId={}",
-                userId, event.domainCode, event.isNewDevice, correlationId
+                "Login success event recorded: userId={}, isNewDevice={}, correlationId={}",
+                userId, event.isNewDevice, correlationId
             )
         } catch (e: Exception) {
             log.warn(

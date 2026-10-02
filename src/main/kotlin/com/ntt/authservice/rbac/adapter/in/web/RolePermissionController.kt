@@ -13,26 +13,26 @@ import org.springframework.web.bind.annotation.*
 
 /**
  * Permission matrix management — assigns permissions (resource×action) to roles.
+ * Global scope — domain_id removed.
  */
 @RestController
-@RequestMapping("/admin/domains/{domainId}/roles/{roleId}/permissions")
+@RequestMapping("/admin/roles/{roleId}/permissions")
 class RolePermissionController(
     private val rolePermissionRepository: RolePermissionRepository,
     private val permissionRepository: PermissionRepository,
-    private val domainResourceRepository: DomainResourceRepository,
+    private val resourceRepository: ResourceRepository,
     private val actionRepository: ActionRepository,
-    private val domainRoleRepository: DomainRoleRepository
+    private val roleRepository: RoleRepository
 ) : AdminController() {
 
     @GetMapping
     fun listRolePermissions(
-        @PathVariable domainId: Long,
         @PathVariable roleId: Long
     ): ResponseEntity<ApiResponse<List<RolePermissionResponse>>> {
         val rolePerms = rolePermissionRepository.findAllByRoleIdAndActiveTrue(roleId)
         val result = rolePerms.mapNotNull { rp ->
             val perm = permissionRepository.findById(rp.permissionId).orElse(null)
-            val resource = perm?.let { domainResourceRepository.findById(it.resourceId).orElse(null) }
+            val resource = perm?.let { resourceRepository.findById(it.resourceId).orElse(null) }
             val action = perm?.let { actionRepository.findById(it.actionId).orElse(null) }
             if (resource != null && action != null) {
                 RolePermissionResponse(
@@ -50,12 +50,11 @@ class RolePermissionController(
     @PostMapping
     @Transactional
     fun assignPermission(
-        @PathVariable domainId: Long,
         @PathVariable roleId: Long,
         @Valid @RequestBody request: AssignPermissionRequest
     ): ResponseEntity<Void> {
-        // Resolve resource
-        val resource = domainResourceRepository.findByDomainIdAndCodeAndActiveTrue(domainId, request.resourceCode)
+        // Resolve resource (global scope)
+        val resource = resourceRepository.findByCodeAndActiveTrue(request.resourceCode)
             ?: throw ResourceNotFoundException("Resource", request.resourceCode)
 
         // Resolve action
@@ -80,16 +79,15 @@ class RolePermissionController(
     }
 
     /**
-     * Bulk assign all actions to a role for a resource (shortcut for DOMAIN_ADMIN).
+     * Bulk assign all actions to a role for a resource (shortcut for ADMIN).
      */
     @PostMapping("/bulk")
     @Transactional
     fun assignAllPermissions(
-        @PathVariable domainId: Long,
         @PathVariable roleId: Long,
         @Valid @RequestBody request: BulkAssignPermissionRequest
     ): ResponseEntity<Void> {
-        val resource = domainResourceRepository.findByDomainIdAndCodeAndActiveTrue(domainId, request.resourceCode)
+        val resource = resourceRepository.findByCodeAndActiveTrue(request.resourceCode)
             ?: throw ResourceNotFoundException("Resource", request.resourceCode)
 
         val actions = if (request.actionCodes.isNullOrEmpty()) {

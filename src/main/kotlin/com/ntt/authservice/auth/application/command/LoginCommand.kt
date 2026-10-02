@@ -13,7 +13,6 @@ import com.ntt.eventsourcingutils.lib.cqrs.command.Command
 data class LoginCommand(
     val username: String,
     val password: String,
-    val domainCode: String? = null,
     val captchaToken: String? = null,
     /** CAPTCHA type: "image" or "altcha". Null = use configured default. */
     val captchaType: String? = null,

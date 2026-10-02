@@ -8,6 +8,7 @@ import org.springframework.transaction.annotation.Transactional
 /**
  * RBAC Engine — Stage 1 authorization.
  * Resolves: User → Groups → Roles → Permissions hierarchy.
+ * Global scope — domain_id removed.
  */
 @Service
 class RbacEngine(
@@ -15,19 +16,19 @@ class RbacEngine(
     private val groupRoleRepository: GroupRoleRepository,
     private val rolePermissionRepository: RolePermissionRepository,
     private val permissionRepository: PermissionRepository,
-    private val domainResourceRepository: DomainResourceRepository,
+    private val resourceRepository: ResourceRepository,
     private val actionRepository: ActionRepository,
-    private val domainRoleRepository: DomainRoleRepository
+    private val roleRepository: RoleRepository
 ) {
 
     private val log = LoggerFactory.getLogger(RbacEngine::class.java)
 
     /**
-     * Check if user has specific permission in a domain.
+     * Check if user has specific permission (global scope).
      */
     @Transactional(readOnly = true)
-    fun hasPermission(userId: Long, domainId: Long, resourceCode: String, actionCode: String): Boolean {
-        val resource = domainResourceRepository.findByDomainIdAndCodeAndActiveTrue(domainId, resourceCode)
+    fun hasPermission(userId: Long, resourceCode: String, actionCode: String): Boolean {
+        val resource = resourceRepository.findByCodeAndActiveTrue(resourceCode)
             ?: return false
 
         val action = actionRepository.findByCode(actionCode)
@@ -42,21 +43,21 @@ class RbacEngine(
     }
 
     /**
-     * Get all role codes for a user in a domain.
+     * Get all role codes for a user (global scope).
      */
     @Transactional(readOnly = true)
-    fun getUserRoles(userId: Long, domainId: Long): List<String> {
+    fun getUserRoles(userId: Long): List<String> {
         val roleIds = resolveUserRoleIds(userId)
-        return domainRoleRepository.findAllByDomainIdAndActiveTrue(domainId)
+        return roleRepository.findAllByActiveTrue()
             .filter { it.id!! in roleIds }
             .map { it.code }
     }
 
     /**
-     * Get all effective permissions as "resource:action" strings.
+     * Get all effective permissions as "resource:action" strings (global scope).
      */
     @Transactional(readOnly = true)
-    fun getEffectivePermissions(userId: Long, domainId: Long): List<String> {
+    fun getEffectivePermissions(userId: Long): List<String> {
         val roleIds = resolveUserRoleIds(userId)
         val permissionIds = roleIds.flatMap { roleId ->
             rolePermissionRepository.findAllByRoleIdAndActiveTrue(roleId)
@@ -65,7 +66,7 @@ class RbacEngine(
 
         return permissionIds.mapNotNull { permId ->
             val perm = permissionRepository.findById(permId).orElse(null) ?: return@mapNotNull null
-            val resource = domainResourceRepository.findById(perm.resourceId).orElse(null) ?: return@mapNotNull null
+            val resource = resourceRepository.findById(perm.resourceId).orElse(null) ?: return@mapNotNull null
             val action = actionRepository.findById(perm.actionId).orElse(null) ?: return@mapNotNull null
             "${resource.code}:${action.code}"
         }

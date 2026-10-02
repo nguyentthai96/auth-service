@@ -15,8 +15,6 @@ import java.time.Instant
 data class TokenIssuedEvent(
     val userId: Long,
     val username: String,
-    val domainCode: String,
-    val domainId: Long,
     val issuanceContext: IssuanceContext,
     val accessTokenJti: String,
     val refreshTokenHash: String,

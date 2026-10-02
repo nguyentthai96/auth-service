@@ -4,7 +4,6 @@ import com.ntt.authservice.auth.application.LoginResult
 import com.ntt.authservice.auth.application.PasswordPolicyService
 import com.ntt.authservice.auth.application.SessionPolicyService
 import com.ntt.authservice.auth.application.command.TokenGenerator
-import com.ntt.authservice.auth.application.port.out.DomainPort
 import com.ntt.authservice.rbac.application.query.GetUserRolesHandler
 import com.ntt.authservice.rbac.application.query.GetUserRolesQuery
 import com.ntt.authservice.shared.config.SecurityProperties
@@ -17,12 +16,10 @@ import org.springframework.stereotype.Component
  * FR-006: Password expiry check, MFA checkpoint, session policy enforcement.
  *
  * May short-circuit pipeline with MfaRequired result.
- *
- * Source: LoginHandler.kt L132-156
+ * Domain logic removed — global RBAC scope.
  */
 @Component
 class PolicyEnforcementStep(
-    private val domainPort: DomainPort,
     private val passwordPolicyService: PasswordPolicyService,
     private val securityProperties: SecurityProperties,
     private val sessionPolicyService: SessionPolicyService,
@@ -40,12 +37,8 @@ class PolicyEnforcementStep(
         val user = context.user
             ?: throw IllegalStateException("User not resolved in previous step")
 
-        // Determine active domain
-        val domainCode = command.domainCode ?: tokenGenerator.getPrimaryDomain(user.id.value)
-        val domain = domainPort.findByCodeAndActive(domainCode)
-
-        // Password expiry check
-        if (domain != null && passwordPolicyService.isPasswordExpired(user.id.value, domain.id)) {
+        // Password expiry check (global scope)
+        if (passwordPolicyService.isPasswordExpired(user.id.value)) {
             throw PasswordExpiredException()
         }
 
@@ -57,21 +50,15 @@ class PolicyEnforcementStep(
             )
         }
 
-        // Load roles for session policy
-        val roles = if (domain != null) {
-            getUserRolesHandler.handle(GetUserRolesQuery(user.id.value, domain.id))
-        } else {
-            emptyList()
-        }
+        // Load roles (global scope)
+        val roles = getUserRolesHandler.handle(GetUserRolesQuery(user.id.value))
 
         // Enforce session policy (may revoke oldest or throw)
         sessionPolicyService.enforcePolicy(user.id.value, roles)
 
-        log.debug("Policy enforcement passed for user: {} domain: {}", user.username, domainCode)
+        log.debug("Policy enforcement passed for user: {}", user.username)
         return StepOutcome.Continue(
             context.copy(
-                domainCode = domainCode,
-                domain = domain,
                 roles = roles
             )
         )

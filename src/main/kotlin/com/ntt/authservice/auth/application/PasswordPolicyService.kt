@@ -11,14 +11,15 @@ import com.ntt.authservice.shared.audit.AuditLogService
 import com.ntt.authservice.shared.exception.*
 import org.passay.*
 import org.slf4j.LoggerFactory
+import org.springframework.data.domain.PageRequest
 import org.springframework.security.crypto.password.PasswordEncoder
 import org.springframework.stereotype.Service
 import java.time.Instant
-import java.util.concurrent.ConcurrentHashMap
 
 /**
- * Domain-scoped password policy enforcement via Passay.
+ * Global password policy enforcement via Passay.
  * Includes password history check and change flow.
+ * Domain scope removed — single global policy.
  */
 @Service
 class PasswordPolicyService(
@@ -31,17 +32,16 @@ class PasswordPolicyService(
 ) {
 
     private val log = LoggerFactory.getLogger(PasswordPolicyService::class.java)
-    private val validatorCache = ConcurrentHashMap<Long, PasswordValidator>()
 
+    @Volatile
+    private var cachedValidator: PasswordValidator? = null
 
     /**
-     * Validate password against domain policy.
+     * Validate password against global policy.
      * @return list of violation messages (empty = valid)
      */
-    fun validatePasswordStrength(password: String, domainId: Long): List<String> {
-        val validator = validatorCache.computeIfAbsent(domainId) {
-            buildValidator(getPolicy(domainId))
-        }
+    fun validatePasswordStrength(password: String): List<String> {
+        val validator = cachedValidator ?: buildValidator(getPolicy()).also { cachedValidator = it }
         val result = validator.validate(PasswordData(password))
         return if (result.isValid) emptyList()
         else validator.getMessages(result)
@@ -52,15 +52,16 @@ class PasswordPolicyService(
      * @return true if password is allowed (not in history)
      */
     fun checkPasswordHistory(userId: Long, newPassword: String, historyCount: Int): Boolean {
-        val history = passwordHistoryRepository.findByUserIdOrderByCreatedAtDesc(userId)
-            .take(historyCount)
+        val history = passwordHistoryRepository.findByUserIdOrderByCreatedAtDesc(
+            userId, PageRequest.of(0, historyCount)
+        ).content
         return history.none { passwordEncoder.matches(newPassword, it.passwordHash) }
     }
 
     /**
      * Full password change flow: validate old → check strength → check history → persist.
      */
-    fun changePassword(userId: Long, oldPassword: String, newPassword: String, domainId: Long) {
+    fun changePassword(userId: Long, oldPassword: String, newPassword: String) {
         val user = userRepository.findById(userId).orElseThrow {
             ResourceNotFoundException("User", userId)
         }
@@ -70,14 +71,14 @@ class PasswordPolicyService(
             throw InvalidCredentialsException()
         }
 
-        // Check strength
-        val violations = validatePasswordStrength(newPassword, domainId)
+        // Check strength (global policy)
+        val violations = validatePasswordStrength(newPassword)
         if (violations.isNotEmpty()) {
             throw PasswordPolicyViolationException(violations.joinToString("; "))
         }
 
         // Check history
-        val policy = getPolicy(domainId)
+        val policy = getPolicy()
         if (!checkPasswordHistory(userId, newPassword, policy.historyCount)) {
             throw PasswordRecentlyUsedException()
         }
@@ -105,35 +106,33 @@ class PasswordPolicyService(
         pruneHistory(userId, policy.historyCount)
 
         log.info("Password changed for userId={}", userId)
-        auditLogService.logEvent(userId, AuditAction.PASSWORD_CHANGED, "User", userId.toString(), "domainId=$domainId")
+        auditLogService.logEvent(userId, AuditAction.PASSWORD_CHANGED, "User", userId.toString())
     }
 
     /**
-     * Get policy for domain (falls back to system defaults).
+     * Get global password policy (falls back to system defaults).
      */
-    fun getPolicy(domainId: Long): PasswordPolicyEntity {
-        return passwordPolicyRepository.findByDomainId(domainId) ?: PasswordPolicyEntity().apply {
-            this.domainId = domainId
-        }
+    fun getPolicy(): PasswordPolicyEntity {
+        return passwordPolicyRepository.findFirstBy() ?: PasswordPolicyEntity()
     }
 
     /**
-     * Update domain password policy and invalidate cached validator.
+     * Update global password policy and invalidate cached validator.
      */
-    fun updatePolicy(domainId: Long, policy: PasswordPolicyEntity): PasswordPolicyEntity {
+    fun updatePolicy(policy: PasswordPolicyEntity): PasswordPolicyEntity {
         policy.updatedAt = Instant.now()
         val saved = passwordPolicyRepository.save(policy)
-        validatorCache.remove(domainId)
-        log.info("Password policy updated for domainId={}", domainId)
+        cachedValidator = null
+        log.info("Global password policy updated")
         return saved
     }
 
     /**
-     * Check if user's password has expired based on domain policy.
+     * Check if user's password has expired based on global policy.
      */
-    fun isPasswordExpired(userId: Long, domainId: Long): Boolean {
+    fun isPasswordExpired(userId: Long): Boolean {
         val user = userRepository.findById(userId).orElse(null) ?: return false
-        val policy = getPolicy(domainId)
+        val policy = getPolicy()
         if (policy.maxAgeDays <= 0) return false
         val changedAt = user.passwordChangedAt ?: return true
         val expiresAt = changedAt.plusSeconds(policy.maxAgeDays.toLong() * 86400)
