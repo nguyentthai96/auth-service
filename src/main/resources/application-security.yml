@@ -35,7 +35,7 @@ app:
   security:
     enabled: true
     session-validation:
-      enabled: false
+      enabled: true
     public-paths:
       - /auth/**
       - /actuator/**
@@ -167,4 +167,11 @@ app:
         width: 200
         height: 60
         ttl-seconds: 180
+    # Dynamic Menu Authorization — FR-009, FR-010
+    authorization:
+      mode: ${AUTH_MODE:FIRST_MATCH}            # FIRST_MATCH (default) | STRICT_MERGE
+      menu-permission:
+        enabled: ${MENU_PERM_ENABLED:false}     # Enable menu-based permission enrichment
+        redis-key-prefix: "user:"
+        redis-key-suffix: ":menu:perms"
 

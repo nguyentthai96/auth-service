@@ -38,6 +38,7 @@ interface GroupRepository : JpaRepository<GroupEntity, Long> {
 @Repository
 interface UserGroupRepository : JpaRepository<UserGroupEntity, Long> {
     fun findAllByUserIdAndActiveTrue(userId: Long): List<UserGroupEntity>
+    fun findAllByGroupIdInAndActiveTrue(groupIds: Collection<Long>): List<UserGroupEntity>
 }
 
 @Repository
@@ -49,6 +50,7 @@ interface RoleRepository : JpaRepository<RoleEntity, Long> {
 @Repository
 interface GroupRoleRepository : JpaRepository<GroupRoleEntity, Long> {
     fun findAllByGroupIdAndActiveTrue(groupId: Long): List<GroupRoleEntity>
+    fun findAllByRoleIdInAndActiveTrue(roleIds: Collection<Long>): List<GroupRoleEntity>
 }
 
 @Repository
