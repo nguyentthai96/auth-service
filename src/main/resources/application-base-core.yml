@@ -68,6 +68,23 @@ app:
 
   # ── Security (base-security-starter) ──────────────────────────────
   security:
+    public-paths:
+      - /actuator/**
+      - /health
+      - /health/**
+      - /auth/login
+      - /auth/register
+      - /auth/refresh
+      - /auth/key-exchange
+      - /auth/mfa/verify
+      - /auth/mfa/resend
+      - /auth/sso/callback
+      - /auth/sso/providers
+      - /auth/forgot-password
+      - /auth/anonymous
+      - /captcha/challenge
+      - /.well-known/jwks.json
+      - /unlock/**
     jwt:
       public-key-path: ${JWT_PUBLIC_KEY_PATH:}
       secret-key: ${JWT_SECRET_KEY:your-256-bit-secret-key-change-in-production}

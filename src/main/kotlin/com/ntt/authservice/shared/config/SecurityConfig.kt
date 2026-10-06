@@ -2,11 +2,20 @@ package com.ntt.authservice.shared.config
 
 import com.ntt.authservice.auth.adapter.`in`.web.filter.LoginRateLimitFilter
 import com.ntt.authservice.auth.adapter.`in`.web.filter.ServiceAuthFilter
+import com.ntt.authservice.auth.application.ClaimValidatorChain
+import com.ntt.authservice.auth.application.FingerprintService
+import com.ntt.authservice.auth.application.JwtService
+import com.ntt.authservice.auth.application.TokenBlacklistCacheService
+import com.ntt.authservice.auth.application.event.TokenEventRecorder
+import com.ntt.authservice.shared.security.AuthSessionValidationFilter
 import com.ntt.basecore.autoconfigure.security.DynamicAuthorizationManager
-import com.ntt.authservice.shared.security.JwtAuthFilter
+import com.ntt.basecore.autoconfigure.security.SecurityProperties
 import com.ntt.basecore.autoconfigure.openapi.OpenApiAutoConfiguration
+import com.ntt.basecore.constant.OrderConstants
+import io.micrometer.core.instrument.MeterRegistry
 import org.springframework.beans.factory.annotation.Value
 import org.springframework.boot.context.properties.EnableConfigurationProperties
+import org.springframework.boot.web.servlet.FilterRegistrationBean
 import org.springframework.context.annotation.Bean
 import org.springframework.context.annotation.Configuration
 import org.springframework.core.env.Environment
@@ -21,11 +30,23 @@ import org.springframework.web.cors.CorsConfiguration
 import org.springframework.web.cors.CorsConfigurationSource
 import org.springframework.web.cors.UrlBasedCorsConfigurationSource
 
+/**
+ * Security configuration for auth-service.
+ *
+ * JWT authentication is handled by [AuthSessionValidationFilter], registered as a servlet filter
+ * via [FilterRegistrationBean] at order [OrderConstants.SESSION_VALIDATION] (-1700).
+ * This overrides [DefaultSessionValidationFilter] from base-core via @ConditionalOnMissingBean.
+ *
+ * loginRateLimitFilter and serviceAuthFilter are kept in Spring Security chain
+ * because they are auth-service-specific concerns that run AFTER JWT validation.
+ */
 @Configuration
 @EnableWebSecurity
-@EnableConfigurationProperties(SecurityProperties::class, OutboxProperties::class)
+@EnableConfigurationProperties(
+    com.ntt.authservice.shared.config.SecurityProperties::class,
+    OutboxProperties::class
+)
 class SecurityConfig(
-    private val jwtAuthFilter: JwtAuthFilter,
     private val loginRateLimitFilter: LoginRateLimitFilter,
     private val serviceAuthFilter: ServiceAuthFilter,
     private val securityProperties: SecurityProperties,
@@ -36,6 +57,35 @@ class SecurityConfig(
     @Value("\${app.cors.allowed-origins:http://localhost:3000}")
     private val allowedOrigins: String
 ) {
+
+    /**
+     * Register [AuthSessionValidationFilter] as a servlet filter at [OrderConstants.SESSION_VALIDATION].
+     * This bean overrides [DefaultSessionValidationFilter] from base-core via @ConditionalOnMissingBean.
+     */
+    @Bean
+    fun authSessionValidationFilter(
+        jwtService: JwtService,
+        tokenBlacklistCacheService: TokenBlacklistCacheService,
+        claimValidatorChain: ClaimValidatorChain,
+        tokenEventRecorder: TokenEventRecorder,
+        fingerprintService: FingerprintService,
+        authSecurityProperties: com.ntt.authservice.shared.config.SecurityProperties,
+        meterRegistry: MeterRegistry
+    ): FilterRegistrationBean<AuthSessionValidationFilter> {
+        val filter = AuthSessionValidationFilter(
+            jwtService = jwtService,
+            tokenBlacklistCacheService = tokenBlacklistCacheService,
+            claimValidatorChain = claimValidatorChain,
+            tokenEventRecorder = tokenEventRecorder,
+            fingerprintService = fingerprintService,
+            securityProperties = authSecurityProperties,
+            meterRegistry = meterRegistry,
+            publicPaths = securityProperties.publicPaths
+        )
+        val registration = FilterRegistrationBean(filter)
+        registration.order = OrderConstants.SESSION_VALIDATION
+        return registration
+    }
 
     @Bean
     fun securityFilterChain(http: HttpSecurity): SecurityFilterChain {
@@ -81,7 +131,6 @@ class SecurityConfig(
                     .anyRequest().access(dynamicAuthorizationManager)
             }
             .addFilterBefore(loginRateLimitFilter, UsernamePasswordAuthenticationFilter::class.java)
-            .addFilterBefore(jwtAuthFilter, UsernamePasswordAuthenticationFilter::class.java)
             .addFilterBefore(serviceAuthFilter, UsernamePasswordAuthenticationFilter::class.java)
 
         return http.build()
@@ -116,4 +165,3 @@ class SecurityConfig(
         )
     }
 }
-
