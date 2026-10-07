@@ -55,3 +55,5 @@ plugins {
 }
 
 rootProject.name = "auth-service"
+
+include(":auth-client")

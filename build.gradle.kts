@@ -34,6 +34,8 @@ dependencies {
     implementation("org.springframework.boot:spring-boot-starter-security")
     // notification-client SDK — enqueue notifications via NotificationPort
     implementation("com.ntt:notification-client:0.0.1-SNAPSHOT")
+    // sysadmin-client SDK — read i18n, config, menu, feature-flags via ISP contracts
+    implementation("com.ntt:sysadmin-client:0.0.1-SNAPSHOT")
     implementation("org.springframework.boot:spring-boot-starter-web")
     implementation("com.fasterxml.jackson.module:jackson-module-kotlin")
     implementation("com.fasterxml.jackson.datatype:jackson-datatype-jsr310")
